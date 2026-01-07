@@ -88,14 +88,19 @@ Die Datenbank-Konfiguration ist korrekt:
 - ✅ DATABASE_URL ist konfiguriert
 - ✅ Supabase-Verbindung ist eingerichtet
 - ✅ Schema ist definiert (prisma/schema.prisma)
+- ⚠️ **Tabellen müssen manuell erstellt werden** (siehe DATABASE_SETUP.md)
 
-Das einzige Problem ist die Prisma-Client-Generierung in der lokalen Umgebung.
+Das Problem:
+- Die lokale Umgebung kann weder auf Prisma-Binaries noch auf Supabase zugreifen
+- Daher konnten die Tabellen nicht automatisch mit `prisma db push` erstellt werden
+- **Lösung**: Führen Sie `prisma/init-schema.sql` manuell in Supabase aus (siehe DATABASE_SETUP.md)
 
 ## Empfohlene Vorgehensweise
 
 Für die Produktion:
-1. **Code committen und pushen** zur Branch
-2. **Auf Vercel deployen** - funktioniert automatisch
-3. **Testen** auf der deployed URL
+1. ✅ **Code committen und pushen** zur Branch (erledigt)
+2. **Datenbank-Schema manuell erstellen** - siehe [DATABASE_SETUP.md](./DATABASE_SETUP.md)
+3. **Auf Vercel deployen** - funktioniert automatisch
+4. **Testen** auf der deployed URL
 
-Die Anwendung ist produktionsreif und sollte auf Vercel ohne Probleme laufen.
+Die Anwendung ist produktionsreif und sollte auf Vercel ohne Probleme laufen, sobald das Datenbank-Schema erstellt wurde.
