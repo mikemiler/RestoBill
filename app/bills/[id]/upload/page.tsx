@@ -129,6 +129,7 @@ export default function UploadBillPage() {
           ) : (
             <div className="space-y-4">
               <div className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={preview}
                   alt="Rechnung Vorschau"

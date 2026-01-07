@@ -13,7 +13,7 @@ export default function Home() {
 
         <div className="bg-white rounded-lg shadow-lg p-8 mb-8">
           <h2 className="text-2xl font-semibold mb-4 text-gray-800">
-            So funktioniert's
+            So funktioniert&apos;s
           </h2>
           <ol className="text-left space-y-4 text-gray-700">
             <li className="flex items-start">
