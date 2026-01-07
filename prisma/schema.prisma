@@ -1,0 +1,75 @@
+// Prisma schema for RestoBill
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Bill {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  // Zahler Info
+  payerName     String
+  paypalHandle  String // z.B. "maxmustermann" für paypal.me/maxmustermann
+
+  // Rechnung
+  imageUrl       String
+  restaurantName String?
+  totalAmount    Float?
+
+  // Relations
+  items      BillItem[]
+  selections Selection[]
+
+  // Public Link Token
+  shareToken String @unique @default(uuid())
+
+  @@index([shareToken])
+}
+
+model BillItem {
+  id     String @id @default(uuid())
+  billId String
+  bill   Bill   @relation(fields: [billId], references: [id], onDelete: Cascade)
+
+  name         String // z.B. "Pizza Margherita"
+  quantity     Int // z.B. 2
+  pricePerUnit Float // z.B. 12.50
+  totalPrice   Float // quantity * pricePerUnit
+
+  // Relations
+  selections Selection[]
+
+  @@index([billId])
+}
+
+model Selection {
+  id     String @id @default(uuid())
+  billId String
+  bill   Bill   @relation(fields: [billId], references: [id], onDelete: Cascade)
+
+  friendName String // Eingegebener Name
+
+  // Selected Items - Many-to-Many relationship
+  items BillItem[]
+
+  // Quantity multiplier for each item (0.5x, 1x, 2x etc)
+  // Stored as JSON: {"itemId": quantity}
+  itemQuantities Json? // z.B. {"item-uuid-1": 0.5, "item-uuid-2": 1}
+
+  // Trinkgeld
+  tipAmount Float @default(0)
+
+  // Status
+  paid   Boolean   @default(false)
+  paidAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([billId])
+}
