@@ -49,6 +49,23 @@ Gib die Antwort als JSON zurück im folgenden Format:
 Antworte NUR mit dem JSON-Objekt, ohne zusätzlichen Text.`
 
   try {
+    // Download image and convert to base64
+    const imageResponse = await fetch(imageUrl)
+    if (!imageResponse.ok) {
+      throw new Error('Failed to download image')
+    }
+
+    const imageBuffer = await imageResponse.arrayBuffer()
+    const base64Image = Buffer.from(imageBuffer).toString('base64')
+
+    // Determine media type from URL or response
+    const contentType = imageResponse.headers.get('content-type') || 'image/jpeg'
+    const mediaType = contentType.includes('png')
+      ? 'image/png'
+      : contentType.includes('heic')
+      ? 'image/heic'
+      : 'image/jpeg'
+
     const message = await anthropic.messages.create({
       model: 'claude-3-5-sonnet-20241022',
       max_tokens: 2000,
@@ -59,8 +76,9 @@ Antworte NUR mit dem JSON-Objekt, ohne zusätzlichen Text.`
             {
               type: 'image',
               source: {
-                type: 'url',
-                url: imageUrl,
+                type: 'base64',
+                media_type: mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+                data: base64Image,
               },
             },
             {
