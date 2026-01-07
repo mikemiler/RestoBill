@@ -1,0 +1,11 @@
+{
+  "buildCommand": "npm run build",
+  "installCommand": "npm install",
+  "framework": "nextjs",
+  "regions": ["fra1"],
+  "build": {
+    "env": {
+      "PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING": "1"
+    }
+  }
+}
