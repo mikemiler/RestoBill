@@ -16,23 +16,37 @@ Eine Person zahlt die Restaurant-Rechnung und muss dann von allen Teilnehmern da
 
 ---
 
-## Tech Stack (KISS)
+## Tech Stack (KISS) - Serverless Edition
+
+### Deployment & Hosting
+- **Vercel** (Frontend + API Routes)
+  - Reason: Serverless, kein Server-Management, Git Push = Auto-Deploy
+  - Free Tier: Unlimited deploys, 100GB bandwidth/month
+  - Cost: $0 für Hobby-Projekte
 
 ### Frontend & Backend
 - **Next.js 14** (App Router)
-  - Reason: React + API Routes in einem, SSR für Public Links, kein separates Backend nötig
+  - Reason: React + API Routes in einem, SSR für Public Links, perfekt für Vercel
+  - API Routes → Serverless Functions (automatisch)
 
 ### Database
-- **SQLite** mit Prisma ORM
-  - Reason: Keine separate DB-Installation nötig, perfekt für Start, später leicht auf PostgreSQL migrierbar
+- **Supabase PostgreSQL** (Serverless)
+  - Reason: Serverless, kein DB-Management, gratis 500MB
+  - Hosted PostgreSQL mit Auto-Backups
+  - Prisma ORM für Type-Safety
+  - Cost: $0 bis 500MB DB
+
+### File Storage
+- **Supabase Storage** (S3-kompatibel)
+  - Reason: Serverless, kein File-System nötig auf Vercel
+  - 1GB gratis Storage
+  - Automatic Image Optimization möglich
+  - Cost: $0 bis 1GB
 
 ### AI/OCR
 - **Claude API** (Anthropic)
   - Reason: Vision API kann Bilder analysieren und strukturierte Daten extrahieren
-
-### File Storage
-- **Lokales Filesystem** (`/public/uploads`)
-  - Reason: Kein S3/Cloud Setup nötig, später leicht migrierbar
+  - Claude 3.5 Sonnet für beste OCR-Ergebnisse
 
 ### PayPal Integration
 - **PayPal.me Links** (Phase 1)
@@ -42,6 +56,17 @@ Eine Person zahlt die Restaurant-Rechnung und muss dann von allen Teilnehmern da
 ### Styling
 - **Tailwind CSS**
   - Reason: Schnelles Styling ohne Custom CSS
+
+---
+
+## Warum Serverless (Vercel + Supabase)?
+
+✅ **Kein Server-Management** - Keine VM, kein SSH, kein Nginx
+✅ **Auto-Scaling** - Traffic spikes? Kein Problem
+✅ **Gratis starten** - $0 bis du wächst
+✅ **Git Push = Deploy** - Keine manual deployments
+✅ **Global CDN** - Schnell weltweit
+✅ **Zero Downtime** - Automatische Health Checks
 
 ---
 
@@ -118,12 +143,13 @@ POST /api/bills/create
 POST /api/bills/{billId}/upload
 - Input: image file
 - Process:
-  1. Save image to /public/uploads/{billId}.jpg
-  2. Call Claude Vision API mit Prompt:
+  1. Upload image zu Supabase Storage → bills/{billId}.jpg
+  2. Get public URL von Supabase
+  3. Call Claude Vision API mit Bild-URL und Prompt:
      "Analysiere diese Restaurant-Rechnung und extrahiere alle Positionen
       im JSON-Format: {items: [{name, quantity, pricePerUnit}]}"
-  3. Parse Response und speichere BillItems
-- Output: {items[], shareToken}
+  4. Parse Response und speichere BillItems
+- Output: {items[], shareToken, imageUrl}
 
 Redirect zu: /bills/{billId}/review
 ```
@@ -175,7 +201,8 @@ GET /bills/{billId}/status
 
 1. **Setup Project** (1 Task)
    - Next.js 14 + TypeScript + Tailwind CSS
-   - Prisma + SQLite
+   - Prisma + Supabase PostgreSQL
+   - Supabase Client Setup
    - Folder Structure
 
 2. **Bill Creation Flow** (3 Tasks)
@@ -259,15 +286,17 @@ RestoBill/
 │   └── PaymentButton.tsx
 ├── lib/
 │   ├── prisma.ts                   # Prisma Client
+│   ├── supabase.ts                 # Supabase Client (Storage)
 │   ├── claude.ts                   # Claude API Integration
 │   └── utils.ts
 ├── prisma/
 │   └── schema.prisma
 ├── public/
-│   └── uploads/                    # Bill Images
+│   └── (static assets)             # No uploads folder (using Supabase Storage)
 ├── .env.local
 ├── package.json
-└── tsconfig.json
+├── tsconfig.json
+└── vercel.json                     # Vercel config (optional)
 ```
 
 ---
@@ -278,11 +307,32 @@ RestoBill/
 # Claude API
 ANTHROPIC_API_KEY=sk-ant-...
 
-# Database
-DATABASE_URL="file:./dev.db"
+# Supabase
+DATABASE_URL="postgresql://postgres:[password]@db.[project].supabase.co:5432/postgres"
+NEXT_PUBLIC_SUPABASE_URL=https://[project].supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGc...
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGc... # Für Server-side Storage
 
 # App
-NEXT_PUBLIC_APP_URL=http://localhost:3000
+NEXT_PUBLIC_APP_URL=http://localhost:3000 # oder https://restobill.vercel.app
+```
+
+### Setup Instructions
+
+#### 1. Supabase Setup (5 Minuten)
+```bash
+# 1. Gehe zu supabase.com
+# 2. Create new project "RestoBill"
+# 3. Kopiere Connection String → DATABASE_URL
+# 4. Kopiere API Keys → .env.local
+```
+
+#### 2. Vercel Setup (2 Minuten)
+```bash
+# 1. GitHub Repo erstellen (oder existierendes nutzen)
+# 2. Vercel.com → Import Git Repository
+# 3. Environment Variables hinzufügen (aus .env.local)
+# 4. Deploy! 🚀
 ```
 
 ---
@@ -294,29 +344,41 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 ❌ PayPal OAuth/API - Nur PayPal.me Links
 ❌ Automatisches Payment Tracking - Manuell markieren
 ❌ Mobile App - Nur Web (PWA-ready)
-❌ Cloud Storage - Lokales Filesystem
 ❌ Complex Error Handling - Basic try/catch
 ❌ Tests - Nur manuelles Testing für MVP
 ❌ Item Splitting - 1 Person pro Item (oder Quantity)
 
 ### Was wir machen:
-✅ Simple Next.js App
-✅ SQLite Database
+✅ Serverless Next.js App (Vercel)
+✅ Supabase PostgreSQL (serverless DB)
+✅ Supabase Storage (serverless Files)
 ✅ Claude Vision für OCR
 ✅ PayPal.me Links
 ✅ Public shareable Links
 ✅ Responsive Web UI
+✅ $0 Hosting Kosten (Free Tiers)
 
 ---
 
 ## Nächste Schritte
 
+### Local Development
 1. **Initialize Next.js Project**
-2. **Setup Prisma + SQLite**
-3. **Implement Bill Creation**
-4. **Integrate Claude Vision API**
-5. **Build Public Split Page**
-6. **Test End-to-End Flow**
+2. **Setup Supabase Account + Project**
+3. **Setup Prisma + Supabase PostgreSQL**
+4. **Setup Supabase Storage Bucket**
+5. **Implement Bill Creation**
+6. **Integrate Claude Vision API**
+7. **Build Public Split Page**
+8. **Test End-to-End Flow locally**
+
+### Production Deployment
+9. **Push to GitHub**
+10. **Connect Vercel to GitHub Repo**
+11. **Add Environment Variables auf Vercel**
+12. **Deploy! 🚀**
+
+**Total Zeit:** ~1-2 Tage für MVP inkl. Deployment
 
 ---
 
@@ -341,3 +403,31 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 - Testing & Bug Fixes: 3h
 
 **Total: ~16h für voll funktionsfähiges MVP**
+
+---
+
+## Kosten-Breakdown (Transparent)
+
+### Free Tier Limits
+| Service | Free Tier | Kosten danach |
+|---------|-----------|---------------|
+| **Vercel** | Unlimited Deploys<br>100GB Bandwidth/mo<br>100GB-Hours Serverless | $20/mo pro Member |
+| **Supabase** | 500MB Database<br>1GB File Storage<br>2GB Bandwidth/mo | Ab $25/mo |
+| **Claude API** | Pay-per-use<br>~$3 per 1M input tokens<br>~$15 per 1M output tokens | Keine Flat Fee |
+
+### Geschätzte monatliche Kosten (MVP)
+**Annahme:** 100 Rechnungen/Monat, 10 Freunde pro Rechnung
+
+- **Vercel:** $0 (innerhalb Free Tier)
+- **Supabase:** $0 (innerhalb Free Tier)
+- **Claude API:** ~$2-5 (100 Rechnungen × ~500 tokens pro Analyse)
+
+**Total:** ~$2-5/Monat oder weniger
+
+### Skalierung
+Bei 1000 Rechnungen/Monat:
+- Vercel: $0 (immer noch Free Tier)
+- Supabase: Möglicherweise $25/mo (wenn > 500MB DB)
+- Claude API: ~$20-50/mo
+
+**Wichtig:** Alles unter $0 bis MVP validiert ist! 🎯
