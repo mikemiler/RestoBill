@@ -104,6 +104,11 @@ export default function SplitForm({
         throw new Error(data.error || 'Fehler beim Erstellen der Auswahl')
       }
 
+      // Validate PayPal URL before redirect
+      if (!data.paypalUrl || !data.paypalUrl.startsWith('https://paypal.me/')) {
+        throw new Error('Ungültige PayPal URL')
+      }
+
       // Redirect to PayPal
       window.location.href = data.paypalUrl
     } catch (err) {

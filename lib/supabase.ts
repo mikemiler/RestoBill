@@ -27,7 +27,18 @@ export async function uploadBillImage(
   billId: string,
   file: File
 ): Promise<string> {
-  const fileExt = file.name.split('.').pop()
+  // Sanitize file extension to prevent path traversal
+  const fileExt = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+  if (!fileExt || !['jpg', 'jpeg', 'png', 'heic'].includes(fileExt)) {
+    throw new Error('Ungültiges Dateiformat. Nur JPG, PNG und HEIC sind erlaubt.')
+  }
+
+  // Validate and sanitize billId (should be UUID)
+  if (!/^[a-f0-9-]{36}$/i.test(billId)) {
+    throw new Error('Ungültige Bill ID')
+  }
+
   const fileName = `${billId}.${fileExt}`
   const filePath = `bills/${fileName}`
 

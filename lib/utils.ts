@@ -1,4 +1,17 @@
 /**
+ * Sanitize user input to prevent XSS attacks
+ * @param input - User input string
+ * @param maxLength - Maximum allowed length
+ * @returns Sanitized string
+ */
+export function sanitizeInput(input: string, maxLength = 100): string {
+  return input
+    .trim()
+    .slice(0, maxLength)
+    .replace(/[<>\"'&]/g, '') // Remove potentially dangerous characters
+}
+
+/**
  * Format currency amount in EUR
  */
 export function formatEUR(amount: number): string {

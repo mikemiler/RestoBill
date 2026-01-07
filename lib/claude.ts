@@ -49,10 +49,32 @@ Gib die Antwort als JSON zurück im folgenden Format:
 Antworte NUR mit dem JSON-Objekt, ohne zusätzlichen Text.`
 
   try {
-    // Download image and convert to base64
-    const imageResponse = await fetch(imageUrl)
+    // Validate URL to prevent SSRF attacks
+    const url = new URL(imageUrl)
+    const allowedHosts = ['supabase.co']
+
+    if (!allowedHosts.some(host => url.hostname.endsWith(host))) {
+      throw new Error('Invalid image URL - only Supabase URLs allowed')
+    }
+
+    // Download image with timeout and size limit
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 10000) // 10s timeout
+
+    const imageResponse = await fetch(imageUrl, {
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeout)
+
     if (!imageResponse.ok) {
       throw new Error('Failed to download image')
+    }
+
+    // Check content length
+    const contentLength = imageResponse.headers.get('content-length')
+    if (contentLength && parseInt(contentLength) > 10 * 1024 * 1024) {
+      throw new Error('Image too large (max 10MB)')
     }
 
     const imageBuffer = await imageResponse.arrayBuffer()
@@ -102,7 +124,7 @@ Antworte NUR mit dem JSON-Objekt, ohne zusätzlichen Text.`
     // Try to extract JSON if wrapped in markdown code blocks
     let jsonText = text
     if (text.startsWith('```')) {
-      const match = text.match(/```(?:json)?\n?(.*?)\n?```/s)
+      const match = text.match(/```(?:json)?\n?([\s\S]*?)\n?```/)
       if (match) {
         jsonText = match[1]
       }
@@ -110,12 +132,30 @@ Antworte NUR mit dem JSON-Objekt, ohne zusätzlichen Text.`
 
     const result = JSON.parse(jsonText) as BillAnalysisResult
 
+    // Validate result structure
+    if (!result.items || !Array.isArray(result.items)) {
+      throw new Error('Invalid analysis result structure')
+    }
+
     // Validate and calculate totalPrice for each item
-    result.items = result.items.map((item) => ({
-      ...item,
-      pricePerUnit: Number(item.pricePerUnit),
-      quantity: Number(item.quantity),
-    }))
+    result.items = result.items.map((item) => {
+      const pricePerUnit = Number(item.pricePerUnit)
+      const quantity = Number(item.quantity)
+
+      if (isNaN(pricePerUnit) || isNaN(quantity) || pricePerUnit <= 0 || quantity <= 0) {
+        throw new Error(`Invalid price or quantity for item: ${item.name}`)
+      }
+
+      if (pricePerUnit > 10000 || quantity > 100) {
+        throw new Error(`Unrealistic values for item: ${item.name}`)
+      }
+
+      return {
+        ...item,
+        pricePerUnit,
+        quantity,
+      }
+    })
 
     return result
   } catch (error) {

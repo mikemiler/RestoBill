@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { sanitizeInput } from '@/lib/utils'
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,8 +15,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Sanitize and validate payerName
+    const sanitizedName = sanitizeInput(payerName, 100)
+    if (sanitizedName.length === 0 || sanitizedName.length > 100) {
+      return NextResponse.json(
+        { error: 'Name muss zwischen 1 und 100 Zeichen lang sein' },
+        { status: 400 }
+      )
+    }
+
     // Validate paypalHandle format (alphanumeric, underscore, hyphen)
-    if (!/^[A-Za-z0-9_-]+$/.test(paypalHandle)) {
+    const sanitizedHandle = paypalHandle.trim()
+    if (!/^[A-Za-z0-9_-]+$/.test(sanitizedHandle) || sanitizedHandle.length > 50) {
       return NextResponse.json(
         { error: 'Ungültiger PayPal Username' },
         { status: 400 }
@@ -25,8 +36,8 @@ export async function POST(request: NextRequest) {
     // Create bill in database
     const bill = await prisma.bill.create({
       data: {
-        payerName,
-        paypalHandle,
+        payerName: sanitizedName,
+        paypalHandle: sanitizedHandle,
         imageUrl: '', // Will be set after upload
       },
     })
