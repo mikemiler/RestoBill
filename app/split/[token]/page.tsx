@@ -27,8 +27,17 @@ export default async function SplitBillPage({
     <div className="min-h-screen bg-gradient-to-b from-green-50 to-white p-4 md:p-8">
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-6">
+          <div className="mb-3 flex justify-center">
+            <Image
+              src="/logo.png"
+              alt="Kill The Bill Logo"
+              width={60}
+              height={60}
+              className="drop-shadow-lg"
+            />
+          </div>
           <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">
-            🍽️ Rechnung teilen
+            Rechnung teilen
           </h1>
           <p className="text-gray-600">
             Von {bill.payerName}

@@ -55,6 +55,33 @@ export default async function BillStatusPage({
       return sum + selectionTotal + (selection.tipAmount || 0)
     }, 0)
 
+  // Calculate unpaid items
+  const itemStatus = billItems.map((item: any) => {
+    const totalClaimed = selections.reduce((sum: number, selection: any) => {
+      const quantities = selection.itemQuantities as Record<string, number> || {}
+      return sum + (quantities[item.id] || 0)
+    }, 0)
+
+    const paidClaimed = selections
+      .filter((s: any) => s.paid)
+      .reduce((sum: number, selection: any) => {
+        const quantities = selection.itemQuantities as Record<string, number> || {}
+        return sum + (quantities[item.id] || 0)
+      }, 0)
+
+    return {
+      ...item,
+      totalClaimed,
+      paidClaimed,
+      unpaidQuantity: totalClaimed - paidClaimed,
+      unclaimedQuantity: item.quantity - totalClaimed,
+    }
+  })
+
+  const unpaidItems = itemStatus.filter((item: any) =>
+    item.unpaidQuantity > 0 || item.unclaimedQuantity > 0
+  )
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-purple-50 to-white p-8">
       <div className="max-w-4xl mx-auto">
@@ -118,7 +145,7 @@ export default async function BillStatusPage({
         </div>
 
         {/* Selections List */}
-        <div className="bg-white rounded-lg shadow-lg p-6">
+        <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
           <h2 className="text-xl font-semibold mb-4 text-gray-800">
             Zahlungen ({selections.length})
           </h2>
@@ -151,6 +178,70 @@ export default async function BillStatusPage({
             </div>
           )}
         </div>
+
+        {/* Unpaid Items Section */}
+        {unpaidItems.length > 0 && (
+          <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
+            <h2 className="text-xl font-semibold mb-4 text-gray-800">
+              Offene Positionen ({unpaidItems.length})
+            </h2>
+            <div className="space-y-3">
+              {unpaidItems.map((item: any) => (
+                <div
+                  key={item.id}
+                  className="border border-orange-200 bg-orange-50 rounded-lg p-4"
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <h3 className="font-medium text-gray-900">{item.name}</h3>
+                      <p className="text-sm text-gray-600">
+                        {formatEUR(item.pricePerUnit)} pro Einheit
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      {item.unclaimedQuantity > 0 && (
+                        <div className="mb-1">
+                          <span className="inline-block px-3 py-1 bg-red-100 text-red-800 text-sm font-medium rounded-full">
+                            {item.unclaimedQuantity}x nicht ausgewählt
+                          </span>
+                        </div>
+                      )}
+                      {item.unpaidQuantity > 0 && (
+                        <div>
+                          <span className="inline-block px-3 py-1 bg-yellow-100 text-yellow-800 text-sm font-medium rounded-full">
+                            {item.unpaidQuantity}x nicht bezahlt
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-2 text-sm text-gray-600">
+                    <div className="flex justify-between">
+                      <span>Gesamt auf Rechnung:</span>
+                      <span className="font-medium">{item.quantity}x</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Davon bezahlt:</span>
+                      <span className="font-medium text-green-600">{item.paidClaimed}x</span>
+                    </div>
+                    {item.unpaidQuantity > 0 && (
+                      <div className="flex justify-between">
+                        <span>Davon ausgewählt aber nicht bezahlt:</span>
+                        <span className="font-medium text-yellow-600">{item.unpaidQuantity}x</span>
+                      </div>
+                    )}
+                    {item.unclaimedQuantity > 0 && (
+                      <div className="flex justify-between">
+                        <span>Noch nicht ausgewählt:</span>
+                        <span className="font-medium text-red-600">{item.unclaimedQuantity}x</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="mt-8 text-center">
           <a

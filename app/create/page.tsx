@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 
 export default function CreateBillPage() {
   const router = useRouter()
@@ -78,6 +79,15 @@ export default function CreateBillPage() {
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white p-8">
       <div className="max-w-md mx-auto">
         <div className="text-center mb-8">
+          <div className="mb-4 flex justify-center">
+            <Image
+              src="/logo.png"
+              alt="Kill The Bill Logo"
+              width={80}
+              height={80}
+              className="drop-shadow-lg"
+            />
+          </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
             Neue Rechnung teilen
           </h1>

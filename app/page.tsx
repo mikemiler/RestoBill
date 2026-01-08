@@ -1,11 +1,22 @@
 import Link from "next/link";
+import Image from "next/image";
 
 export default function Home() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-8 bg-gradient-to-b from-blue-50 to-white">
       <main className="max-w-2xl text-center">
+        <div className="mb-6 flex justify-center">
+          <Image
+            src="/logo.png"
+            alt="Kill The Bill Logo"
+            width={150}
+            height={150}
+            priority
+            className="drop-shadow-lg"
+          />
+        </div>
         <h1 className="text-5xl font-bold mb-4 text-gray-900">
-          🍽️ RestoBill
+          Kill The Bill
         </h1>
         <p className="text-xl text-gray-600 mb-8">
           Restaurant-Rechnungen einfach teilen
