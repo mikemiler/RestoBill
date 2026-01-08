@@ -4,6 +4,8 @@ import { formatEUR } from '@/lib/utils'
 import CopyButton from '@/components/CopyButton'
 import SelectionCard from '@/components/SelectionCard'
 import RefreshButton from '@/components/RefreshButton'
+import BillItemsEditor from '@/components/BillItemsEditor'
+import Image from 'next/image'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -78,10 +80,6 @@ export default async function BillStatusPage({
     }
   })
 
-  const unpaidItems = itemStatus.filter((item: any) =>
-    item.unpaidQuantity > 0 || item.unclaimedQuantity > 0
-  )
-
   return (
     <div className="min-h-screen bg-gradient-to-b from-purple-50 to-white p-8">
       <div className="max-w-4xl mx-auto">
@@ -130,10 +128,13 @@ export default async function BillStatusPage({
 
         {/* Share Link */}
         <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-          <h2 className="text-xl font-semibold mb-3 text-gray-800">
-            Share Link
+          <h2 className="text-xl font-semibold mb-4 text-gray-800">
+            Link teilen
           </h2>
-          <div className="flex items-center space-x-2">
+          <p className="text-gray-600 mb-4">
+            Teile diesen Link mit deinen Freunden, damit sie ihre Positionen auswählen können
+          </p>
+          <div className="flex items-center space-x-2 mb-4">
             <input
               type="text"
               value={shareUrl}
@@ -141,6 +142,16 @@ export default async function BillStatusPage({
               className="flex-1 px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm"
             />
             <CopyButton text={shareUrl} />
+          </div>
+          <div>
+            <a
+              href={shareUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-3 rounded-lg transition-colors"
+            >
+              Vorschau öffnen
+            </a>
           </div>
         </div>
 
@@ -179,77 +190,32 @@ export default async function BillStatusPage({
           )}
         </div>
 
-        {/* Unpaid Items Section */}
-        {unpaidItems.length > 0 && (
-          <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
+        {/* Receipt Image and Bill Items */}
+        <div className="grid md:grid-cols-2 gap-6 mb-8">
+          {/* Receipt Image */}
+          <div className="bg-white rounded-lg shadow-lg p-6">
             <h2 className="text-xl font-semibold mb-4 text-gray-800">
-              Offene Positionen ({unpaidItems.length})
+              Rechnung
             </h2>
-            <div className="space-y-3">
-              {unpaidItems.map((item: any) => (
-                <div
-                  key={item.id}
-                  className="border border-orange-200 bg-orange-50 rounded-lg p-4"
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <h3 className="font-medium text-gray-900">{item.name}</h3>
-                      <p className="text-sm text-gray-600">
-                        {formatEUR(item.pricePerUnit)} pro Einheit
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      {item.unclaimedQuantity > 0 && (
-                        <div className="mb-1">
-                          <span className="inline-block px-3 py-1 bg-red-100 text-red-800 text-sm font-medium rounded-full">
-                            {item.unclaimedQuantity}x nicht ausgewählt
-                          </span>
-                        </div>
-                      )}
-                      {item.unpaidQuantity > 0 && (
-                        <div>
-                          <span className="inline-block px-3 py-1 bg-yellow-100 text-yellow-800 text-sm font-medium rounded-full">
-                            {item.unpaidQuantity}x nicht bezahlt
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="mt-2 text-sm text-gray-600">
-                    <div className="flex justify-between">
-                      <span>Gesamt auf Rechnung:</span>
-                      <span className="font-medium">{item.quantity}x</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Davon bezahlt:</span>
-                      <span className="font-medium text-green-600">{item.paidClaimed}x</span>
-                    </div>
-                    {item.unpaidQuantity > 0 && (
-                      <div className="flex justify-between">
-                        <span>Davon ausgewählt aber nicht bezahlt:</span>
-                        <span className="font-medium text-yellow-600">{item.unpaidQuantity}x</span>
-                      </div>
-                    )}
-                    {item.unclaimedQuantity > 0 && (
-                      <div className="flex justify-between">
-                        <span>Noch nicht ausgewählt:</span>
-                        <span className="font-medium text-red-600">{item.unclaimedQuantity}x</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
+            <div className="relative aspect-[3/4] w-full">
+              <Image
+                src={bill.imageUrl}
+                alt="Rechnung"
+                fill
+                className="object-contain rounded-lg"
+              />
             </div>
+            {bill.restaurantName && (
+              <p className="mt-4 text-center text-gray-600 font-medium">
+                📍 {bill.restaurantName}
+              </p>
+            )}
           </div>
-        )}
 
-        <div className="mt-8 text-center">
-          <a
-            href={`/bills/${bill.id}/review`}
-            className="text-blue-600 hover:text-blue-700"
-          >
-            ← Zurück zur Übersicht
-          </a>
+          {/* Bill Items Editor */}
+          <div className="flex flex-col">
+            <BillItemsEditor billId={bill.id} items={itemStatus} />
+          </div>
         </div>
       </div>
     </div>

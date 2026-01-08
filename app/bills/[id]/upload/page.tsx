@@ -68,8 +68,8 @@ export default function UploadBillPage() {
         throw new Error(data.error || 'Fehler beim Hochladen')
       }
 
-      // Redirect to review page
-      router.push(`/bills/${billId}/review`)
+      // Redirect to status page
+      router.push(`/bills/${billId}/status`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ein Fehler ist aufgetreten')
       setLoading(false)
