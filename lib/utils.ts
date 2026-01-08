@@ -50,7 +50,7 @@ export function calculateTotal(
 ): number {
   return items.reduce((total, item) => {
     const quantityMultiplier = itemQuantities[item.id] || 0
-    const itemTotal = item.pricePerUnit * item.quantity * quantityMultiplier
+    const itemTotal = item.pricePerUnit * quantityMultiplier
     return total + itemTotal
   }, 0)
 }

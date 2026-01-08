@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
 
       const item = bill.BillItem.find((i: any) => i.id === itemId)
       if (item && quantity > 0) {
-        totalAmount += item.pricePerUnit * item.quantity * quantity
+        totalAmount += item.pricePerUnit * quantity
         selectedItemIds.push(itemId)
       }
     }
