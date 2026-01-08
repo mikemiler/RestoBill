@@ -11,7 +11,7 @@ export default function CollapsibleReceipt({ imageUrl }: CollapsibleReceiptProps
   const [isOpen, setIsOpen] = useState(false)
 
   return (
-    <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 overflow-hidden">
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}

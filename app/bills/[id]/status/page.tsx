@@ -95,16 +95,16 @@ export default async function BillStatusPage({
           lastViewed: new Date().toISOString(),
         }}
       />
-      <div className="min-h-screen bg-gradient-to-b from-purple-50 to-white p-8">
+      <div className="min-h-screen bg-gradient-to-b from-purple-50 to-white dark:from-gray-900 dark:to-gray-800 p-8">
         <div className="max-w-4xl mx-auto">
         <div className="text-center mb-8">
           <div className="flex items-center justify-center mb-2">
-            <h1 className="text-3xl font-bold text-gray-900">
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-50">
               Status Dashboard
             </h1>
             <RefreshButton />
           </div>
-          <p className="text-gray-600">
+          <p className="text-gray-600 dark:text-gray-300">
             Übersicht deiner Rechnung
             {bill.restaurantName && ` von ${bill.restaurantName}`}
           </p>
@@ -112,40 +112,40 @@ export default async function BillStatusPage({
 
         {/* Summary Cards */}
         <div className="grid md:grid-cols-3 gap-4 mb-8">
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <h3 className="text-sm text-gray-600 mb-2">Rechnungssumme</h3>
-            <p className="text-2xl font-bold text-gray-900">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 p-6">
+            <h3 className="text-sm text-gray-600 dark:text-gray-400 mb-2">Rechnungssumme</h3>
+            <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
               {formatEUR(totalBillAmount)}
             </p>
           </div>
 
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <h3 className="text-sm text-gray-600 mb-2">Ausgewählt</h3>
-            <p className="text-2xl font-bold text-blue-600">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 p-6">
+            <h3 className="text-sm text-gray-600 dark:text-gray-400 mb-2">Ausgewählt</h3>
+            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
               {formatEUR(totalCollected)}
             </p>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
               {selections.length} {selections.length === 1 ? 'Person' : 'Personen'}
             </p>
           </div>
 
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <h3 className="text-sm text-gray-600 mb-2">Bezahlt</h3>
-            <p className="text-2xl font-bold text-green-600">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 p-6">
+            <h3 className="text-sm text-gray-600 dark:text-gray-400 mb-2">Bezahlt</h3>
+            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
               {formatEUR(totalPaid)}
             </p>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
               {selections.filter((s: any) => s.paid).length} von {selections.length}
             </p>
           </div>
         </div>
 
         {/* Share Link */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-          <h2 className="text-xl font-semibold mb-4 text-gray-800">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 p-6 mb-8">
+          <h2 className="text-xl font-semibold mb-4 text-gray-800 dark:text-gray-100">
             Link teilen
           </h2>
-          <p className="text-gray-600 mb-4">
+          <p className="text-gray-600 dark:text-gray-300 mb-4">
             Teile diesen Link mit deinen Freunden, damit sie ihre Positionen auswählen können
           </p>
           <div className="flex items-center space-x-2 mb-4">
@@ -153,7 +153,7 @@ export default async function BillStatusPage({
               type="text"
               value={shareUrl}
               readOnly
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm"
+              className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 dark:text-gray-200 text-sm"
             />
             <CopyButton text={shareUrl} />
           </div>
@@ -162,7 +162,7 @@ export default async function BillStatusPage({
               href={shareUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-3 rounded-lg transition-colors"
+              className="inline-block w-full text-center bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg transition-colors"
             >
               Vorschau öffnen
             </a>
@@ -170,13 +170,13 @@ export default async function BillStatusPage({
         </div>
 
         {/* Selections List */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-          <h2 className="text-xl font-semibold mb-4 text-gray-800">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 p-6 mb-8">
+          <h2 className="text-xl font-semibold mb-4 text-gray-800 dark:text-gray-100">
             Zahlungen ({selections.length})
           </h2>
 
           {selections.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
+            <div className="text-center py-8 text-gray-500 dark:text-gray-400">
               <p>Noch keine Auswahl getroffen</p>
               <p className="text-sm mt-2">Teile den Link mit deinen Freunden!</p>
             </div>
@@ -207,8 +207,8 @@ export default async function BillStatusPage({
         {/* Receipt Image and Bill Items */}
         <div className="grid md:grid-cols-2 gap-6 mb-8">
           {/* Receipt Image */}
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <h2 className="text-xl font-semibold mb-4 text-gray-800">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 p-6">
+            <h2 className="text-xl font-semibold mb-4 text-gray-800 dark:text-gray-100">
               Rechnung
             </h2>
             <div className="relative aspect-[3/4] w-full">
@@ -220,7 +220,7 @@ export default async function BillStatusPage({
               />
             </div>
             {bill.restaurantName && (
-              <p className="mt-4 text-center text-gray-600 font-medium">
+              <p className="mt-4 text-center text-gray-600 dark:text-gray-300 font-medium">
                 📍 {bill.restaurantName}
               </p>
             )}

@@ -78,27 +78,27 @@ export default function UploadBillPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white p-8">
+    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 p-8">
       <div className="max-w-2xl mx-auto">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-50 mb-2">
             Rechnung hochladen
           </h1>
-          <p className="text-gray-600">
+          <p className="text-gray-600 dark:text-gray-300">
             Fotografiere die Rechnung und lade sie hoch
           </p>
         </div>
 
-        <div className="bg-white rounded-lg shadow-lg p-8">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 p-8">
           {!preview ? (
             <div className="space-y-4">
               <label
                 htmlFor="file-upload"
-                className="flex flex-col items-center justify-center w-full h-64 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-colors"
+                className="flex flex-col items-center justify-center w-full h-64 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:border-blue-500 dark:hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
               >
                 <div className="flex flex-col items-center justify-center pt-5 pb-6">
                   <svg
-                    className="w-12 h-12 mb-4 text-gray-400"
+                    className="w-12 h-12 mb-4 text-gray-400 dark:text-gray-500"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -110,10 +110,10 @@ export default function UploadBillPage() {
                       d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
                     />
                   </svg>
-                  <p className="mb-2 text-sm text-gray-700">
+                  <p className="mb-2 text-sm text-gray-700 dark:text-gray-300">
                     <span className="font-semibold">Klicke hier</span> oder ziehe ein Bild
                   </p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
                     JPG, PNG oder HEIC (max. 10MB)
                   </p>
                 </div>
@@ -140,21 +140,21 @@ export default function UploadBillPage() {
                     setFile(null)
                     setPreview(null)
                   }}
-                  className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-lg text-sm"
+                  className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700 text-white px-3 py-1 rounded-lg text-sm"
                 >
                   Andere Datei wählen
                 </button>
               </div>
 
               {analyzing && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
                   <div className="flex items-center space-x-3">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 dark:border-blue-400"></div>
                     <div>
-                      <p className="font-semibold text-blue-900">
+                      <p className="font-semibold text-blue-900 dark:text-blue-300">
                         KI analysiert die Rechnung...
                       </p>
-                      <p className="text-sm text-blue-700">
+                      <p className="text-sm text-blue-700 dark:text-blue-400">
                         Das kann einen Moment dauern
                       </p>
                     </div>
@@ -163,7 +163,7 @@ export default function UploadBillPage() {
               )}
 
               {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg">
                   {error}
                 </div>
               )}
@@ -171,7 +171,7 @@ export default function UploadBillPage() {
               <button
                 onClick={handleUpload}
                 disabled={loading}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 dark:bg-blue-500 dark:hover:bg-blue-600 dark:disabled:bg-gray-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
               >
                 {loading ? 'Wird analysiert...' : 'Hochladen & Analysieren'}
               </button>
@@ -179,11 +179,11 @@ export default function UploadBillPage() {
           )}
         </div>
 
-        <div className="mt-8 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <h3 className="font-semibold text-yellow-900 mb-2">
+        <div className="mt-8 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+          <h3 className="font-semibold text-yellow-900 dark:text-yellow-300 mb-2">
             📸 Tipps für beste Ergebnisse
           </h3>
-          <ul className="text-sm text-yellow-800 space-y-1">
+          <ul className="text-sm text-yellow-800 dark:text-yellow-300 space-y-1">
             <li>• Fotografiere die gesamte Rechnung</li>
             <li>• Achte auf gute Beleuchtung</li>
             <li>• Halte das Bild gerade</li>

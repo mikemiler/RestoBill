@@ -3,14 +3,88 @@
 @tailwind utilities;
 
 :root {
+  /* Backgrounds */
   --background: #ffffff;
   --foreground: #171717;
+  --card-bg: #ffffff;
+  --card-border: #e5e7eb;
+
+  /* Text Colors */
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-muted: #6b7280;
+
+  /* Brand Colors */
+  --color-blue: #3b82f6;
+  --color-green: #22c55e;
+  --color-red: #ef4444;
+  --color-yellow: #eab308;
+
+  /* UI Elements */
+  --border-color: #d1d5db;
+  --input-bg: #ffffff;
+  --input-border: #d1d5db;
+  --input-focus-ring: #3b82f6;
+
+  /* Bills History */
+  --bill-card-bg: #ffffff;
+  --bill-card-border: #e5e7eb;
+  --bill-text-primary: #1f2937;
+  --bill-text-secondary: #6b7280;
+  --amount-paid: #059669;
+  --amount-outstanding: #dc2626;
+  --delete-btn-bg: #ef4444;
+  --delete-btn-hover: #dc2626;
+
+  /* Collapsible Receipt */
+  --receipt-btn-bg: #ffffff;
+  --receipt-btn-hover: #f9fafb;
+  --receipt-btn-active: #f3f4f6;
+  --receipt-title-color: #1f2937;
+  --receipt-icon-color: #6b7280;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    /* Backgrounds */
+    --background: #111827;
+    --foreground: #f9fafb;
+    --card-bg: #1f2937;
+    --card-border: #374151;
+
+    /* Text Colors */
+    --text-primary: #f9fafb;
+    --text-secondary: #d1d5db;
+    --text-muted: #9ca3af;
+
+    /* Brand Colors - slightly lighter */
+    --color-blue: #60a5fa;
+    --color-green: #4ade80;
+    --color-red: #f87171;
+    --color-yellow: #facc15;
+
+    /* UI Elements */
+    --border-color: #4b5563;
+    --input-bg: #374151;
+    --input-border: #4b5563;
+    --input-focus-ring: #60a5fa;
+
+    /* Bills History */
+    --bill-card-bg: #1f2937;
+    --bill-card-border: #374151;
+    --bill-text-primary: #f9fafb;
+    --bill-text-secondary: #9ca3af;
+    --amount-paid: #34d399;
+    --amount-outstanding: #f87171;
+    --delete-btn-bg: #dc2626;
+    --delete-btn-hover: #b91c1c;
+
+    /* Collapsible Receipt */
+    --receipt-btn-bg: #1f2937;
+    --receipt-btn-hover: #374151;
+    --receipt-btn-active: #4b5563;
+    --receipt-title-color: #f9fafb;
+    --receipt-icon-color: #9ca3af;
   }
 }
 
@@ -52,7 +126,8 @@ input {
 
 .bill-card {
   position: relative;
-  background: white;
+  background: var(--bill-card-bg);
+  border: 1px solid var(--bill-card-border);
   border-radius: 0.75rem;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   overflow: hidden;
@@ -80,13 +155,13 @@ input {
 .bill-header h3 {
   font-size: 1.25rem;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--bill-text-primary);
   margin: 0 0 0.25rem 0;
 }
 
 .bill-date {
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--bill-text-secondary);
   margin: 0;
 }
 
@@ -104,22 +179,22 @@ input {
 
 .amount-label {
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--bill-text-secondary);
 }
 
 .amount-value {
   font-size: 1.125rem;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--bill-text-primary);
 }
 
 .amount-value.paid {
-  color: #059669;
+  color: var(--amount-paid);
 }
 
 .amount-row.outstanding .amount-label,
 .amount-row.outstanding .amount-value {
-  color: #dc2626;
+  color: var(--amount-outstanding);
 }
 
 .delete-btn {
@@ -131,7 +206,7 @@ input {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #ef4444;
+  background: var(--delete-btn-bg);
   color: white;
   border: none;
   border-radius: 50%;
@@ -143,7 +218,7 @@ input {
 }
 
 .delete-btn:hover {
-  background: #dc2626;
+  background: var(--delete-btn-hover);
 }
 
 .delete-confirm {
@@ -209,28 +284,34 @@ input {
   justify-content: space-between;
   align-items: center;
   padding: 0.875rem 1rem;
-  background: white;
+  background: var(--receipt-btn-bg);
   border: none;
   cursor: pointer;
   transition: background-color 0.2s;
 }
 
 .collapsible-receipt-button:hover {
-  background: #f9fafb;
+  background: var(--receipt-btn-hover);
 }
 
 .collapsible-receipt-button:active {
-  background: #f3f4f6;
+  background: var(--receipt-btn-active);
 }
 
 .collapsible-receipt-title {
   font-size: 1rem;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--receipt-title-color);
 }
 
 .collapsible-receipt-icon {
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--receipt-icon-color);
   transition: transform 0.2s;
+}
+
+/* Logo Styles */
+.app-logo {
+  border-radius: 0.75rem;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 }

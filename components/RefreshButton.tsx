@@ -17,7 +17,7 @@ export default function RefreshButton() {
     <button
       onClick={handleRefresh}
       disabled={refreshing}
-      className="ml-3 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white text-sm font-medium rounded-lg transition-colors"
+      className="ml-3 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 dark:bg-purple-500 dark:hover:bg-purple-600 dark:disabled:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors"
     >
       {refreshing ? '🔄 Aktualisiert...' : '🔄 Aktualisieren'}
     </button>
