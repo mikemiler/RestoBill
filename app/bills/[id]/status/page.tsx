@@ -5,6 +5,7 @@ import CopyButton from '@/components/CopyButton'
 import SelectionCard from '@/components/SelectionCard'
 import RefreshButton from '@/components/RefreshButton'
 import BillItemsEditor from '@/components/BillItemsEditor'
+import BillAutoSave from '@/components/BillAutoSave'
 import Image from 'next/image'
 
 export const dynamic = 'force-dynamic'
@@ -81,8 +82,21 @@ export default async function BillStatusPage({
   })
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-purple-50 to-white p-8">
-      <div className="max-w-4xl mx-auto">
+    <>
+      <BillAutoSave
+        bill={{
+          id: bill.id,
+          shareToken: bill.shareToken,
+          createdAt: bill.createdAt,
+          payerName: bill.payerName,
+          restaurantName: bill.restaurantName,
+          totalAmount: totalBillAmount,
+          paidAmount: totalPaid,
+          lastViewed: new Date().toISOString(),
+        }}
+      />
+      <div className="min-h-screen bg-gradient-to-b from-purple-50 to-white p-8">
+        <div className="max-w-4xl mx-auto">
         <div className="text-center mb-8">
           <div className="flex items-center justify-center mb-2">
             <h1 className="text-3xl font-bold text-gray-900">
@@ -219,5 +233,6 @@ export default async function BillStatusPage({
         </div>
       </div>
     </div>
+    </>
   )
 }

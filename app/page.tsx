@@ -1,5 +1,8 @@
+'use client'
+
 import Link from "next/link";
 import Image from "next/image";
+import BillsList from "@/components/BillsList";
 
 export default function Home() {
   return (
@@ -12,7 +15,7 @@ export default function Home() {
             width={150}
             height={150}
             priority
-            className="drop-shadow-lg"
+            className="rounded-3xl shadow-xl"
           />
         </div>
         <h1 className="text-5xl font-bold mb-4 text-gray-900">
@@ -60,6 +63,8 @@ export default function Home() {
         <p className="mt-6 text-sm text-gray-500">
           Kostenlos • Keine Registrierung • Einfach teilen
         </p>
+
+        <BillsList />
       </main>
     </div>
   );
