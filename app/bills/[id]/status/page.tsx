@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/prisma'
+import { supabaseAdmin } from '@/lib/supabase'
 import { notFound } from 'next/navigation'
 import { formatEUR } from '@/lib/utils'
 
@@ -9,45 +9,46 @@ export default async function BillStatusPage({
 }: {
   params: { id: string }
 }) {
-  const bill = await prisma.bill.findUnique({
-    where: { id: params.id },
-    include: {
-      items: true,
-      selections: {
-        include: {
-          items: true,
-        },
-        orderBy: { createdAt: 'desc' },
-      },
-    },
-  })
+  const { data: bill } = await supabaseAdmin
+    .from('Bill')
+    .select('*, BillItem(*), Selection(*)')
+    .eq('id', params.id)
+    .single()
 
   if (!bill) {
     notFound()
   }
 
+  // Get all items for the bill to use in selections
+  const billItems = bill.BillItem || []
+  const selections = (bill.Selection || []).sort((a: any, b: any) =>
+    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  )
+
   const shareUrl = `${process.env.NEXT_PUBLIC_APP_URL}/split/${bill.shareToken}`
 
   // Calculate totals
-  const totalBillAmount = bill.items.reduce((sum, item) => sum + item.totalPrice, 0)
-  const totalCollected = bill.selections.reduce((sum, selection) => {
-    const selectionTotal = selection.items.reduce((itemSum, item) => {
-      const quantities = selection.itemQuantities as Record<string, number>
-      const quantity = quantities[item.id] || 0
-      return itemSum + item.pricePerUnit * item.quantity * quantity
+  const totalBillAmount = billItems.reduce((sum: number, item: any) => sum + item.totalPrice, 0)
+  const totalCollected = selections.reduce((sum: number, selection: any) => {
+    const quantities = selection.itemQuantities as Record<string, number> || {}
+    const selectionTotal = Object.entries(quantities).reduce((itemSum, [itemId, quantity]) => {
+      const item = billItems.find((i: any) => i.id === itemId)
+      if (!item) return itemSum
+      return itemSum + item.pricePerUnit * item.quantity * (quantity as number)
     }, 0)
-    return sum + selectionTotal + selection.tipAmount
+    return sum + selectionTotal + (selection.tipAmount || 0)
   }, 0)
 
-  const totalPaid = bill.selections
-    .filter((s) => s.paid)
-    .reduce((sum, selection) => {
-      const selectionTotal = selection.items.reduce((itemSum, item) => {
-        const quantities = selection.itemQuantities as Record<string, number>
-        const quantity = quantities[item.id] || 0
-        return itemSum + item.pricePerUnit * item.quantity * quantity
+  const totalPaid = selections
+    .filter((s: any) => s.paid)
+    .reduce((sum: number, selection: any) => {
+      const quantities = selection.itemQuantities as Record<string, number> || {}
+      const selectionTotal = Object.entries(quantities).reduce((itemSum, [itemId, quantity]) => {
+        const item = billItems.find((i: any) => i.id === itemId)
+        if (!item) return itemSum
+        return itemSum + item.pricePerUnit * item.quantity * (quantity as number)
       }, 0)
-      return sum + selectionTotal + selection.tipAmount
+      return sum + selectionTotal + (selection.tipAmount || 0)
     }, 0)
 
   return (
@@ -78,7 +79,7 @@ export default async function BillStatusPage({
               {formatEUR(totalCollected)}
             </p>
             <p className="text-xs text-gray-500 mt-1">
-              {bill.selections.length} {bill.selections.length === 1 ? 'Person' : 'Personen'}
+              {selections.length} {selections.length === 1 ? 'Person' : 'Personen'}
             </p>
           </div>
 
@@ -88,7 +89,7 @@ export default async function BillStatusPage({
               {formatEUR(totalPaid)}
             </p>
             <p className="text-xs text-gray-500 mt-1">
-              {bill.selections.filter((s) => s.paid).length} von {bill.selections.length}
+              {selections.filter((s: any) => s.paid).length} von {selections.length}
             </p>
           </div>
         </div>
@@ -117,23 +118,24 @@ export default async function BillStatusPage({
         {/* Selections List */}
         <div className="bg-white rounded-lg shadow-lg p-6">
           <h2 className="text-xl font-semibold mb-4 text-gray-800">
-            Zahlungen ({bill.selections.length})
+            Zahlungen ({selections.length})
           </h2>
 
-          {bill.selections.length === 0 ? (
+          {selections.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <p>Noch keine Auswahl getroffen</p>
               <p className="text-sm mt-2">Teile den Link mit deinen Freunden!</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {bill.selections.map((selection) => {
-                const quantities = selection.itemQuantities as Record<string, number>
-                const selectionTotal = selection.items.reduce((sum, item) => {
-                  const quantity = quantities[item.id] || 0
-                  return sum + item.pricePerUnit * item.quantity * quantity
+              {selections.map((selection: any) => {
+                const quantities = selection.itemQuantities as Record<string, number> || {}
+                const selectionTotal = Object.entries(quantities).reduce((sum, [itemId, quantity]) => {
+                  const item = billItems.find((i: any) => i.id === itemId)
+                  if (!item) return sum
+                  return sum + item.pricePerUnit * item.quantity * (quantity as number)
                 }, 0)
-                const total = selectionTotal + selection.tipAmount
+                const total = selectionTotal + (selection.tipAmount || 0)
 
                 return (
                   <div
@@ -176,18 +178,19 @@ export default async function BillStatusPage({
                     </div>
 
                     <div className="text-sm space-y-1">
-                      {selection.items.map((item) => {
-                        const quantity = quantities[item.id] || 0
+                      {Object.entries(quantities).map(([itemId, quantity]) => {
+                        const item = billItems.find((i: any) => i.id === itemId)
+                        if (!item || (quantity as number) === 0) return null
                         return (
                           <div
-                            key={item.id}
+                            key={itemId}
                             className="flex justify-between text-gray-700"
                           >
                             <span>
                               {item.name} ({quantity}x)
                             </span>
                             <span>
-                              {formatEUR(item.pricePerUnit * item.quantity * quantity)}
+                              {formatEUR(item.pricePerUnit * item.quantity * (quantity as number))}
                             </span>
                           </div>
                         )

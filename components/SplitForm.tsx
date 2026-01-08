@@ -30,6 +30,8 @@ export default function SplitForm({
   const router = useRouter()
   const [friendName, setFriendName] = useState('')
   const [selectedItems, setSelectedItems] = useState<Record<string, number>>({})
+  const [customQuantityMode, setCustomQuantityMode] = useState<Record<string, boolean>>({})
+  const [customQuantityInput, setCustomQuantityInput] = useState<Record<string, string>>({})
   const [tipPercent, setTipPercent] = useState(0)
   const [customTip, setCustomTip] = useState('')
   const [loading, setLoading] = useState(false)
@@ -58,6 +60,38 @@ export default function SplitForm({
       }
       return { ...prev, [itemId]: quantity }
     })
+    // Disable custom mode when selecting a preset quantity
+    if (customQuantityMode[itemId]) {
+      setCustomQuantityMode((prev) => {
+        const newMode = { ...prev }
+        delete newMode[itemId]
+        return newMode
+      })
+      setCustomQuantityInput((prev) => {
+        const newInput = { ...prev }
+        delete newInput[itemId]
+        return newInput
+      })
+    }
+  }
+
+  function handleCustomQuantityToggle(itemId: string) {
+    setCustomQuantityMode((prev) => ({ ...prev, [itemId]: true }))
+    setCustomQuantityInput((prev) => ({ ...prev, [itemId]: '' }))
+  }
+
+  function handleCustomQuantityInputChange(itemId: string, value: string) {
+    setCustomQuantityInput((prev) => ({ ...prev, [itemId]: value }))
+    const numValue = parseFloat(value)
+    if (!isNaN(numValue) && numValue > 0) {
+      setSelectedItems((prev) => ({ ...prev, [itemId]: numValue }))
+    } else if (value === '') {
+      setSelectedItems((prev) => {
+        const newItems = { ...prev }
+        delete newItems[itemId]
+        return newItems
+      })
+    }
   }
 
   function handleTipChange(percent: number) {
@@ -161,30 +195,63 @@ export default function SplitForm({
                 </div>
               </div>
 
-              <div className="flex items-center space-x-2">
-                <span className="text-sm text-gray-600">Menge:</span>
-                <div className="flex space-x-1">
-                  {[0, 0.5, 1, 2].map((qty) => (
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm text-gray-600">Menge:</span>
+                  <div className="flex space-x-1">
+                    {[0, 0.5, 1, 2].map((qty) => (
+                      <button
+                        key={qty}
+                        type="button"
+                        onClick={() => handleItemQuantityChange(item.id, qty)}
+                        className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                          selectedItems[item.id] === qty && !customQuantityMode[item.id]
+                            ? 'bg-green-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        {qty === 0 ? '✗' : `${qty}x`}
+                      </button>
+                    ))}
                     <button
-                      key={qty}
                       type="button"
-                      onClick={() => handleItemQuantityChange(item.id, qty)}
+                      onClick={() => handleCustomQuantityToggle(item.id)}
                       className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                        selectedItems[item.id] === qty
+                        customQuantityMode[item.id]
                           ? 'bg-green-600 text-white'
                           : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                       }`}
                     >
-                      {qty === 0 ? '✗' : `${qty}x`}
+                      Andere
                     </button>
-                  ))}
+                  </div>
+                  {selectedItems[item.id] > 0 && !customQuantityMode[item.id] && (
+                    <span className="ml-auto text-sm font-semibold text-green-600">
+                      {formatEUR(
+                        item.pricePerUnit * item.quantity * selectedItems[item.id]
+                      )}
+                    </span>
+                  )}
                 </div>
-                {selectedItems[item.id] > 0 && (
-                  <span className="ml-auto text-sm font-semibold text-green-600">
-                    {formatEUR(
-                      item.pricePerUnit * item.quantity * selectedItems[item.id]
+                {customQuantityMode[item.id] && (
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="number"
+                      step="0.25"
+                      min="0"
+                      value={customQuantityInput[item.id] || ''}
+                      onChange={(e) => handleCustomQuantityInputChange(item.id, e.target.value)}
+                      placeholder="Menge eingeben"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+                    />
+                    {selectedItems[item.id] > 0 && (
+                      <span className="text-sm font-semibold text-green-600">
+                        {formatEUR(
+                          item.pricePerUnit * item.quantity * selectedItems[item.id]
+                        )}
+                      </span>
                     )}
-                  </span>
+                  </div>
                 )}
               </div>
             </div>

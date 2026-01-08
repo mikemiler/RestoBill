@@ -3,6 +3,38 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
+// Database Types (matching Prisma schema)
+export interface Bill {
+  id: string
+  createdAt: string
+  payerName: string
+  paypalHandle: string
+  imageUrl: string
+  restaurantName: string | null
+  totalAmount: number | null
+  shareToken: string
+}
+
+export interface BillItem {
+  id: string
+  billId: string
+  name: string
+  quantity: number
+  pricePerUnit: number
+  totalPrice: number
+}
+
+export interface Selection {
+  id: string
+  billId: string
+  friendName: string
+  itemQuantities: Record<string, number> | null
+  tipAmount: number
+  paid: boolean
+  paidAt: string | null
+  createdAt: string
+}
+
 // Server-side Supabase client with service role for storage uploads
 export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
   auth: {

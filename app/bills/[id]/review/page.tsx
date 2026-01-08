@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/prisma'
+import { supabaseAdmin } from '@/lib/supabase'
 import { notFound } from 'next/navigation'
 import { formatEUR } from '@/lib/utils'
 import Image from 'next/image'
@@ -9,18 +9,18 @@ export default async function ReviewBillPage({
 }: {
   params: { id: string }
 }) {
-  const bill = await prisma.bill.findUnique({
-    where: { id: params.id },
-    include: {
-      items: true,
-    },
-  })
+  const { data: bill } = await supabaseAdmin
+    .from('Bill')
+    .select('*, BillItem(*)')
+    .eq('id', params.id)
+    .single()
 
   if (!bill) {
     notFound()
   }
 
-  const totalAmount = bill.items.reduce((sum, item) => sum + item.totalPrice, 0)
+  const billItems = bill.BillItem || []
+  const totalAmount = billItems.reduce((sum: number, item: any) => sum + item.totalPrice, 0)
   const shareUrl = `${process.env.NEXT_PUBLIC_APP_URL}/split/${bill.shareToken}`
 
   return (
@@ -59,11 +59,11 @@ export default async function ReviewBillPage({
           {/* Right: Items */}
           <div className="bg-white rounded-lg shadow-lg p-6">
             <h2 className="text-xl font-semibold mb-4 text-gray-800">
-              Extrahierte Positionen ({bill.items.length})
+              Extrahierte Positionen ({billItems.length})
             </h2>
 
             <div className="space-y-3 mb-6">
-              {bill.items.map((item) => (
+              {billItems.map((item: any) => (
                 <div
                   key={item.id}
                   className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors"

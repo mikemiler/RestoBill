@@ -5,7 +5,7 @@ import { Pool } from 'pg'
 import * as dotenv from 'dotenv'
 
 // Load environment variables
-dotenv.config()
+dotenv.config({ path: '.env.local' })
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { supabaseAdmin } from '@/lib/supabase'
 import { generatePayPalUrl, sanitizeInput } from '@/lib/utils'
 
 export async function POST(request: NextRequest) {
@@ -41,17 +41,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify share token
-    const bill = await prisma.bill.findFirst({
-      where: {
-        id: billId,
-        shareToken: shareToken,
-      },
-      include: {
-        items: true,
-      },
-    })
+    const { data: bill, error: billError } = await supabaseAdmin
+      .from('Bill')
+      .select('*, BillItem(*)')
+      .eq('id', billId)
+      .eq('shareToken', shareToken)
+      .single()
 
-    if (!bill) {
+    if (billError || !bill) {
       return NextResponse.json(
         { error: 'Rechnung nicht gefunden' },
         { status: 404 }
@@ -71,7 +68,7 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      const item = bill.items.find((i) => i.id === itemId)
+      const item = bill.BillItem.find((i: any) => i.id === itemId)
       if (item && quantity > 0) {
         totalAmount += item.pricePerUnit * item.quantity * quantity
         selectedItemIds.push(itemId)
@@ -103,17 +100,20 @@ export async function POST(request: NextRequest) {
     }
 
     // Create selection in database
-    const selection = await prisma.selection.create({
-      data: {
-        billId,
+    const { data: selection, error: selectionError } = await supabaseAdmin
+      .from('Selection')
+      .insert({
+        billId: billId,
         friendName: sanitizedName,
-        items: {
-          connect: selectedItemIds.map((id) => ({ id })),
-        },
         itemQuantities: itemQuantities,
         tipAmount: tip,
-      },
-    })
+      })
+      .select()
+      .single()
+
+    if (selectionError) {
+      throw selectionError
+    }
 
     // Generate PayPal.me URL
     const paypalUrl = generatePayPalUrl(bill.paypalHandle, totalAmount)

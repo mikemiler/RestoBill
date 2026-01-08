@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/prisma'
+import { supabaseAdmin } from '@/lib/supabase'
 import { notFound } from 'next/navigation'
 import Image from 'next/image'
 import SplitForm from '@/components/SplitForm'
@@ -8,18 +8,20 @@ export default async function SplitBillPage({
 }: {
   params: { token: string }
 }) {
-  const bill = await prisma.bill.findUnique({
-    where: { shareToken: params.token },
-    include: {
-      items: {
-        orderBy: { name: 'asc' },
-      },
-    },
-  })
+  const { data: bill } = await supabaseAdmin
+    .from('Bill')
+    .select('*, BillItem(*)')
+    .eq('shareToken', params.token)
+    .single()
 
   if (!bill) {
     notFound()
   }
+
+  // Sort items by name
+  const sortedItems = bill.BillItem?.sort((a: any, b: any) =>
+    a.name.localeCompare(b.name)
+  ) || []
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-green-50 to-white p-4 md:p-8">
@@ -57,7 +59,7 @@ export default async function SplitBillPage({
               shareToken={params.token}
               payerName={bill.payerName}
               paypalHandle={bill.paypalHandle}
-              items={bill.items}
+              items={sortedItems}
             />
           </div>
         </div>

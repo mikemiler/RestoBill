@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { supabaseAdmin } from '@/lib/supabase'
 import { sanitizeInput } from '@/lib/utils'
+import { randomUUID } from 'crypto'
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,14 +34,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create bill in database
-    const bill = await prisma.bill.create({
-      data: {
+    // Create bill in database using Supabase
+    const { data: bill, error } = await supabaseAdmin
+      .from('Bill')
+      .insert({
+        id: randomUUID(),
         payerName: sanitizedName,
         paypalHandle: sanitizedHandle,
-        imageUrl: '', // Will be set after upload
-      },
-    })
+        imageUrl: '',
+        shareToken: randomUUID(),
+      })
+      .select()
+      .single()
+
+    if (error) {
+      throw error
+    }
 
     return NextResponse.json({
       billId: bill.id,
