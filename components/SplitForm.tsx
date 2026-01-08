@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { formatEUR } from '@/lib/utils'
 
@@ -37,10 +37,18 @@ export default function SplitForm({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  // Load friendName from localStorage on mount
+  useEffect(() => {
+    const savedFriendName = localStorage.getItem('friendName')
+    if (savedFriendName) {
+      setFriendName(savedFriendName)
+    }
+  }, [])
+
   // Calculate subtotal from selected items
   const subtotal = items.reduce((sum, item) => {
     const quantity = selectedItems[item.id] || 0
-    return sum + item.pricePerUnit * item.quantity * quantity
+    return sum + item.pricePerUnit * quantity
   }, 0)
 
   // Calculate tip
@@ -114,6 +122,9 @@ export default function SplitForm({
       setError('Bitte wähle mindestens eine Position aus')
       return
     }
+
+    // Save friendName to localStorage
+    localStorage.setItem('friendName', friendName.trim())
 
     setLoading(true)
 
@@ -228,7 +239,7 @@ export default function SplitForm({
                   {selectedItems[item.id] > 0 && !customQuantityMode[item.id] && (
                     <span className="ml-auto text-sm font-semibold text-green-600">
                       {formatEUR(
-                        item.pricePerUnit * item.quantity * selectedItems[item.id]
+                        item.pricePerUnit * selectedItems[item.id]
                       )}
                     </span>
                   )}
@@ -247,7 +258,7 @@ export default function SplitForm({
                     {selectedItems[item.id] > 0 && (
                       <span className="text-sm font-semibold text-green-600">
                         {formatEUR(
-                          item.pricePerUnit * item.quantity * selectedItems[item.id]
+                          item.pricePerUnit * selectedItems[item.id]
                         )}
                       </span>
                     )}

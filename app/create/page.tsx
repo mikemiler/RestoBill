@@ -1,27 +1,46 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
 export default function CreateBillPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [payerName, setPayerName] = useState('')
+  const [paypalHandle, setPaypalHandle] = useState('')
+
+  // Load from localStorage on mount
+  useEffect(() => {
+    const savedPayerName = localStorage.getItem('payerName')
+    const savedPaypalHandle = localStorage.getItem('paypalHandle')
+
+    if (savedPayerName) setPayerName(savedPayerName)
+    if (savedPaypalHandle) setPaypalHandle(savedPaypalHandle)
+  }, [])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setLoading(true)
     setError('')
 
-    const formData = new FormData(e.currentTarget)
-    const payerName = formData.get('payerName') as string
-    const paypalHandle = formData.get('paypalHandle') as string
-
-    if (!payerName || !paypalHandle) {
+    if (!payerName.trim() || !paypalHandle.trim()) {
       setError('Bitte fülle alle Felder aus')
       setLoading(false)
       return
     }
+
+    // Validate PayPal handle format
+    const handleRegex = /^[A-Za-z0-9_-]+$/
+    if (!handleRegex.test(paypalHandle)) {
+      setError('PayPal Username darf nur Buchstaben, Zahlen, _ und - enthalten')
+      setLoading(false)
+      return
+    }
+
+    // Save to localStorage
+    localStorage.setItem('payerName', payerName.trim())
+    localStorage.setItem('paypalHandle', paypalHandle.trim())
 
     try {
       const response = await fetch('/api/bills/create', {
@@ -30,8 +49,8 @@ export default function CreateBillPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          payerName,
-          paypalHandle,
+          payerName: payerName.trim(),
+          paypalHandle: paypalHandle.trim(),
         }),
       })
 
@@ -46,6 +65,12 @@ export default function CreateBillPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ein Fehler ist aufgetreten')
       setLoading(false)
+    }
+  }
+
+  function handleTestPayPalLink() {
+    if (paypalHandle.trim()) {
+      window.open(`https://paypal.me/${paypalHandle.trim()}`, '_blank', 'noopener,noreferrer')
     }
   }
 
@@ -74,6 +99,8 @@ export default function CreateBillPage() {
                 type="text"
                 id="payerName"
                 name="payerName"
+                value={payerName}
+                onChange={(e) => setPayerName(e.target.value)}
                 placeholder="Max Mustermann"
                 required
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -95,6 +122,8 @@ export default function CreateBillPage() {
                   type="text"
                   id="paypalHandle"
                   name="paypalHandle"
+                  value={paypalHandle}
+                  onChange={(e) => setPaypalHandle(e.target.value)}
                   placeholder="maxmustermann"
                   required
                   pattern="[A-Za-z0-9_-]+"
@@ -102,9 +131,30 @@ export default function CreateBillPage() {
                   className="flex-1 px-4 py-3 border border-gray-300 rounded-r-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
-              <p className="mt-2 text-sm text-gray-500">
-                Dein PayPal.me Link zum Empfangen von Zahlungen
-              </p>
+              {paypalHandle.trim() && (
+                <div className="mt-3 space-y-2">
+                  <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg p-3">
+                    <div>
+                      <p className="text-xs text-green-700 font-medium mb-1">
+                        Zahlungen gehen an:
+                      </p>
+                      <p className="text-sm font-semibold text-green-800">
+                        paypal.me/{paypalHandle.trim()}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleTestPayPalLink}
+                      className="ml-2 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-lg transition-colors"
+                    >
+                      Testen
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Klicke auf "Testen", um zu überprüfen, ob der PayPal-Account existiert
+                  </p>
+                </div>
+              )}
             </div>
 
             {error && (
