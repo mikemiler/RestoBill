@@ -145,12 +145,23 @@ export default function BillItemsEditor({ billId, items }: BillItemsEditorProps)
     }
   }
 
+  const openItemsCount = items.filter(item =>
+    (item.unclaimedQuantity || 0) > 0 || (item.unpaidQuantity || 0) > 0
+  ).length
+
   return (
     <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-semibold text-gray-800">
-          Positionen ({items.length})
-        </h2>
+        <div>
+          <h2 className="text-xl font-semibold text-gray-800">
+            Positionen ({items.length})
+          </h2>
+          {openItemsCount > 0 && (
+            <p className="text-sm text-orange-600 font-medium mt-1">
+              {openItemsCount} {openItemsCount === 1 ? 'Position hat' : 'Positionen haben'} offene Beträge
+            </p>
+          )}
+        </div>
         <button
           onClick={() => setEditMode(!editMode)}
           className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
@@ -166,7 +177,15 @@ export default function BillItemsEditor({ billId, items }: BillItemsEditorProps)
       )}
 
       <div className="space-y-3">
-        {items.map((item) => {
+        {items
+          .sort((a, b) => {
+            const aHasOpen = ((a.unclaimedQuantity || 0) > 0 || (a.unpaidQuantity || 0) > 0)
+            const bHasOpen = ((b.unclaimedQuantity || 0) > 0 || (b.unpaidQuantity || 0) > 0)
+            if (aHasOpen && !bHasOpen) return -1
+            if (!aHasOpen && bHasOpen) return 1
+            return 0
+          })
+          .map((item) => {
           const isEditing = editingItemId === item.id
           const hasSelections = (item.totalClaimed || 0) > 0
           const hasUnpaid = (item.unpaidQuantity || 0) > 0 || (item.unclaimedQuantity || 0) > 0
@@ -269,22 +288,22 @@ export default function BillItemsEditor({ billId, items }: BillItemsEditorProps)
                     )}
                   </div>
                   {hasSelections && (
-                    <div className="mt-2 pt-2 border-t border-gray-200">
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Bezahlt:</span>
-                          <span className="font-medium text-green-600">{item.paidClaimed || 0}x</span>
+                    <div className="mt-3 pt-3 border-t border-gray-300">
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-gray-700">Bezahlt:</span>
+                          <span className="font-semibold text-green-600 text-base">{item.paidClaimed || 0}x</span>
                         </div>
                         {(item.unpaidQuantity || 0) > 0 && (
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">Nicht bezahlt:</span>
-                            <span className="font-medium text-yellow-600">{item.unpaidQuantity}x</span>
+                          <div className="flex justify-between items-center bg-yellow-100 -mx-4 px-4 py-2 rounded">
+                            <span className="text-sm font-medium text-yellow-800">Ausgewählt, nicht bezahlt:</span>
+                            <span className="font-bold text-yellow-700 text-lg">{item.unpaidQuantity}x</span>
                           </div>
                         )}
                         {(item.unclaimedQuantity || 0) > 0 && (
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">Noch offen:</span>
-                            <span className="font-medium text-red-600">{item.unclaimedQuantity}x</span>
+                          <div className="flex justify-between items-center bg-red-100 -mx-4 px-4 py-2 rounded">
+                            <span className="text-sm font-medium text-red-800">Noch nicht ausgewählt:</span>
+                            <span className="font-bold text-red-700 text-lg">{item.unclaimedQuantity}x</span>
                           </div>
                         )}
                       </div>

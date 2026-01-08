@@ -2,6 +2,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { notFound } from 'next/navigation'
 import Image from 'next/image'
 import SplitForm from '@/components/SplitForm'
+import CollapsibleReceipt from '@/components/CollapsibleReceipt'
 
 export default async function SplitBillPage({
   params,
@@ -24,30 +25,34 @@ export default async function SplitBillPage({
   ) || []
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-green-50 to-white p-4 md:p-8">
+    <div className="min-h-screen bg-gradient-to-b from-green-50 to-white p-3 sm:p-4 md:p-8">
       <div className="max-w-4xl mx-auto">
-        <div className="text-center mb-6">
-          <div className="mb-3 flex justify-center">
+        <div className="text-center mb-4 md:mb-6">
+          <div className="mb-2 md:mb-3 flex justify-center">
             <Image
               src="/logo.png"
               alt="Kill The Bill Logo"
-              width={60}
-              height={60}
-              className="drop-shadow-lg"
+              width={50}
+              height={50}
+              className="drop-shadow-lg md:w-[60px] md:h-[60px]"
             />
           </div>
-          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-1 md:mb-2">
             Rechnung teilen
           </h1>
-          <p className="text-gray-600">
+          <p className="text-sm sm:text-base text-gray-600">
             Von {bill.payerName}
             {bill.restaurantName && ` • ${bill.restaurantName}`}
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-6 mb-8">
-          {/* Left: Receipt Image */}
-          <div className="bg-white rounded-lg shadow-lg p-4">
+        <div className="grid md:grid-cols-2 gap-3 sm:gap-4 md:gap-6 mb-4 md:mb-8">
+          {/* Left: Receipt Image - Collapsible on mobile */}
+          <div className="md:hidden">
+            <CollapsibleReceipt imageUrl={bill.imageUrl} />
+          </div>
+
+          <div className="hidden md:block bg-white rounded-lg shadow-lg p-4">
             <h2 className="text-lg font-semibold mb-3 text-gray-800">
               📸 Rechnung
             </h2>
@@ -62,7 +67,7 @@ export default async function SplitBillPage({
           </div>
 
           {/* Right: Selection Form */}
-          <div className="bg-white rounded-lg shadow-lg p-6">
+          <div className="bg-white rounded-lg shadow-lg p-4 sm:p-5 md:p-6">
             <SplitForm
               billId={bill.id}
               shareToken={params.token}
@@ -73,11 +78,11 @@ export default async function SplitBillPage({
           </div>
         </div>
 
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <h3 className="font-semibold text-blue-900 mb-2">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
+          <h3 className="font-semibold text-blue-900 mb-2 text-sm sm:text-base">
             ℹ️ So funktioniert&apos;s
           </h3>
-          <ol className="text-sm text-blue-800 space-y-1">
+          <ol className="text-xs sm:text-sm text-blue-800 space-y-1">
             <li>1. Gib deinen Namen ein</li>
             <li>2. Wähle deine Positionen aus (du kannst auch halbe Portionen wählen)</li>
             <li>3. Füge optional Trinkgeld hinzu</li>

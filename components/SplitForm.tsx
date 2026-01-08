@@ -163,15 +163,15 @@ export default function SplitForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5 md:space-y-6">
       <div>
-        <h2 className="text-xl font-semibold mb-4 text-gray-800">
+        <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-gray-800">
           Deine Auswahl
         </h2>
 
         <label
           htmlFor="friendName"
-          className="block text-sm font-medium text-gray-700 mb-2"
+          className="block text-xs sm:text-sm font-medium text-gray-700 mb-2"
         >
           Dein Name
         </label>
@@ -182,24 +182,24 @@ export default function SplitForm({
           onChange={(e) => setFriendName(e.target.value)}
           placeholder="Max Mustermann"
           required
-          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+          className="w-full px-3 py-2.5 sm:px-4 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm sm:text-base"
         />
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-3">
+        <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2 sm:mb-3">
           Was hattest du?
         </label>
-        <div className="space-y-2 max-h-96 overflow-y-auto">
+        <div className="space-y-2">
           {items.map((item) => (
             <div
               key={item.id}
-              className="border border-gray-200 rounded-lg p-3 hover:border-green-300 transition-colors"
+              className="border border-gray-200 rounded-lg p-2.5 sm:p-3 hover:border-green-300 transition-colors"
             >
               <div className="flex justify-between items-start mb-2">
                 <div className="flex-1">
-                  <h3 className="font-medium text-gray-900">{item.name}</h3>
-                  <p className="text-sm text-gray-600">
+                  <h3 className="font-medium text-gray-900 text-sm sm:text-base">{item.name}</h3>
+                  <p className="text-xs sm:text-sm text-gray-600">
                     {item.quantity}x à {formatEUR(item.pricePerUnit)} ={' '}
                     {formatEUR(item.totalPrice)}
                   </p>
@@ -207,15 +207,15 @@ export default function SplitForm({
               </div>
 
               <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  <span className="text-sm text-gray-600">Menge:</span>
-                  <div className="flex space-x-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs sm:text-sm text-gray-600 w-full sm:w-auto">Menge:</span>
+                  <div className="flex gap-1.5 sm:gap-2 flex-wrap">
                     {[0, 0.5, 1, 2].map((qty) => (
                       <button
                         key={qty}
                         type="button"
                         onClick={() => handleItemQuantityChange(item.id, qty)}
-                        className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                        className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors min-w-[2.5rem] ${
                           selectedItems[item.id] === qty && !customQuantityMode[item.id]
                             ? 'bg-green-600 text-white'
                             : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -227,7 +227,7 @@ export default function SplitForm({
                     <button
                       type="button"
                       onClick={() => handleCustomQuantityToggle(item.id)}
-                      className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                      className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
                         customQuantityMode[item.id]
                           ? 'bg-green-600 text-white'
                           : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -237,7 +237,7 @@ export default function SplitForm({
                     </button>
                   </div>
                   {selectedItems[item.id] > 0 && !customQuantityMode[item.id] && (
-                    <span className="ml-auto text-sm font-semibold text-green-600">
+                    <span className="ml-auto text-xs sm:text-sm font-semibold text-green-600">
                       {formatEUR(
                         item.pricePerUnit * selectedItems[item.id]
                       )}
@@ -245,7 +245,7 @@ export default function SplitForm({
                   )}
                 </div>
                 {customQuantityMode[item.id] && (
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center gap-2">
                     <input
                       type="number"
                       step="0.25"
@@ -253,10 +253,10 @@ export default function SplitForm({
                       value={customQuantityInput[item.id] || ''}
                       onChange={(e) => handleCustomQuantityInputChange(item.id, e.target.value)}
                       placeholder="Menge eingeben"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+                      className="flex-1 px-2.5 sm:px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-xs sm:text-sm"
                     />
                     {selectedItems[item.id] > 0 && (
-                      <span className="text-sm font-semibold text-green-600">
+                      <span className="text-xs sm:text-sm font-semibold text-green-600 whitespace-nowrap">
                         {formatEUR(
                           item.pricePerUnit * selectedItems[item.id]
                         )}
@@ -272,16 +272,16 @@ export default function SplitForm({
 
       {/* Tip Calculator */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-3">
+        <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2 sm:mb-3">
           Trinkgeld (optional)
         </label>
-        <div className="grid grid-cols-4 gap-2 mb-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2 mb-2">
           {[0, 10, 15, 20].map((percent) => (
             <button
               key={percent}
               type="button"
               onClick={() => handleTipChange(percent)}
-              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-2.5 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
                 tipPercent === percent
                   ? 'bg-green-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -294,7 +294,7 @@ export default function SplitForm({
         <button
           type="button"
           onClick={() => handleTipChange(-1)}
-          className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors mb-2 ${
+          className={`w-full px-2.5 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors mb-2 ${
             tipPercent === -1
               ? 'bg-green-600 text-white'
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -310,34 +310,34 @@ export default function SplitForm({
             value={customTip}
             onChange={(e) => setCustomTip(e.target.value)}
             placeholder="0.00"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+            className="w-full px-3 sm:px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm sm:text-base"
           />
         )}
       </div>
 
       {/* Total Summary */}
-      <div className="border-t pt-4 space-y-2">
-        <div className="flex justify-between text-sm">
+      <div className="border-t pt-3 sm:pt-4 space-y-1.5 sm:space-y-2">
+        <div className="flex justify-between text-xs sm:text-sm">
           <span className="text-gray-600">Zwischensumme:</span>
           <span className="font-medium">{formatEUR(subtotal)}</span>
         </div>
         {tipAmount > 0 && (
-          <div className="flex justify-between text-sm">
+          <div className="flex justify-between text-xs sm:text-sm">
             <span className="text-gray-600">Trinkgeld:</span>
             <span className="font-medium">{formatEUR(tipAmount)}</span>
           </div>
         )}
-        <div className="flex justify-between text-lg font-bold">
+        <div className="flex justify-between text-base sm:text-lg font-bold">
           <span>Gesamt:</span>
           <span className="text-green-600">{formatEUR(total)}</span>
         </div>
-        <p className="text-xs text-gray-500 text-center">
+        <p className="text-xs text-gray-500 text-center pt-1">
           Zahlung an {payerName} via PayPal
         </p>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+        <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2.5 sm:px-4 sm:py-3 rounded-lg text-xs sm:text-sm">
           {error}
         </div>
       )}
@@ -345,7 +345,7 @@ export default function SplitForm({
       <button
         type="submit"
         disabled={loading || total === 0}
-        className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold py-4 px-6 rounded-lg transition-colors text-lg"
+        className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold py-3 sm:py-4 px-4 sm:px-6 rounded-lg transition-colors text-base sm:text-lg"
       >
         {loading ? (
           'Weiterleitung...'

@@ -201,3 +201,36 @@ input {
 .confirm-no:hover {
   background: #d1d5db;
 }
+
+/* Collapsible Receipt Styles */
+.collapsible-receipt-button {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.875rem 1rem;
+  background: white;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.collapsible-receipt-button:hover {
+  background: #f9fafb;
+}
+
+.collapsible-receipt-button:active {
+  background: #f3f4f6;
+}
+
+.collapsible-receipt-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.collapsible-receipt-icon {
+  font-size: 0.875rem;
+  color: #6b7280;
+  transition: transform 0.2s;
+}
