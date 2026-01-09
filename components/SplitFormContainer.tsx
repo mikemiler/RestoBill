@@ -3,7 +3,12 @@
 import { useState, useEffect } from 'react'
 import SplitForm from './SplitForm'
 import SelectionSummary from './SelectionSummary'
-import { getSelectionsByToken } from '@/lib/selectionStorage'
+import ReviewFlow from './ReviewFlow'
+import {
+  getSelectionsByToken,
+  getFirstUnreviewedSelection,
+  markSelectionAsReviewed,
+} from '@/lib/selectionStorage'
 import type { SavedSelection } from '@/lib/selectionStorage'
 
 interface BillItem {
@@ -21,6 +26,8 @@ interface SplitFormContainerProps {
   paypalHandle: string
   items: BillItem[]
   itemRemainingQuantities: Record<string, number>
+  restaurantName?: string | null
+  googlePlaceId?: string | null
 }
 
 export default function SplitFormContainer({
@@ -30,13 +37,24 @@ export default function SplitFormContainer({
   paypalHandle,
   items,
   itemRemainingQuantities,
+  restaurantName,
+  googlePlaceId,
 }: SplitFormContainerProps) {
   const [savedSelections, setSavedSelections] = useState<SavedSelection[]>([])
+  const [showReviewFlow, setShowReviewFlow] = useState(false)
+  const [unreviewedSelection, setUnreviewedSelection] = useState<SavedSelection | null>(null)
 
   useEffect(() => {
     // Load all saved selections for this bill on mount
     const selections = getSelectionsByToken(shareToken)
     setSavedSelections(selections)
+
+    // Check for unreviewed selections on mount
+    const unreviewed = getFirstUnreviewedSelection(shareToken)
+    if (unreviewed) {
+      setUnreviewedSelection(unreviewed)
+      setShowReviewFlow(true)
+    }
   }, [shareToken])
 
   // Listen for localStorage changes (when a new selection is saved)
@@ -44,6 +62,15 @@ export default function SplitFormContainer({
     const handleStorageChange = () => {
       const selections = getSelectionsByToken(shareToken)
       setSavedSelections(selections)
+
+      // Check for new unreviewed selections
+      if (!showReviewFlow) {
+        const unreviewed = getFirstUnreviewedSelection(shareToken)
+        if (unreviewed) {
+          setUnreviewedSelection(unreviewed)
+          setShowReviewFlow(true)
+        }
+      }
     }
 
     // Listen for custom event (same tab)
@@ -55,15 +82,39 @@ export default function SplitFormContainer({
       window.removeEventListener('selectionSaved', handleStorageChange)
       window.removeEventListener('storage', handleStorageChange)
     }
-  }, [shareToken])
+  }, [shareToken, showReviewFlow])
+
+  const handleReviewComplete = () => {
+    // Mark selection as reviewed in localStorage
+    if (unreviewedSelection) {
+      markSelectionAsReviewed(unreviewedSelection.selectionId)
+    }
+    setShowReviewFlow(false)
+    setUnreviewedSelection(null)
+
+    // Check if there are more unreviewed selections
+    setTimeout(() => {
+      const nextUnreviewed = getFirstUnreviewedSelection(shareToken)
+      if (nextUnreviewed) {
+        setUnreviewedSelection(nextUnreviewed)
+        setShowReviewFlow(true)
+      }
+    }, 500)
+  }
+
+  const handleReviewSkip = () => {
+    // Mark as reviewed anyway (user skipped)
+    if (unreviewedSelection) {
+      markSelectionAsReviewed(unreviewedSelection.selectionId)
+    }
+    setShowReviewFlow(false)
+    setUnreviewedSelection(null)
+  }
 
   return (
     <>
       {savedSelections.length > 0 && (
-        <SelectionSummary
-          selections={savedSelections}
-          items={items}
-        />
+        <SelectionSummary selections={savedSelections} items={items} />
       )}
       <div>
         <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-gray-800 dark:text-gray-100">
@@ -78,6 +129,19 @@ export default function SplitFormContainer({
           itemRemainingQuantities={itemRemainingQuantities}
         />
       </div>
+
+      {/* Review Flow Modal */}
+      {showReviewFlow && unreviewedSelection && (
+        <ReviewFlow
+          billId={billId}
+          shareToken={shareToken}
+          selectionId={unreviewedSelection.selectionId}
+          restaurantName={restaurantName || 'das Restaurant'}
+          googlePlaceId={googlePlaceId}
+          onComplete={handleReviewComplete}
+          onSkip={handleReviewSkip}
+        />
+      )}
     </>
   )
 }

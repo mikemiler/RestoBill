@@ -13,6 +13,7 @@ export interface SavedSelection {
   totalAmount: number
   paymentMethod: 'PAYPAL' | 'CASH'
   createdAt: string
+  reviewed?: boolean // Has guest reviewed this selection?
 }
 
 const STORAGE_KEY = 'guestSelections'
@@ -107,4 +108,42 @@ export function clearAllSelections(): void {
   } catch (error) {
     console.error('Error clearing selections from localStorage:', error)
   }
+}
+
+/**
+ * Mark a specific selection as reviewed by selectionId
+ */
+export function markSelectionAsReviewed(selectionId: string): void {
+  if (typeof window === 'undefined') return
+
+  try {
+    const selections = getAllSelections()
+    const updated = selections.map((s) =>
+      s.selectionId === selectionId ? { ...s, reviewed: true } : s
+    )
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+
+    // Dispatch custom event to notify listeners
+    window.dispatchEvent(new Event('selectionReviewed'))
+  } catch (error) {
+    console.error('Error marking selection as reviewed:', error)
+  }
+}
+
+/**
+ * Check if there are unreviewed selections for a specific bill
+ * Returns the first unreviewed selection, or null if all reviewed
+ */
+export function getFirstUnreviewedSelection(shareToken: string): SavedSelection | null {
+  const selections = getSelectionsByToken(shareToken)
+
+  // Return the first selection that hasn't been reviewed
+  return selections.find((s) => !s.reviewed) || null
+}
+
+/**
+ * Check if there are any unreviewed selections for a specific bill
+ */
+export function hasUnreviewedSelections(shareToken: string): boolean {
+  return getFirstUnreviewedSelection(shareToken) !== null
 }

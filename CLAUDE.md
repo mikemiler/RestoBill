@@ -17,7 +17,9 @@ This file should always represent the current state of the project.
 
 **RestoBill** is a German-language web application for splitting restaurant bills. Users upload a receipt photo, Claude Vision API analyzes items automatically, and friends select their items via a shareable link to pay through PayPal.
 
-**Tech Stack:** Next.js 14 (App Router), TypeScript, Prisma, Supabase (PostgreSQL + Storage), Claude Vision API, Tailwind CSS
+**Tech Stack:** Next.js 14 (App Router), TypeScript, Prisma (dev only), Supabase (PostgreSQL + Storage), Claude Vision API, Tailwind CSS
+
+**⚠️ CRITICAL:** Prisma does NOT work with Vercel deployment. Use Supabase client directly for production API routes.
 
 ## Core Principle: KISS (Keep It Simple, Stupid)
 
@@ -53,20 +55,25 @@ npx ts-node test-supabase-connection.ts  # Verify Supabase connection
 
 ### Database Schema (Prisma)
 
-**Three main models with cascade delete:**
+**Four main models with cascade delete:**
 
 1. **Bill** - Restaurant bill created by payer
-   - Contains: `payerName`, `paypalHandle`, `imageUrl`, `shareToken` (UUID)
-   - Relations: `items[]`, `selections[]`
+   - Contains: `payerName`, `paypalHandle`, `imageUrl`, `shareToken` (UUID), `googlePlaceId` (optional)
+   - Relations: `items[]`, `selections[]`, `reviews[]`
 
 2. **BillItem** - Individual items on the bill
    - Contains: `name`, `quantity`, `pricePerUnit`, `totalPrice`
    - Belongs to one Bill
 
 3. **Selection** - Friend's item selection
-   - Contains: `friendName`, `itemQuantities` (JSON), `tipAmount`, `paid`
+   - Contains: `friendName`, `itemQuantities` (JSON), `tipAmount`, `paid`, `reviewed` (boolean)
    - `itemQuantities` format: `{"itemId": multiplier}` (e.g., `{"uuid": 0.5}` for half portion)
    - Belongs to one Bill, references multiple BillItems
+
+4. **Review** - Post-payment guest feedback
+   - Contains: `sentiment` (enum), `isPositive` (boolean), `googleReviewClicked` (boolean), `internalFeedback` (text)
+   - Belongs to one Bill, references one Selection (optional)
+   - Tracks: Guest satisfaction and Google review conversion
 
 **Important:** Items can only be edited/deleted if no selections exist yet.
 
@@ -99,6 +106,7 @@ All routes follow RESTful patterns:
 - `DELETE /api/bill-items/[id]` - Delete item (only if no selections)
 - `POST /api/selections/create` - Friend creates selection
 - `POST /api/selections/[id]/mark-paid` - Mark as paid (manual/webhook)
+- `POST /api/reviews` - Submit post-payment review (sentiment + feedback)
 
 **Security:** All public routes validate `shareToken` before proceeding.
 
@@ -217,7 +225,35 @@ All routes follow RESTful patterns:
 - Status dashboard cards: "Bezahlt" (total collected) vs "Zahlung bestätigt" (confirmed by owner)
 - Item status labels: "Noch nicht bezahlt", "Bezahlt, nicht bestätigt", "Zahlung bestätigt"
 
-### 12. Error Handling
+### 12. Review Feature (Post-Payment Feedback)
+**Architecture:** Guests can rate their experience after paying, with sentiment-based routing.
+
+**Flow:**
+1. Guest completes payment (Cash or PayPal)
+2. When returning to `/split/[token]`, app checks for unreviewed selections in localStorage
+3. If unreviewed selection exists → Show ReviewFlow modal/component
+4. Guest selects sentiment: 😍 Super, 😊 Gut, 😐 Okay, 😕 Mäßig, 😞 Schlecht
+5. **Positive (Super/Gut):** Show Google Review button (if `googlePlaceId` exists)
+6. **Negative (Okay/Mäßig/Schlecht):** Show internal feedback form
+7. Submit review → `POST /api/reviews` → Mark selection as `reviewed: true`
+
+**Data Model:**
+- **Review** table: Stores sentiment, Google click tracking, internal feedback
+- **Bill.googlePlaceId** (optional): For Google Places deep link
+- **Selection.reviewed** (boolean): Tracks if selection has been reviewed
+
+**Key Decisions:**
+- Review offered **once per guest per bill** (even if multiple selections/payments)
+- Review always shown (not conditional on amount)
+- Google Place ID comes from future restaurant registration (B2B)
+- PayPal returns manually (no callback URL with paypal.me)
+
+**Google Review Deep Link:**
+```
+https://search.google.com/local/writereview?placeid={googlePlaceId}
+```
+
+### 13. Error Handling
 - Consistent format: `{ error: "German message" }`
 - Log errors server-side for debugging
 - User-friendly messages (no stack traces)
@@ -350,16 +386,23 @@ prisma/
 
 ## Deployment Notes
 
+**⚠️ CRITICAL - Prisma + Vercel Issue:**
+- **Prisma does NOT work reliably with Vercel** (serverless functions)
+- **Solution:** Use `supabaseAdmin` client directly in API routes for production
+- Prisma is OK for local development (`npm run dev`)
+- Schema management: Use Prisma for migrations, but query via Supabase client
+
 **Vercel:**
 - Framework preset: Next.js
 - Add all environment variables from `.env.local`
 - Update `NEXT_PUBLIC_APP_URL` to Vercel domain
-- Run `npx prisma db push` after first deploy
+- **Do NOT rely on Prisma Client in production API routes**
 
 **Database:**
 - Supabase provides PostgreSQL (free tier: 500MB)
-- No migrations - use `prisma db push` for schema changes
-- Connection pooling handled by Prisma
+- Schema changes: Update `prisma/schema.prisma` then `npx prisma db push`
+- **Production queries:** Use `supabaseAdmin.from('Table')` instead of `prisma.table`
+- Local dev: Prisma Client works fine via `npx prisma generate`
 
 **Storage:**
 - Supabase Storage bucket: `bill-images` (public read)

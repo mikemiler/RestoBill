@@ -97,6 +97,8 @@ export default async function SplitBillPage({
               paypalHandle={bill.paypalHandle}
               items={sortedItems}
               itemRemainingQuantities={itemRemainingQuantities}
+              restaurantName={bill.restaurantName}
+              googlePlaceId={bill.googlePlaceId}
             />
           </div>
         </div>

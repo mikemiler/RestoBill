@@ -22,9 +22,13 @@ model Bill {
   restaurantName String?
   totalAmount    Float?
 
+  // Google Places Integration (für Review Feature)
+  googlePlaceId String? // Für Google Review Deep Links
+
   // Relations
   items      BillItem[]
   selections Selection[]
+  reviews    Review[]
 
   // Public Link Token
   shareToken String @unique @default(uuid())
@@ -77,7 +81,48 @@ model Selection {
   paid   Boolean   @default(false)
   paidAt DateTime?
 
+  // Review Status (für Review Feature)
+  reviewed Boolean @default(false) // Hat Gast diese Selection reviewed?
+
   createdAt DateTime @default(now())
 
+  // Relations
+  reviews Review[]
+
   @@index([billId])
+}
+
+enum ReviewSentiment {
+  SUPER     // 😍
+  GUT       // 😊
+  OKAY      // 😐
+  MAESSIG   // 😕
+  SCHLECHT  // 😞
+}
+
+model Review {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  // Relations
+  billId String
+  bill   Bill   @relation(fields: [billId], references: [id], onDelete: Cascade)
+
+  selectionId String?
+  selection   Selection? @relation(fields: [selectionId], references: [id], onDelete: SetNull)
+
+  // Review Daten
+  sentiment ReviewSentiment // Ausgewählte Bewertung
+
+  // Computed: Positiv (SUPER/GUT) oder Negativ (OKAY/MAESSIG/SCHLECHT)
+  isPositive Boolean
+
+  // Google Review Tracking
+  googleReviewClicked Boolean @default(false) // Hat Nutzer auf "Google Review" geklickt?
+
+  // Internes Feedback (nur bei negativen Reviews)
+  internalFeedback String? // Optional: Text-Feedback bei negativen Bewertungen
+
+  @@index([billId])
+  @@index([selectionId])
 }
