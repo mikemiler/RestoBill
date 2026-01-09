@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
 import { uploadBillImage } from '@/lib/supabase'
 import { analyzeBillImage } from '@/lib/claude'
 import { validateImageFile } from '@/lib/utils'
+import { prisma } from '@/lib/prisma'
 
 export async function POST(
   request: NextRequest,
@@ -17,18 +17,17 @@ export async function POST(
     }
 
     // Get bill from database
-    const { data: bill, error: billError } = await supabaseAdmin
-      .from('Bill')
-      .select('*, BillItem(*)')
-      .eq('id', billId)
-      .single()
+    const bill = await prisma.bill.findUnique({
+      where: { id: billId },
+      include: { items: true },
+    })
 
-    if (billError || !bill) {
+    if (!bill) {
       return NextResponse.json({ error: 'Rechnung nicht gefunden' }, { status: 404 })
     }
 
     // Prevent reupload if bill already has items (processed)
-    if (bill.BillItem && bill.BillItem.length > 0) {
+    if (bill.items && bill.items.length > 0) {
       return NextResponse.json(
         { error: 'Rechnung wurde bereits verarbeitet' },
         { status: 409 }
@@ -64,35 +63,25 @@ export async function POST(
     }
 
     // Update bill with image URL and restaurant info
-    const { error: updateError } = await supabaseAdmin
-      .from('Bill')
-      .update({
+    await prisma.bill.update({
+      where: { id: billId },
+      data: {
         imageUrl: imageUrl,
         restaurantName: analysis.restaurantName,
         totalAmount: analysis.totalAmount,
-      })
-      .eq('id', billId)
-
-    if (updateError) {
-      throw updateError
-    }
+      },
+    })
 
     // Create bill items from analysis
-    const { error: itemsError } = await supabaseAdmin
-      .from('BillItem')
-      .insert(
-        analysis.items.map((item) => ({
-          billId: billId,
-          name: item.name,
-          quantity: item.quantity,
-          pricePerUnit: item.pricePerUnit,
-          totalPrice: item.pricePerUnit * item.quantity,
-        }))
-      )
-
-    if (itemsError) {
-      throw itemsError
-    }
+    await prisma.billItem.createMany({
+      data: analysis.items.map((item) => ({
+        billId: billId,
+        name: item.name,
+        quantity: item.quantity,
+        pricePerUnit: item.pricePerUnit,
+        totalPrice: item.pricePerUnit * item.quantity,
+      })),
+    })
 
     return NextResponse.json({
       success: true,

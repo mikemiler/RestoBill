@@ -2,6 +2,17 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Meta: Keeping This File Updated
+
+**IMPORTANT:** When making changes to the codebase, always update this CLAUDE.md file to reflect:
+- New features or components added
+- Changes to architecture or data flow
+- New library files or utilities
+- Changes to conventions or patterns
+- Updates to terminology or naming
+
+This file should always represent the current state of the project.
+
 ## Project Overview
 
 **RestoBill** is a German-language web application for splitting restaurant bills. Users upload a receipt photo, Claude Vision API analyzes items automatically, and friends select their items via a shareable link to pay through PayPal.
@@ -70,10 +81,12 @@ npx ts-node test-supabase-connection.ts  # Verify Supabase connection
 
 **Friend Flow:**
 1. Open share link → Server-rendered page with bill data
-2. Select items with quantities (0, 0.5, 1, 2, custom fractions)
-3. Add tip (0%, 7%, 10%, 15%, or custom)
-4. Submit → `POST /api/selections/create` → Returns PayPal.me URL
-5. Redirect to PayPal for payment
+2. View previous selections (if any) from localStorage
+3. Select items with quantities (0, 0.5, 1, 2, custom fractions)
+4. Add tip (0%, 7%, 10%, 15%, or custom)
+5. Submit → `POST /api/selections/create` → Selection saved to localStorage → Returns PayPal.me URL
+6. Redirect to PayPal for payment
+7. Can return and make additional selections (multiple payments per guest supported)
 
 ### API Routes Structure
 
@@ -112,6 +125,13 @@ All routes follow RESTful patterns:
 - localStorage utilities for bill history (client-side only)
 - Stores: billId, shareToken, payerName, createdAt
 
+**lib/selectionStorage.ts**
+- localStorage utilities for guest selections (client-side only)
+- Supports multiple selections per bill/guest
+- Functions: `getSelectionsByToken()`, `saveSelection()`, `deleteSelection()`
+- Stores: selectionId, friendName, itemQuantities, amounts, paymentMethod, timestamp
+- Dispatches custom events for same-tab updates
+
 **lib/prisma.ts**
 - Singleton PrismaClient (prevents multiple instances in dev)
 
@@ -122,9 +142,11 @@ All routes follow RESTful patterns:
 - `/bills/[id]/status/page.tsx` - Status dashboard
 
 **Client Components (interactive):**
+- `SplitFormContainer` - Container managing guest selections and form display
 - `SplitForm` - Item selection with quantity buttons
+- `SelectionSummary` - Display all previous selections from localStorage (multiple payments)
 - `BillItemsEditor` - Add/edit/delete items (payer only)
-- `SelectionCard` - Display friend's selection
+- `SelectionCard` - Display individual selection on status page
 - `CopyButton`, `RefreshButton` - Interactive controls
 - `ThemeProvider`, `ThemeToggle` - Dark mode support
 
@@ -176,10 +198,26 @@ All routes follow RESTful patterns:
 ### 9. State Management
 - **No Redux/Zustand** - Local React state is sufficient
 - Use `useState`, `useEffect` for client components
-- Use `localStorage` for bill history persistence
+- Use `localStorage` for persistent data (see below)
 - Server components fetch data directly (Prisma)
 
-### 10. Error Handling
+### 10. Guest Selection Storage (localStorage)
+- **Multiple payments per guest:** Guests can make multiple selections/payments for the same bill
+- **Automatic persistence:** Each selection is saved to localStorage after successful submission
+- **Display on return:** When revisiting the share link, all previous selections are displayed
+- **Real-time updates:** Uses custom events (`selectionSaved`) for same-tab updates
+- **Storage key:** `guestSelections` in localStorage
+- **Data structure:** Array of `SavedSelection` objects with selectionId, amounts, items, timestamp
+
+### 11. Payment Status Terminology
+**Important:** The app uses consistent terminology for payment states:
+- **"Bezahlt"** = Guest has paid (via PayPal or Cash)
+- **"Zahlung bestätigt"** = Owner has confirmed receipt of payment
+- UI components: Button says "Zahlung bestätigen", confirmed status shows "✓ Zahlung bestätigt"
+- Status dashboard cards: "Bezahlt" (total collected) vs "Zahlung bestätigt" (confirmed by owner)
+- Item status labels: "Noch nicht bezahlt", "Bezahlt, nicht bestätigt", "Zahlung bestätigt"
+
+### 12. Error Handling
 - Consistent format: `{ error: "German message" }`
 - Log errors server-side for debugging
 - User-friendly messages (no stack traces)
@@ -291,7 +329,9 @@ app/
         └── [id]/mark-paid/route.ts
 
 components/
+├── SplitFormContainer.tsx             # Container for split form & selection summary
 ├── SplitForm.tsx                      # Item selection UI
+├── SelectionSummary.tsx               # Display previous guest selections
 ├── BillItemsEditor.tsx                # Add/edit/delete items
 ├── SelectionCard.tsx                  # Friend selection display
 └── [other UI components]
@@ -301,7 +341,8 @@ lib/
 ├── supabase.ts                        # Storage client
 ├── claude.ts                          # Vision API
 ├── utils.ts                           # Helpers
-└── billStorage.ts                     # localStorage utils
+├── billStorage.ts                     # Bill history localStorage utils
+└── selectionStorage.ts                # Guest selection localStorage utils
 
 prisma/
 └── schema.prisma                      # Database schema
