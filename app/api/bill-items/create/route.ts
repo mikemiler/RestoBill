@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { randomUUID } from 'crypto'
 
 export async function POST(request: NextRequest) {
   try {
@@ -57,6 +58,7 @@ export async function POST(request: NextRequest) {
     const { data: item, error } = await supabaseAdmin
       .from('BillItem')
       .insert({
+        id: randomUUID(), // Explicitly generate UUID
         billId,
         name: name.trim(),
         quantity,

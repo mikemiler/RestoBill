@@ -6,7 +6,7 @@ import SelectionCard from '@/components/SelectionCard'
 import RefreshButton from '@/components/RefreshButton'
 import BillItemsEditor from '@/components/BillItemsEditor'
 import BillAutoSave from '@/components/BillAutoSave'
-import Image from 'next/image'
+import CollapsibleReceipt from '@/components/CollapsibleReceipt'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -239,37 +239,20 @@ export default async function BillStatusPage({
           )}
         </div>
 
-        {/* Receipt Image and Bill Items */}
-        <div className="grid md:grid-cols-2 gap-6 mb-8">
-          {/* Receipt Image */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 p-6">
-            <h2 className="text-xl font-semibold mb-4 text-gray-800 dark:text-gray-100">
-              Rechnung
-            </h2>
-            <div className="relative aspect-[3/4] w-full">
-              <Image
-                src={bill.imageUrl}
-                alt="Rechnung"
-                fill
-                className="object-contain rounded-lg"
-              />
-            </div>
-            {bill.restaurantName && (
-              <p className="mt-4 text-center text-gray-600 dark:text-gray-300 font-medium">
-                📍 {bill.restaurantName}
-              </p>
-            )}
-          </div>
+        {/* Receipt Image */}
+        <CollapsibleReceipt
+          imageUrl={bill.imageUrl}
+          restaurantName={bill.restaurantName}
+        />
 
-          {/* Bill Items Editor */}
-          <div className="flex flex-col">
-            <BillItemsEditor
-              billId={bill.id}
-              items={itemStatus}
-              payerName={bill.payerName}
-              ownerSelection={ownerSelection}
-            />
-          </div>
+        {/* Bill Items Editor */}
+        <div className="mb-8">
+          <BillItemsEditor
+            billId={bill.id}
+            items={itemStatus}
+            payerName={bill.payerName}
+            ownerSelection={ownerSelection}
+          />
         </div>
       </div>
     </div>

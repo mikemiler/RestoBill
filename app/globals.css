@@ -35,13 +35,6 @@
   --amount-outstanding: #dc2626;
   --delete-btn-bg: #ef4444;
   --delete-btn-hover: #dc2626;
-
-  /* Collapsible Receipt */
-  --receipt-btn-bg: #ffffff;
-  --receipt-btn-hover: #f9fafb;
-  --receipt-btn-active: #f3f4f6;
-  --receipt-title-color: #1f2937;
-  --receipt-icon-color: #6b7280;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -78,13 +71,6 @@
     --amount-outstanding: #f87171;
     --delete-btn-bg: #dc2626;
     --delete-btn-hover: #b91c1c;
-
-    /* Collapsible Receipt */
-    --receipt-btn-bg: #1f2937;
-    --receipt-btn-hover: #374151;
-    --receipt-btn-active: #4b5563;
-    --receipt-title-color: #f9fafb;
-    --receipt-icon-color: #9ca3af;
   }
 }
 
@@ -275,39 +261,6 @@ input {
 
 .confirm-no:hover {
   background: #d1d5db;
-}
-
-/* Collapsible Receipt Styles */
-.collapsible-receipt-button {
-  width: 100%;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.875rem 1rem;
-  background: var(--receipt-btn-bg);
-  border: none;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.collapsible-receipt-button:hover {
-  background: var(--receipt-btn-hover);
-}
-
-.collapsible-receipt-button:active {
-  background: var(--receipt-btn-active);
-}
-
-.collapsible-receipt-title {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--receipt-title-color);
-}
-
-.collapsible-receipt-icon {
-  font-size: 0.875rem;
-  color: var(--receipt-icon-color);
-  transition: transform 0.2s;
 }
 
 /* Logo Styles */

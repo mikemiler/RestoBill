@@ -5,29 +5,46 @@ import Image from 'next/image'
 
 interface CollapsibleReceiptProps {
   imageUrl: string
+  restaurantName?: string | null
 }
 
-export default function CollapsibleReceipt({ imageUrl }: CollapsibleReceiptProps) {
+export default function CollapsibleReceipt({ imageUrl, restaurantName }: CollapsibleReceiptProps) {
   const [isOpen, setIsOpen] = useState(false)
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 overflow-hidden">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 mb-8">
       <button
-        type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="collapsible-receipt-button"
+        className="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors rounded-lg"
       >
-        <span className="collapsible-receipt-title">
-          📸 Rechnung {isOpen ? 'ausblenden' : 'anzeigen'}
-        </span>
-        <span className="collapsible-receipt-icon">
-          {isOpen ? '▼' : '▶'}
-        </span>
+        <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100">
+          Rechnung
+          {restaurantName && (
+            <span className="text-base font-normal text-gray-600 dark:text-gray-300 ml-2">
+              📍 {restaurantName}
+            </span>
+          )}
+        </h2>
+        <svg
+          className={`w-6 h-6 text-gray-600 dark:text-gray-300 transform transition-transform ${
+            isOpen ? 'rotate-180' : ''
+          }`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M19 9l-7 7-7-7"
+          />
+        </svg>
       </button>
 
       {isOpen && (
-        <div className="p-3">
-          <div className="relative w-full aspect-[3/4]">
+        <div className="px-6 pb-6">
+          <div className="relative aspect-[3/4] w-full max-w-md mx-auto">
             <Image
               src={imageUrl}
               alt="Rechnung"
