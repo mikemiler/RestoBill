@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { supabaseAdmin } from '@/lib/supabase'
 import { uploadBillImage } from '@/lib/supabase'
 import { analyzeBillImage } from '@/lib/claude'
 import { validateImageFile } from '@/lib/utils'
-import { prisma } from '@/lib/prisma'
+import { randomUUID } from 'crypto'
 
 export async function POST(
   request: NextRequest,
@@ -17,17 +18,18 @@ export async function POST(
     }
 
     // Get bill from database
-    const bill = await prisma.bill.findUnique({
-      where: { id: billId },
-      include: { items: true },
-    })
+    const { data: bill, error: billError } = await supabaseAdmin
+      .from('Bill')
+      .select('*, BillItem(*)')
+      .eq('id', billId)
+      .single()
 
-    if (!bill) {
+    if (billError || !bill) {
       return NextResponse.json({ error: 'Rechnung nicht gefunden' }, { status: 404 })
     }
 
     // Prevent reupload if bill already has items (processed)
-    if (bill.items && bill.items.length > 0) {
+    if (bill.BillItem && bill.BillItem.length > 0) {
       return NextResponse.json(
         { error: 'Rechnung wurde bereits verarbeitet' },
         { status: 409 }
@@ -63,25 +65,36 @@ export async function POST(
     }
 
     // Update bill with image URL and restaurant info
-    await prisma.bill.update({
-      where: { id: billId },
-      data: {
+    const { error: updateError } = await supabaseAdmin
+      .from('Bill')
+      .update({
         imageUrl: imageUrl,
         restaurantName: analysis.restaurantName,
         totalAmount: analysis.totalAmount,
-      },
-    })
+      })
+      .eq('id', billId)
 
-    // Create bill items from analysis
-    await prisma.billItem.createMany({
-      data: analysis.items.map((item) => ({
-        billId: billId,
-        name: item.name,
-        quantity: item.quantity,
-        pricePerUnit: item.pricePerUnit,
-        totalPrice: item.pricePerUnit * item.quantity,
-      })),
-    })
+    if (updateError) {
+      throw updateError
+    }
+
+    // Create bill items from analysis (with explicit UUIDs)
+    const { error: itemsError } = await supabaseAdmin
+      .from('BillItem')
+      .insert(
+        analysis.items.map((item) => ({
+          id: randomUUID(), // Explicitly generate UUID
+          billId: billId,
+          name: item.name,
+          quantity: item.quantity,
+          pricePerUnit: item.pricePerUnit,
+          totalPrice: item.pricePerUnit * item.quantity,
+        }))
+      )
+
+    if (itemsError) {
+      throw itemsError
+    }
 
     return NextResponse.json({
       success: true,
