@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase'
 import { notFound } from 'next/navigation'
 import Image from 'next/image'
-import SplitForm from '@/components/SplitForm'
+import SplitFormContainer from '@/components/SplitFormContainer'
 import CollapsibleReceipt from '@/components/CollapsibleReceipt'
 
 export default async function SplitBillPage({
@@ -90,7 +90,7 @@ export default async function SplitBillPage({
 
           {/* Right: Selection Form */}
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 p-4 sm:p-5 md:p-6">
-            <SplitForm
+            <SplitFormContainer
               billId={bill.id}
               shareToken={params.token}
               payerName={bill.payerName}

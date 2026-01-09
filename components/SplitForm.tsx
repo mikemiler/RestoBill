@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { formatEUR } from '@/lib/utils'
+import { saveSelection } from '@/lib/selectionStorage'
 
 interface BillItem {
   id: string
@@ -135,8 +136,7 @@ export default function SplitForm({
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleSubmit(paymentMethod: 'PAYPAL' | 'CASH') {
     setError('')
 
     if (!friendName.trim()) {
@@ -166,6 +166,7 @@ export default function SplitForm({
           friendName: friendName.trim(),
           itemQuantities: selectedItems,
           tipAmount,
+          paymentMethod,
         }),
       })
 
@@ -175,13 +176,31 @@ export default function SplitForm({
         throw new Error(data.error || 'Fehler beim Erstellen der Auswahl')
       }
 
-      // Validate PayPal URL before redirect
-      if (!data.paypalUrl || !data.paypalUrl.startsWith('https://paypal.me/')) {
-        throw new Error('Ungültige PayPal URL')
-      }
+      // Save selection to localStorage for future reference
+      saveSelection({
+        selectionId: data.selectionId,
+        billId,
+        shareToken,
+        friendName: friendName.trim(),
+        itemQuantities: selectedItems,
+        subtotal,
+        tipAmount,
+        totalAmount: total,
+        paymentMethod,
+        createdAt: new Date().toISOString(),
+      })
 
-      // Redirect to PayPal
-      window.location.href = data.paypalUrl
+      if (paymentMethod === 'CASH') {
+        // Redirect to confirmation page for cash payment
+        router.push(`/split/${shareToken}/cash-confirmed?selectionId=${data.selectionId}&total=${data.totalAmount}`)
+      } else {
+        // Validate PayPal URL before redirect
+        if (!data.paypalUrl || !data.paypalUrl.startsWith('https://paypal.me/')) {
+          throw new Error('Ungültige PayPal URL')
+        }
+        // Redirect to PayPal
+        window.location.href = data.paypalUrl
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ein Fehler ist aufgetreten')
       setLoading(false)
@@ -189,12 +208,8 @@ export default function SplitForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5 md:space-y-6">
+    <div className="space-y-4 sm:space-y-5 md:space-y-6">
       <div>
-        <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-gray-800 dark:text-gray-100">
-          Deine Auswahl
-        </h2>
-
         <label
           htmlFor="friendName"
           className="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
@@ -462,7 +477,7 @@ export default function SplitForm({
           <span className="text-green-600 dark:text-green-400">{formatEUR(total)}</span>
         </div>
         <p className="text-xs text-gray-500 dark:text-gray-400 text-center pt-1">
-          Zahlung an {payerName} via PayPal
+          Zahlung an {payerName}
         </p>
       </div>
 
@@ -472,19 +487,38 @@ export default function SplitForm({
         </div>
       )}
 
-      <button
-        type="submit"
-        disabled={loading || total === 0}
-        className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 dark:bg-green-500 dark:hover:bg-green-600 dark:disabled:bg-gray-600 text-white font-semibold py-3 sm:py-4 px-4 sm:px-6 rounded-lg transition-colors text-base sm:text-lg"
-      >
-        {loading ? (
-          'Weiterleitung...'
-        ) : (
-          <>
-            Jetzt bezahlen {total > 0 && `• ${formatEUR(total)}`}
-          </>
-        )}
-      </button>
-    </form>
+      {/* Payment Buttons */}
+      <div className="space-y-3">
+        <button
+          type="button"
+          onClick={() => handleSubmit('PAYPAL')}
+          disabled={loading || total === 0}
+          className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 dark:bg-blue-500 dark:hover:bg-blue-600 dark:disabled:bg-gray-600 text-white font-semibold py-3 sm:py-4 px-4 sm:px-6 rounded-lg transition-colors text-base sm:text-lg flex items-center justify-center gap-2"
+        >
+          {loading ? (
+            'Weiterleitung...'
+          ) : (
+            <>
+              💳 Mit PayPal bezahlen {total > 0 && `• ${formatEUR(total)}`}
+            </>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleSubmit('CASH')}
+          disabled={loading || total === 0}
+          className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 dark:bg-green-500 dark:hover:bg-green-600 dark:disabled:bg-gray-600 text-white font-semibold py-3 sm:py-4 px-4 sm:px-6 rounded-lg transition-colors text-base sm:text-lg flex items-center justify-center gap-2"
+        >
+          {loading ? (
+            'Weiterleitung...'
+          ) : (
+            <>
+              💵 Bar bezahlen {total > 0 && `• ${formatEUR(total)}`}
+            </>
+          )}
+        </button>
+      </div>
+    </div>
   )
 }

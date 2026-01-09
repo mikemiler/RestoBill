@@ -12,6 +12,7 @@ interface SelectionCardProps {
     paid: boolean
     tipAmount: number
     itemQuantities: Record<string, number>
+    paymentMethod?: string
   }
   billItems: Array<{
     id: string
@@ -19,9 +20,10 @@ interface SelectionCardProps {
     pricePerUnit: number
   }>
   total: number
+  isOwner?: boolean
 }
 
-export default function SelectionCard({ selection, billItems, total }: SelectionCardProps) {
+export default function SelectionCard({ selection, billItems, total, isOwner = false }: SelectionCardProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
 
@@ -52,16 +54,25 @@ export default function SelectionCard({ selection, billItems, total }: Selection
   return (
     <div
       className={`border rounded-lg p-4 ${
-        selection.paid
+        isOwner
+          ? 'border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/20'
+          : selection.paid
           ? 'border-green-300 dark:border-green-600 bg-green-50 dark:bg-green-900/20'
           : 'border-gray-200 dark:border-gray-600 dark:bg-gray-700/50'
       }`}
     >
       <div className="flex justify-between items-start mb-3">
         <div>
-          <h3 className="font-semibold text-gray-900 dark:text-gray-100">
-            {selection.friendName}
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold text-gray-900 dark:text-gray-100">
+              {selection.friendName}
+            </h3>
+            {isOwner && (
+              <span className="px-2 py-0.5 bg-blue-200 dark:bg-blue-700 text-blue-800 dark:text-blue-200 text-xs font-medium rounded-full">
+                Du
+              </span>
+            )}
+          </div>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {new Date(selection.createdAt).toLocaleDateString('de-DE', {
               day: '2-digit',
@@ -71,22 +82,29 @@ export default function SelectionCard({ selection, billItems, total }: Selection
               minute: '2-digit',
             })}
           </p>
+          {selection.paymentMethod && (
+            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+              {selection.paymentMethod === 'CASH' ? '💵 Barzahlung' : '💳 PayPal'}
+            </p>
+          )}
         </div>
         <div className="text-right">
           <p className="text-lg font-bold text-gray-900 dark:text-gray-100">
             {formatEUR(total)}
           </p>
-          <button
-            onClick={togglePaidStatus}
-            disabled={loading}
-            className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
-              selection.paid
-                ? 'bg-green-200 dark:bg-green-700 text-green-800 dark:text-green-200 hover:bg-green-300 dark:hover:bg-green-600'
-                : 'bg-yellow-200 dark:bg-yellow-700 text-yellow-800 dark:text-yellow-200 hover:bg-yellow-300 dark:hover:bg-yellow-600'
-            } ${loading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-          >
-            {loading ? '...' : selection.paid ? '✓ Bezahlt' : 'Als bezahlt markieren'}
-          </button>
+          {!isOwner && (
+            <button
+              onClick={togglePaidStatus}
+              disabled={loading}
+              className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
+                selection.paid
+                  ? 'bg-green-200 dark:bg-green-700 text-green-800 dark:text-green-200 hover:bg-green-300 dark:hover:bg-green-600'
+                  : 'bg-yellow-200 dark:bg-yellow-700 text-yellow-800 dark:text-yellow-200 hover:bg-yellow-300 dark:hover:bg-yellow-600'
+              } ${loading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+              {loading ? '...' : selection.paid ? '✓ Zahlung bestätigt' : 'Zahlung bestätigen'}
+            </button>
+          )}
         </div>
       </div>
 

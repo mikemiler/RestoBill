@@ -19,9 +19,14 @@ interface BillItem {
 interface BillItemsEditorProps {
   billId: string
   items: BillItem[]
+  payerName: string
+  ownerSelection?: {
+    id: string
+    itemQuantities: Record<string, number>
+  } | null
 }
 
-export default function BillItemsEditor({ billId, items }: BillItemsEditorProps) {
+export default function BillItemsEditor({ billId, items, payerName, ownerSelection }: BillItemsEditorProps) {
   const router = useRouter()
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const [editForm, setEditForm] = useState<{
@@ -37,6 +42,10 @@ export default function BillItemsEditor({ billId, items }: BillItemsEditorProps)
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [ownerQuantities, setOwnerQuantities] = useState<Record<string, number>>(
+    ownerSelection?.itemQuantities || {}
+  )
+  const [selectingForMe, setSelectingForMe] = useState<string | null>(null)
 
   function startEdit(item: BillItem) {
     setEditingItemId(item.id)
@@ -142,6 +151,51 @@ export default function BillItemsEditor({ billId, items }: BillItemsEditorProps)
     } finally {
       setLoading(false)
     }
+  }
+
+  async function updateOwnerQuantity(itemId: string, quantity: number) {
+    const newQuantities = { ...ownerQuantities }
+
+    if (quantity === 0) {
+      delete newQuantities[itemId]
+    } else {
+      newQuantities[itemId] = quantity
+    }
+
+    setOwnerQuantities(newQuantities)
+    setLoading(true)
+    setError('')
+
+    try {
+      const response = await fetch('/api/selections/owner', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          billId,
+          itemQuantities: newQuantities,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Fehler beim Speichern')
+      }
+
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ein Fehler ist aufgetreten')
+      setOwnerQuantities(ownerQuantities)
+    } finally {
+      setLoading(false)
+      setSelectingForMe(null)
+    }
+  }
+
+  function getOwnerQuantity(itemId: string): number {
+    return ownerQuantities[itemId] || 0
   }
 
   const openItemsCount = items.filter(item =>
@@ -264,7 +318,7 @@ export default function BillItemsEditor({ billId, items }: BillItemsEditorProps)
                         onClick={() => startEdit(item)}
                         disabled={hasSelections || loading}
                         className="px-3 py-1 bg-blue-100 hover:bg-blue-200 disabled:bg-gray-100 disabled:text-gray-400 dark:bg-blue-900/30 dark:hover:bg-blue-800/40 dark:disabled:bg-gray-700 dark:disabled:text-gray-500 text-blue-700 dark:text-blue-300 rounded text-sm font-medium transition-colors"
-                        title={hasSelections ? 'Kann nicht bearbeitet werden: bereits ausgewählt' : 'Bearbeiten'}
+                        title={hasSelections ? 'Kann nicht bearbeitet werden: bereits bezahlt' : 'Bearbeiten'}
                       >
                         Bearbeiten
                       </button>
@@ -272,7 +326,7 @@ export default function BillItemsEditor({ billId, items }: BillItemsEditorProps)
                         onClick={() => deleteItem(item.id)}
                         disabled={hasSelections || loading}
                         className="px-3 py-1 bg-red-100 hover:bg-red-200 disabled:bg-gray-100 disabled:text-gray-400 dark:bg-red-900/30 dark:hover:bg-red-800/40 dark:disabled:bg-gray-700 dark:disabled:text-gray-500 text-red-700 dark:text-red-300 rounded text-sm font-medium transition-colors"
-                        title={hasSelections ? 'Kann nicht gelöscht werden: bereits ausgewählt' : 'Löschen'}
+                        title={hasSelections ? 'Kann nicht gelöscht werden: bereits bezahlt' : 'Löschen'}
                       >
                         Löschen
                       </button>
@@ -282,24 +336,93 @@ export default function BillItemsEditor({ billId, items }: BillItemsEditorProps)
                     <div className="mt-3 pt-3 border-t border-gray-300 dark:border-gray-600">
                       <div className="space-y-2">
                         <div className="flex justify-between items-center">
-                          <span className="text-sm text-gray-700 dark:text-gray-300">Bezahlt:</span>
+                          <span className="text-sm text-gray-700 dark:text-gray-300">Zahlung bestätigt:</span>
                           <span className="font-semibold text-green-600 dark:text-green-400 text-base">{item.paidClaimed || 0}x</span>
                         </div>
                         {(item.unpaidQuantity || 0) > 0 && (
                           <div className="flex justify-between items-center bg-yellow-100 dark:bg-yellow-900/30 -mx-4 px-4 py-2 rounded">
-                            <span className="text-sm font-medium text-yellow-800 dark:text-yellow-300">Ausgewählt, nicht bezahlt:</span>
+                            <span className="text-sm font-medium text-yellow-800 dark:text-yellow-300">Bezahlt, nicht bestätigt:</span>
                             <span className="font-bold text-yellow-700 dark:text-yellow-400 text-lg">{item.unpaidQuantity}x</span>
                           </div>
                         )}
                         {(item.unclaimedQuantity || 0) > 0 && (
                           <div className="flex justify-between items-center bg-red-100 dark:bg-red-900/30 -mx-4 px-4 py-2 rounded">
-                            <span className="text-sm font-medium text-red-800 dark:text-red-300">Noch nicht ausgewählt:</span>
+                            <span className="text-sm font-medium text-red-800 dark:text-red-300">Noch nicht bezahlt:</span>
                             <span className="font-bold text-red-700 dark:text-red-400 text-lg">{item.unclaimedQuantity}x</span>
                           </div>
                         )}
                       </div>
                     </div>
                   )}
+
+                  {/* Owner Selection - "Für mich" */}
+                  <div className="mt-3 pt-3 border-t border-blue-300 dark:border-blue-600">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm font-medium text-blue-700 dark:text-blue-300">Für mich ({payerName}):</span>
+                      <span className="font-semibold text-blue-600 dark:text-blue-400 text-base">
+                        {getOwnerQuantity(item.id)}x
+                      </span>
+                    </div>
+
+                    {selectingForMe === item.id ? (
+                      <div className="bg-blue-50 dark:bg-blue-900/20 -mx-4 px-4 py-3 rounded">
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          <button
+                            onClick={() => updateOwnerQuantity(item.id, 0)}
+                            disabled={loading}
+                            className="px-3 py-1 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 dark:bg-gray-600 dark:hover:bg-gray-500 dark:disabled:bg-gray-700 text-gray-700 dark:text-gray-200 rounded text-sm font-medium transition-colors"
+                          >
+                            0x
+                          </button>
+                          {[0.5, 1, 2, 3].map((qty) => (
+                            qty <= item.quantity && (
+                              <button
+                                key={qty}
+                                onClick={() => updateOwnerQuantity(item.id, qty)}
+                                disabled={loading}
+                                className="px-3 py-1 bg-blue-100 hover:bg-blue-200 disabled:bg-gray-100 dark:bg-blue-900/40 dark:hover:bg-blue-800/50 dark:disabled:bg-gray-700 text-blue-700 dark:text-blue-300 rounded text-sm font-medium transition-colors"
+                              >
+                                {qty}x
+                              </button>
+                            )
+                          ))}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            step="0.25"
+                            min="0"
+                            max={item.quantity}
+                            placeholder="Andere Menge"
+                            className="flex-1 px-3 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm dark:bg-gray-700 dark:text-gray-100"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                const value = parseFloat((e.target as HTMLInputElement).value)
+                                if (!isNaN(value) && value >= 0 && value <= item.quantity) {
+                                  updateOwnerQuantity(item.id, value)
+                                }
+                              }
+                            }}
+                          />
+                          <button
+                            onClick={() => setSelectingForMe(null)}
+                            disabled={loading}
+                            className="px-3 py-1 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 dark:bg-gray-600 dark:hover:bg-gray-500 dark:disabled:bg-gray-700 text-gray-700 dark:text-gray-200 rounded text-sm font-medium transition-colors"
+                          >
+                            Fertig
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setSelectingForMe(item.id)}
+                        disabled={loading}
+                        className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 dark:bg-blue-500 dark:hover:bg-blue-600 dark:disabled:bg-gray-600 text-white rounded text-sm font-medium transition-colors"
+                      >
+                        Menge auswählen
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

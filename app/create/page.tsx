@@ -124,8 +124,8 @@ export default function CreateBillPage() {
               >
                 PayPal Username
               </label>
-              <div className="flex items-center">
-                <span className="px-3 py-3 bg-gray-100 dark:bg-gray-600 border border-r-0 border-gray-300 dark:border-gray-500 rounded-l-lg text-gray-600 dark:text-gray-200">
+              <div className="flex items-stretch">
+                <span className="px-2 sm:px-3 py-3 bg-gray-100 dark:bg-gray-600 border border-r-0 border-gray-300 dark:border-gray-500 rounded-l-lg text-gray-600 dark:text-gray-200 text-xs sm:text-sm flex items-center whitespace-nowrap">
                   paypal.me/
                 </span>
                 <input
@@ -134,28 +134,28 @@ export default function CreateBillPage() {
                   name="paypalHandle"
                   value={paypalHandle}
                   onChange={(e) => setPaypalHandle(e.target.value)}
-                  placeholder="maxmustermann"
+                  placeholder="username"
                   required
                   pattern="[A-Za-z0-9_-]+"
                   title="Nur Buchstaben, Zahlen, _ und - erlaubt"
-                  className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-r-lg focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-400"
+                  className="flex-1 min-w-0 px-3 sm:px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-r-lg focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-400 text-sm sm:text-base"
                 />
               </div>
               {paypalHandle.trim() && (
                 <div className="mt-3 space-y-2">
                   <div className="flex items-center justify-between bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
-                    <div>
+                    <div className="min-w-0 flex-1">
                       <p className="text-xs text-green-700 dark:text-green-400 font-medium mb-1">
                         Zahlungen gehen an:
                       </p>
-                      <p className="text-sm font-semibold text-green-800 dark:text-green-300">
+                      <p className="text-sm font-semibold text-green-800 dark:text-green-300 break-all">
                         paypal.me/{paypalHandle.trim()}
                       </p>
                     </div>
                     <button
                       type="button"
                       onClick={handleTestPayPalLink}
-                      className="ml-2 px-3 py-1.5 bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 text-white text-xs font-medium rounded-lg transition-colors"
+                      className="ml-2 flex-shrink-0 px-3 py-1.5 bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 text-white text-xs font-medium rounded-lg transition-colors"
                     >
                       Testen
                     </button>

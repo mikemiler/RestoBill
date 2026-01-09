@@ -5,12 +5,20 @@ import { generatePayPalUrl, sanitizeInput } from '@/lib/utils'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { billId, shareToken, friendName, itemQuantities, tipAmount } = body
+    const { billId, shareToken, friendName, itemQuantities, tipAmount, paymentMethod } = body
 
     // Validation
     if (!billId || !shareToken || !friendName || !itemQuantities) {
       return NextResponse.json(
         { error: 'Fehlende Pflichtfelder' },
+        { status: 400 }
+      )
+    }
+
+    // Validate payment method
+    if (paymentMethod && paymentMethod !== 'PAYPAL' && paymentMethod !== 'CASH') {
+      return NextResponse.json(
+        { error: 'Ungültige Zahlungsmethode' },
         { status: 400 }
       )
     }
@@ -100,13 +108,16 @@ export async function POST(request: NextRequest) {
     }
 
     // Create selection in database
+    const selectionId = crypto.randomUUID()
     const { data: selection, error: selectionError } = await supabaseAdmin
       .from('Selection')
       .insert({
+        id: selectionId,
         billId: billId,
         friendName: sanitizedName,
         itemQuantities: itemQuantities,
         tipAmount: tip,
+        paymentMethod: paymentMethod || 'PAYPAL',
       })
       .select()
       .single()
@@ -115,12 +126,22 @@ export async function POST(request: NextRequest) {
       throw selectionError
     }
 
-    // Generate PayPal.me URL
+    // For cash payment, no PayPal URL needed
+    if (paymentMethod === 'CASH') {
+      return NextResponse.json({
+        selectionId: selection.id,
+        totalAmount,
+        paymentMethod: 'CASH',
+      })
+    }
+
+    // Generate PayPal.me URL for PayPal payment
     const paypalUrl = generatePayPalUrl(bill.paypalHandle, totalAmount)
 
     return NextResponse.json({
       selectionId: selection.id,
       totalAmount,
+      paymentMethod: 'PAYPAL',
       paypalUrl,
     })
   } catch (error) {

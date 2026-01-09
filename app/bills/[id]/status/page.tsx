@@ -32,6 +32,10 @@ export default async function BillStatusPage({
     new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   )
 
+  // Find owner selection
+  const ownerSelection = selections.find((s: any) => s.friendName === bill.payerName)
+  const guestSelections = selections.filter((s: any) => s.friendName !== bill.payerName)
+
   const shareUrl = `${process.env.NEXT_PUBLIC_APP_URL}/split/${bill.shareToken}`
 
   // Calculate totals
@@ -120,7 +124,7 @@ export default async function BillStatusPage({
           </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 p-6">
-            <h3 className="text-sm text-gray-600 dark:text-gray-400 mb-2">Ausgewählt</h3>
+            <h3 className="text-sm text-gray-600 dark:text-gray-400 mb-2">Bezahlt</h3>
             <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
               {formatEUR(totalCollected)}
             </p>
@@ -130,7 +134,7 @@ export default async function BillStatusPage({
           </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 p-6">
-            <h3 className="text-sm text-gray-600 dark:text-gray-400 mb-2">Bezahlt</h3>
+            <h3 className="text-sm text-gray-600 dark:text-gray-400 mb-2">Zahlung bestätigt</h3>
             <p className="text-2xl font-bold text-green-600 dark:text-green-400">
               {formatEUR(totalPaid)}
             </p>
@@ -177,12 +181,42 @@ export default async function BillStatusPage({
 
           {selections.length === 0 ? (
             <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-              <p>Noch keine Auswahl getroffen</p>
+              <p>Noch keine Zahlungen</p>
               <p className="text-sm mt-2">Teile den Link mit deinen Freunden!</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {selections.map((selection: any) => {
+              {ownerSelection && (
+                <>
+                  {(() => {
+                    const quantities = ownerSelection.itemQuantities as Record<string, number> || {}
+                    const selectionTotal = Object.entries(quantities).reduce((sum, [itemId, quantity]) => {
+                      const item = billItems.find((i: any) => i.id === itemId)
+                      if (!item) return sum
+                      return sum + item.pricePerUnit * (quantity as number)
+                    }, 0)
+                    const total = selectionTotal + (ownerSelection.tipAmount || 0)
+
+                    return (
+                      <SelectionCard
+                        key={ownerSelection.id}
+                        selection={ownerSelection}
+                        billItems={billItems}
+                        total={total}
+                        isOwner={true}
+                      />
+                    )
+                  })()}
+                  {guestSelections.length > 0 && (
+                    <div className="border-t border-gray-300 dark:border-gray-600 pt-4 mt-4">
+                      <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-3">
+                        Gäste ({guestSelections.length})
+                      </h3>
+                    </div>
+                  )}
+                </>
+              )}
+              {guestSelections.map((selection: any) => {
                 const quantities = selection.itemQuantities as Record<string, number> || {}
                 const selectionTotal = Object.entries(quantities).reduce((sum, [itemId, quantity]) => {
                   const item = billItems.find((i: any) => i.id === itemId)
@@ -197,6 +231,7 @@ export default async function BillStatusPage({
                     selection={selection}
                     billItems={billItems}
                     total={total}
+                    isOwner={false}
                   />
                 )
               })}
@@ -228,7 +263,12 @@ export default async function BillStatusPage({
 
           {/* Bill Items Editor */}
           <div className="flex flex-col">
-            <BillItemsEditor billId={bill.id} items={itemStatus} />
+            <BillItemsEditor
+              billId={bill.id}
+              items={itemStatus}
+              payerName={bill.payerName}
+              ownerSelection={ownerSelection}
+            />
           </div>
         </div>
       </div>

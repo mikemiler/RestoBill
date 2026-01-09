@@ -48,6 +48,11 @@ model BillItem {
   @@index([billId])
 }
 
+enum PaymentMethod {
+  PAYPAL
+  CASH
+}
+
 model Selection {
   id     String @id @default(uuid())
   billId String
@@ -64,6 +69,9 @@ model Selection {
 
   // Trinkgeld
   tipAmount Float @default(0)
+
+  // Zahlungsmethode
+  paymentMethod PaymentMethod @default(PAYPAL)
 
   // Status
   paid   Boolean   @default(false)
