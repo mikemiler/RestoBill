@@ -69,22 +69,22 @@ export default function SplitForm({
     }
   }, [])
 
+  // Save friendName to localStorage whenever it changes
+  useEffect(() => {
+    if (friendName.trim()) {
+      localStorage.setItem('friendName', friendName.trim())
+    }
+  }, [friendName])
+
   // Supabase Realtime for live selections and payments
   useEffect(() => {
-    if (!supabase) {
-      console.log('🔴 [Realtime] Supabase client not available (SSR)')
-      return
-    }
-
-    console.log('🟢 [Realtime] Setting up Realtime subscription for bill:', billId)
+    if (!supabase) return
 
     // Fetch initial live selections
     const fetchLiveSelections = async () => {
-      console.log('🟢 [Realtime] Fetching live selections from API...')
       try {
         const response = await fetch(`/api/bills/${billId}/live-selections`)
         const data: ActiveSelection[] = await response.json()
-        console.log('🟢 [Realtime] Received live selections:', data.length, 'items', data)
 
         // Group by itemId
         const grouped = new Map<string, ActiveSelection[]>()
@@ -94,10 +94,9 @@ export default function SplitForm({
           }
           grouped.get(sel.itemId)!.push(sel)
         })
-        console.log('🟢 [Realtime] Grouped by itemId:', grouped.size, 'items have selections')
         setLiveSelections(grouped)
       } catch (error) {
-        console.error('🔴 [Realtime] Error fetching live selections:', error)
+        console.error('Error fetching live selections:', error)
       }
     }
 
@@ -112,8 +111,7 @@ export default function SplitForm({
           table: 'ActiveSelection',
           filter: `billId=eq.${billId}`
         },
-        (payload) => {
-          console.log('🔴 [Realtime] ActiveSelection change detected:', payload)
+        () => {
           // Refetch when any change occurs
           fetchLiveSelections()
         }
@@ -126,15 +124,12 @@ export default function SplitForm({
           table: 'Selection',
           filter: `billId=eq.${billId}`
         },
-        (payload) => {
-          console.log('🔴 [Realtime] Selection INSERT detected:', payload)
+        () => {
           // When someone pays, recalculate remaining quantities
           calculateRemainingQuantities()
         }
       )
-      .subscribe((status) => {
-        console.log('🔴 [Realtime] Channel subscription status:', status)
-      })
+      .subscribe()
 
     // Initial fetch
     fetchLiveSelections()
@@ -248,8 +243,6 @@ export default function SplitForm({
   }
 
   async function handleItemQuantityChange(itemId: string, quantity: number) {
-    console.log('🔵 [User Action] Item quantity changed:', { itemId: itemId.substring(0, 8), quantity })
-
     setSelectedItems((prev) => {
       if (quantity === 0) {
         const newItems = { ...prev }
@@ -274,12 +267,9 @@ export default function SplitForm({
 
     // Update live selection (only if friendName is set)
     const currentFriendName = friendName || localStorage.getItem('friendName')
-    console.log('🔵 [Live Selection] Current guest name:', currentFriendName?.trim() || '(empty)')
-
     if (currentFriendName && currentFriendName.trim()) {
       try {
-        console.log('🔵 [Live Selection] Sending API request to /api/live-selections/update')
-        const response = await fetch('/api/live-selections/update', {
+        await fetch('/api/live-selections/update', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -289,19 +279,9 @@ export default function SplitForm({
             quantity
           })
         })
-
-        const result = await response.json()
-
-        if (response.ok) {
-          console.log('✅ [Live Selection] API success:', result)
-        } else {
-          console.error('❌ [Live Selection] API error:', result)
-        }
       } catch (error) {
-        console.error('❌ [Live Selection] Fetch error:', error)
+        console.error('Error updating live selection:', error)
       }
-    } else {
-      console.warn('⚠️ [Live Selection] Skipped - no guest name set')
     }
   }
 
@@ -370,9 +350,6 @@ export default function SplitForm({
       setError('Bitte wähle mindestens eine Position aus')
       return
     }
-
-    // Save friendName to localStorage
-    localStorage.setItem('friendName', friendName.trim())
 
     setLoading(true)
 
@@ -468,18 +445,6 @@ export default function SplitForm({
             const othersSelecting = liveUsers.filter(u =>
               u.guestName !== currentGuestName && u.quantity > 0
             )
-
-            // Debug log when there are live users for this item
-            if (liveUsers.length > 0 || othersSelecting.length > 0) {
-              console.log(`🎨 [Badge Render] ${item.name}:`, {
-                itemId: item.id.substring(0, 8),
-                currentGuestName,
-                liveUsersCount: liveUsers.length,
-                liveUsers: liveUsers.map(u => ({ name: u.guestName, qty: u.quantity })),
-                othersSelectingCount: othersSelecting.length,
-                othersSelecting: othersSelecting.map(u => ({ name: u.guestName, qty: u.quantity }))
-              })
-            }
 
             return (
               <div

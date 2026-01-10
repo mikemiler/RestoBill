@@ -68,37 +68,24 @@ export default async function SplitBillPage({
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-3 sm:gap-4 md:gap-6 mb-4 md:mb-8">
-          {/* Left: Receipt Image - Collapsible on mobile */}
-          <div className="md:hidden">
-            <CollapsibleReceipt imageUrl={bill.imageUrl} />
-          </div>
+        {/* Receipt Image - Collapsible */}
+        <div className="mb-4 md:mb-6">
+          <CollapsibleReceipt
+            imageUrl={bill.imageUrl}
+            restaurantName={bill.restaurantName}
+          />
+        </div>
 
-          <div className="hidden md:block bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 p-4">
-            <h2 className="text-lg font-semibold mb-3 text-gray-800 dark:text-gray-100">
-              📸 Rechnung
-            </h2>
-            <div className="relative aspect-[3/4] w-full">
-              <Image
-                src={bill.imageUrl}
-                alt="Rechnung"
-                fill
-                className="object-contain rounded-lg"
-              />
-            </div>
-          </div>
-
-          {/* Right: Selection Form */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 p-4 sm:p-5 md:p-6">
-            <SplitFormContainer
-              billId={bill.id}
-              shareToken={params.token}
-              payerName={bill.payerName}
-              paypalHandle={bill.paypalHandle}
-              items={sortedItems}
-              itemRemainingQuantities={itemRemainingQuantities}
-            />
-          </div>
+        {/* Selection Form */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 p-4 sm:p-5 md:p-6 mb-4 md:mb-8">
+          <SplitFormContainer
+            billId={bill.id}
+            shareToken={params.token}
+            payerName={bill.payerName}
+            paypalHandle={bill.paypalHandle}
+            items={sortedItems}
+            itemRemainingQuantities={itemRemainingQuantities}
+          />
         </div>
 
         <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 sm:p-4">

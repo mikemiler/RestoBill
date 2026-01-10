@@ -12,15 +12,15 @@ export default function CollapsibleReceipt({ imageUrl, restaurantName }: Collaps
   const [isOpen, setIsOpen] = useState(false)
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 mb-8">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors rounded-lg"
+        className="w-full px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors rounded-lg"
       >
-        <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100">
-          Rechnung
+        <h2 className="text-lg sm:text-xl font-semibold text-gray-800 dark:text-gray-100">
+          📸 Rechnung
           {restaurantName && (
-            <span className="text-base font-normal text-gray-600 dark:text-gray-300 ml-2">
+            <span className="text-sm sm:text-base font-normal text-gray-600 dark:text-gray-300 ml-2">
               📍 {restaurantName}
             </span>
           )}
@@ -43,8 +43,8 @@ export default function CollapsibleReceipt({ imageUrl, restaurantName }: Collaps
       </button>
 
       {isOpen && (
-        <div className="px-6 pb-6">
-          <div className="relative aspect-[3/4] w-full max-w-md mx-auto">
+        <div className="px-4 sm:px-6 pb-4 sm:pb-6">
+          <div className="relative aspect-[3/4] w-full">
             <Image
               src={imageUrl}
               alt="Rechnung"

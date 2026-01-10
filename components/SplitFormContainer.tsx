@@ -57,26 +57,19 @@ export default function SplitFormContainer({
   // Fetch all selections from API (all guests)
   const fetchSelections = async () => {
     try {
-      console.log('🔵 [Selections] Fetching all selections for bill:', billId)
       const response = await fetch(`/api/bills/${billId}/selections`)
       const data: DatabaseSelection[] = await response.json()
-      console.log('🔵 [Selections] Received selections:', data.length, 'items')
       setAllSelections(data)
       setLoading(false)
     } catch (error) {
-      console.error('🔴 [Selections] Error fetching selections:', error)
+      console.error('Error fetching selections:', error)
       setLoading(false)
     }
   }
 
   // Supabase Realtime subscription for Selection table
   useEffect(() => {
-    if (!supabase) {
-      console.log('🔴 [Realtime Selections] Supabase client not available (SSR)')
-      return
-    }
-
-    console.log('🟢 [Realtime Selections] Setting up Realtime subscription for bill:', billId)
+    if (!supabase) return
 
     // Initial fetch
     fetchSelections()
@@ -92,19 +85,15 @@ export default function SplitFormContainer({
           table: 'Selection',
           filter: `billId=eq.${billId}`
         },
-        (payload) => {
-          console.log('🟢 [Realtime Selections] Selection change detected:', payload.eventType, payload)
+        () => {
           // Refetch all selections when any change occurs
           fetchSelections()
         }
       )
-      .subscribe((status) => {
-        console.log('🟢 [Realtime Selections] Channel subscription status:', status)
-      })
+      .subscribe()
 
     // Cleanup on unmount
     return () => {
-      console.log('🟡 [Realtime Selections] Cleaning up subscription')
       if (supabase) {
         supabase.removeChannel(channel)
       }

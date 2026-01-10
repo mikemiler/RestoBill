@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { formatEUR } from '@/lib/utils'
 
 interface BillItem {
@@ -26,6 +27,8 @@ export default function SelectionSummary({
   selections,
   items,
 }: SelectionSummaryProps) {
+  const [isOpen, setIsOpen] = useState(false)
+
   if (selections.length === 0) {
     return null
   }
@@ -50,18 +53,44 @@ export default function SelectionSummary({
   }, 0)
 
   return (
-    <div className="bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-300 dark:border-blue-700 rounded-lg p-4 sm:p-5 mb-4 sm:mb-6">
-      <div className="mb-4">
-        <h3 className="font-semibold text-blue-900 dark:text-blue-300 text-base sm:text-lg flex items-center gap-2 mb-1">
-          ✅ Alle Zahlungen
-        </h3>
-        <p className="text-xs text-blue-700 dark:text-blue-400">
-          {selections.length} {selections.length === 1 ? 'Zahlung' : 'Zahlungen'} insgesamt
-        </p>
-      </div>
+    <div className="bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-300 dark:border-blue-700 rounded-lg mb-4 sm:mb-6">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-4 sm:px-5 py-4 flex items-center justify-between text-left hover:bg-blue-100/50 dark:hover:bg-blue-900/30 transition-colors rounded-t-lg"
+      >
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="font-semibold text-blue-900 dark:text-blue-300 text-base sm:text-lg">
+              ✅ Alle Zahlungen
+            </h3>
+            <span className="text-xs text-blue-700 dark:text-blue-400">
+              ({selections.length} {selections.length === 1 ? 'Zahlung' : 'Zahlungen'})
+            </span>
+          </div>
+          <p className="text-sm sm:text-base font-bold text-blue-600 dark:text-blue-400">
+            {formatEUR(grandTotal)}
+          </p>
+        </div>
+        <svg
+          className={`w-6 h-6 text-blue-600 dark:text-blue-400 transform transition-transform ${
+            isOpen ? 'rotate-180' : ''
+          }`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M19 9l-7 7-7-7"
+          />
+        </svg>
+      </button>
 
-      <div className="space-y-3">
-        {selections.map((selection, idx) => {
+      {isOpen && (
+        <div className="px-4 sm:px-5 pb-4 space-y-3">
+          {selections.map((selection, idx) => {
           // Calculate subtotal and total for this selection
           const selectionSubtotal = calculateSubtotal(selection.itemQuantities)
           const selectionTotal = selectionSubtotal + selection.tipAmount
@@ -139,38 +168,39 @@ export default function SelectionSummary({
               )}
             </div>
           )
-        })}
-      </div>
+          })}
 
-      {/* Grand Total Summary */}
-      <div className="mt-4 pt-4 border-t-2 border-blue-300 dark:border-blue-700 space-y-1.5">
-        <div className="flex justify-between text-sm">
-          <span className="text-blue-700 dark:text-blue-400">Gesamt Zwischensumme:</span>
-          <span className="font-medium text-blue-900 dark:text-blue-200">
-            {formatEUR(totalSubtotal)}
-          </span>
-        </div>
-        {totalTip > 0 && (
-          <div className="flex justify-between text-sm">
-            <span className="text-blue-700 dark:text-blue-400">Gesamt Trinkgeld:</span>
-            <span className="font-medium text-blue-900 dark:text-blue-200">
-              {formatEUR(totalTip)}
-            </span>
+          {/* Grand Total Summary */}
+          <div className="mt-4 pt-4 border-t-2 border-blue-300 dark:border-blue-700 space-y-1.5">
+            <div className="flex justify-between text-sm">
+              <span className="text-blue-700 dark:text-blue-400">Gesamt Zwischensumme:</span>
+              <span className="font-medium text-blue-900 dark:text-blue-200">
+                {formatEUR(totalSubtotal)}
+              </span>
+            </div>
+            {totalTip > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-blue-700 dark:text-blue-400">Gesamt Trinkgeld:</span>
+                <span className="font-medium text-blue-900 dark:text-blue-200">
+                  {formatEUR(totalTip)}
+                </span>
+              </div>
+            )}
+            <div className="flex justify-between text-lg sm:text-xl font-bold pt-1">
+              <span className="text-blue-900 dark:text-blue-200">Gesamtbetrag:</span>
+              <span className="text-blue-600 dark:text-blue-400">
+                {formatEUR(grandTotal)}
+              </span>
+            </div>
           </div>
-        )}
-        <div className="flex justify-between text-lg sm:text-xl font-bold pt-1">
-          <span className="text-blue-900 dark:text-blue-200">Gesamtbetrag:</span>
-          <span className="text-blue-600 dark:text-blue-400">
-            {formatEUR(grandTotal)}
-          </span>
-        </div>
-      </div>
 
-      <div className="mt-4 pt-3 border-t border-blue-300 dark:border-blue-700">
-        <p className="text-xs text-blue-700 dark:text-blue-400 text-center">
-          Weitere Positionen können unten ausgewählt und bezahlt werden
-        </p>
-      </div>
+          <div className="mt-4 pt-3 border-t border-blue-300 dark:border-blue-700">
+            <p className="text-xs text-blue-700 dark:text-blue-400 text-center">
+              Weitere Positionen können unten ausgewählt und bezahlt werden
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
