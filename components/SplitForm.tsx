@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@supabase/supabase-js'
 import { formatEUR } from '@/lib/utils'
 import { saveSelection } from '@/lib/selectionStorage'
 
@@ -11,6 +12,16 @@ interface BillItem {
   quantity: number
   pricePerUnit: number
   totalPrice: number
+}
+
+interface ActiveSelection {
+  id: string
+  billId: string
+  itemId: string
+  guestName: string
+  quantity: number
+  createdAt: string
+  expiresAt: string
 }
 
 interface SplitFormProps {
@@ -39,6 +50,8 @@ export default function SplitForm({
   const [customTip, setCustomTip] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [liveSelections, setLiveSelections] = useState<Map<string, ActiveSelection[]>>(new Map())
+  const [remainingQuantities, setRemainingQuantities] = useState<Record<string, number>>(itemRemainingQuantities)
 
   // Load friendName from localStorage on mount
   useEffect(() => {
@@ -47,6 +60,90 @@ export default function SplitForm({
       setFriendName(savedFriendName)
     }
   }, [])
+
+  // Supabase Realtime for live selections and payments
+  useEffect(() => {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
+
+    // Fetch initial live selections
+    const fetchLiveSelections = async () => {
+      try {
+        const response = await fetch(`/api/bills/${billId}/live-selections`)
+        const data: ActiveSelection[] = await response.json()
+
+        // Group by itemId
+        const grouped = new Map<string, ActiveSelection[]>()
+        data.forEach(sel => {
+          if (!grouped.has(sel.itemId)) {
+            grouped.set(sel.itemId, [])
+          }
+          grouped.get(sel.itemId)!.push(sel)
+        })
+        setLiveSelections(grouped)
+      } catch (error) {
+        console.error('Error fetching live selections:', error)
+      }
+    }
+
+    // Subscribe to realtime changes
+    const channel = supabase
+      .channel(`bill:${billId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'ActiveSelection',
+          filter: `billId=eq.${billId}`
+        },
+        () => {
+          // Refetch when any change occurs
+          fetchLiveSelections()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'Selection',
+          filter: `billId=eq.${billId}`
+        },
+        () => {
+          // When someone pays, recalculate remaining quantities
+          calculateRemainingQuantities()
+        }
+      )
+      .subscribe()
+
+    // Initial fetch
+    fetchLiveSelections()
+    calculateRemainingQuantities()
+
+    // Cleanup on unmount
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [billId])
+
+  // Cleanup live selections on unmount or page leave
+  useEffect(() => {
+    // Cleanup when user leaves page
+    const handleBeforeUnload = () => {
+      cleanupLiveSelections()
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+
+    // Cleanup on component unmount
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      cleanupLiveSelections()
+    }
+  }, [billId, friendName])
 
   // Calculate subtotal from selected items
   const subtotal = items.reduce((sum, item) => {
@@ -61,6 +158,55 @@ export default function SplitForm({
       : (subtotal * tipPercent) / 100
 
   const total = subtotal + tipAmount
+
+  // Calculate remaining quantities from selections
+  const calculateRemainingQuantities = async () => {
+    try {
+      const response = await fetch(`/api/bills/${billId}/selections`)
+      const selections = await response.json()
+
+      // Calculate claimed quantities per item
+      const claimed: Record<string, number> = {}
+      selections.forEach((selection: any) => {
+        const itemQuantities = selection.itemQuantities as Record<string, number> | null
+        if (itemQuantities) {
+          Object.entries(itemQuantities).forEach(([itemId, quantity]) => {
+            claimed[itemId] = (claimed[itemId] || 0) + quantity
+          })
+        }
+      })
+
+      // Calculate remaining for each item
+      const remaining: Record<string, number> = {}
+      items.forEach(item => {
+        const claimedQty = claimed[item.id] || 0
+        remaining[item.id] = Math.max(0, item.quantity - claimedQty)
+      })
+
+      setRemainingQuantities(remaining)
+    } catch (error) {
+      console.error('Error calculating remaining quantities:', error)
+    }
+  }
+
+  // Cleanup live selections for current user
+  const cleanupLiveSelections = async () => {
+    const currentFriendName = friendName || localStorage.getItem('friendName')
+    if (!currentFriendName || !currentFriendName.trim()) return
+
+    try {
+      await fetch('/api/live-selections/cleanup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          billId,
+          guestName: currentFriendName.trim()
+        })
+      })
+    } catch (error) {
+      console.error('Error cleaning up live selections:', error)
+    }
+  }
 
   // Generate quantity options based on remaining quantity
   function getQuantityOptions(remainingQty: number): number[] {
@@ -82,7 +228,7 @@ export default function SplitForm({
     return options
   }
 
-  function handleItemQuantityChange(itemId: string, quantity: number) {
+  async function handleItemQuantityChange(itemId: string, quantity: number) {
     setSelectedItems((prev) => {
       if (quantity === 0) {
         const newItems = { ...prev }
@@ -104,6 +250,25 @@ export default function SplitForm({
         return newInput
       })
     }
+
+    // Update live selection (only if friendName is set)
+    const currentFriendName = friendName || localStorage.getItem('friendName')
+    if (currentFriendName && currentFriendName.trim()) {
+      try {
+        await fetch('/api/live-selections/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            billId,
+            itemId,
+            guestName: currentFriendName.trim(),
+            quantity
+          })
+        })
+      } catch (error) {
+        console.error('Error updating live selection:', error)
+      }
+    }
   }
 
   function handleCustomQuantityToggle(itemId: string) {
@@ -111,21 +276,44 @@ export default function SplitForm({
     setCustomQuantityInput((prev) => ({ ...prev, [itemId]: '' }))
   }
 
-  function handleCustomQuantityInputChange(itemId: string, value: string) {
+  async function handleCustomQuantityInputChange(itemId: string, value: string) {
     setCustomQuantityInput((prev) => ({ ...prev, [itemId]: value }))
     const numValue = parseFloat(value)
-    const remainingQty = itemRemainingQuantities[itemId]
+    const remainingQty = remainingQuantities[itemId]
+
+    let finalQuantity = 0
 
     if (!isNaN(numValue) && numValue > 0) {
       // Limit to remaining quantity
       const clampedValue = Math.min(numValue, remainingQty)
       setSelectedItems((prev) => ({ ...prev, [itemId]: clampedValue }))
+      finalQuantity = clampedValue
     } else if (value === '') {
       setSelectedItems((prev) => {
         const newItems = { ...prev }
         delete newItems[itemId]
         return newItems
       })
+      finalQuantity = 0
+    }
+
+    // Update live selection
+    const currentFriendName = friendName || localStorage.getItem('friendName')
+    if (currentFriendName && currentFriendName.trim()) {
+      try {
+        await fetch('/api/live-selections/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            billId,
+            itemId,
+            guestName: currentFriendName.trim(),
+            quantity: finalQuantity
+          })
+        })
+      } catch (error) {
+        console.error('Error updating live selection:', error)
+      }
     }
   }
 
@@ -190,6 +378,9 @@ export default function SplitForm({
         createdAt: new Date().toISOString(),
       })
 
+      // Cleanup live selections before redirecting
+      await cleanupLiveSelections()
+
       if (paymentMethod === 'CASH') {
         // Redirect to confirmation page for cash payment
         router.push(`/split/${shareToken}/cash-confirmed?selectionId=${data.selectionId}&total=${data.totalAmount}`)
@@ -233,21 +424,43 @@ export default function SplitForm({
         </label>
         <div className="space-y-2">
           {items.map((item) => {
-            const remainingQty = itemRemainingQuantities[item.id] ?? item.quantity
+            const remainingQty = remainingQuantities[item.id] ?? item.quantity
             const isFullyClaimed = remainingQty === 0
             const quantityOptions = getQuantityOptions(remainingQty)
+
+            // Get live selections for this item (excluding current user and quantity 0)
+            const liveUsers = liveSelections.get(item.id) || []
+            const othersSelecting = liveUsers.filter(u =>
+              u.guestName !== friendName.trim() && u.quantity > 0
+            )
 
             return (
               <div
                 key={item.id}
-                className={`border rounded-lg p-2.5 sm:p-3 transition-colors ${
+                className={`border rounded-lg p-2.5 sm:p-3 transition-colors relative ${
                   isFullyClaimed
                     ? 'border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 opacity-60'
                     : 'border-gray-200 dark:border-gray-600 hover:border-green-300 dark:hover:border-green-500 dark:bg-gray-700/50'
                 }`}
               >
+                {/* Live Selection Badges */}
+                {othersSelecting.length > 0 && (
+                  <div className="absolute top-2 right-2 flex flex-wrap gap-1 justify-end max-w-[50%]">
+                    {othersSelecting.map((user, idx) => (
+                      <div
+                        key={idx}
+                        className="bg-blue-500 dark:bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1"
+                      >
+                        <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                        <span className="font-medium">{user.guestName}</span>
+                        <span className="opacity-90">({user.quantity}×)</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <div className="flex justify-between items-start mb-2">
-                  <div className="flex-1">
+                  <div className="flex-1 pr-2">
                     <div className="flex items-center gap-2">
                       <h3 className="font-medium text-gray-900 dark:text-gray-100 text-sm sm:text-base">
                         {item.name}

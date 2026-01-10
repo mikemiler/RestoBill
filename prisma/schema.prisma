@@ -23,8 +23,9 @@ model Bill {
   totalAmount    Float?
 
   // Relations
-  items      BillItem[]
-  selections Selection[]
+  items            BillItem[]
+  selections       Selection[]
+  activeSelections ActiveSelection[]
 
   // Public Link Token
   shareToken String @unique @default(uuid())
@@ -43,7 +44,8 @@ model BillItem {
   totalPrice   Float // quantity * pricePerUnit
 
   // Relations
-  selections Selection[]
+  selections       Selection[]
+  activeSelections ActiveSelection[]
 
   @@index([billId])
 }
@@ -80,4 +82,23 @@ model Selection {
   createdAt DateTime @default(now())
 
   @@index([billId])
+}
+
+// Live-Anzeige: Temporäre Auswahlen für Realtime-Features
+model ActiveSelection {
+  id        String   @id @default(uuid())
+  billId    String
+  itemId    String
+  guestName String
+  quantity  Float // 0, 0.5, 1, 2, etc.
+  createdAt DateTime @default(now())
+  expiresAt DateTime // Fallback-Cleanup nach z.B. 30 Minuten
+
+  bill Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
+  item BillItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  // Ein Gast kann pro Item nur einen Eintrag haben
+  @@unique([billId, itemId, guestName])
+  @@index([billId])
+  @@index([expiresAt])
 }
