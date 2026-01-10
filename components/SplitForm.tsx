@@ -518,6 +518,10 @@ export default function SplitForm({
               u.guestName !== currentGuestName && u.quantity > 0
             )
 
+            // Calculate total live selections for this item (including current user)
+            const totalLiveSelected = liveUsers.reduce((sum, u) => sum + u.quantity, 0)
+            const isOverselected = totalLiveSelected > item.quantity
+
             return (
               <div
                 key={item.id}
@@ -572,6 +576,24 @@ export default function SplitForm({
                     </p>
                   </div>
                 </div>
+
+                {/* Overselection Warning */}
+                {isOverselected && (
+                  <div className="mb-3 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <span className="text-red-600 dark:text-red-400 text-sm">⚠️</span>
+                      <div className="flex-1">
+                        <p className="text-xs sm:text-sm text-red-700 dark:text-red-400 font-medium">
+                          Zu viel ausgewählt!
+                        </p>
+                        <p className="text-xs text-red-600 dark:text-red-500 mt-0.5">
+                          {totalLiveSelected}x ausgewählt, aber nur {item.quantity}x verfügbar.
+                          Bitte koordiniert euch.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {!isFullyClaimed && (
                   <div className="space-y-2">
