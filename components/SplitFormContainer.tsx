@@ -1,10 +1,30 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { createClient } from '@supabase/supabase-js'
 import SplitForm from './SplitForm'
 import SelectionSummary from './SelectionSummary'
 import { getSelectionsByToken } from '@/lib/selectionStorage'
 import type { SavedSelection } from '@/lib/selectionStorage'
+
+// Browser-only Supabase client
+const supabase = typeof window !== 'undefined'
+  ? createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
+  : null
+
+interface DatabaseSelection {
+  id: string
+  billId: string
+  friendName: string
+  itemQuantities: Record<string, number>
+  tipAmount: number
+  paid: boolean
+  paymentMethod: 'PAYPAL' | 'CASH'
+  createdAt: string
+}
 
 interface BillItem {
   id: string
@@ -31,43 +51,86 @@ export default function SplitFormContainer({
   items,
   itemRemainingQuantities,
 }: SplitFormContainerProps) {
-  const [savedSelections, setSavedSelections] = useState<SavedSelection[]>([])
+  const [allSelections, setAllSelections] = useState<DatabaseSelection[]>([])
+  const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    // Load all saved selections for this bill on mount
-    const selections = getSelectionsByToken(shareToken)
-    setSavedSelections(selections)
-  }, [shareToken])
+  // Fetch all selections from API (all guests)
+  const fetchSelections = async () => {
+    try {
+      console.log('🔵 [Selections] Fetching all selections for bill:', billId)
+      const response = await fetch(`/api/bills/${billId}/selections`)
+      const data: DatabaseSelection[] = await response.json()
+      console.log('🔵 [Selections] Received selections:', data.length, 'items')
+      setAllSelections(data)
+      setLoading(false)
+    } catch (error) {
+      console.error('🔴 [Selections] Error fetching selections:', error)
+      setLoading(false)
+    }
+  }
 
-  // Listen for localStorage changes (when a new selection is saved)
+  // Supabase Realtime subscription for Selection table
   useEffect(() => {
-    const handleStorageChange = () => {
-      const selections = getSelectionsByToken(shareToken)
-      setSavedSelections(selections)
+    if (!supabase) {
+      console.log('🔴 [Realtime Selections] Supabase client not available (SSR)')
+      return
     }
 
-    // Listen for custom event (same tab)
-    window.addEventListener('selectionSaved', handleStorageChange)
-    // Listen for storage event (other tabs)
-    window.addEventListener('storage', handleStorageChange)
+    console.log('🟢 [Realtime Selections] Setting up Realtime subscription for bill:', billId)
 
+    // Initial fetch
+    fetchSelections()
+
+    // Subscribe to realtime changes
+    const channel = supabase
+      .channel(`bill-selections:${billId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'Selection',
+          filter: `billId=eq.${billId}`
+        },
+        (payload) => {
+          console.log('🟢 [Realtime Selections] Selection change detected:', payload.eventType, payload)
+          // Refetch all selections when any change occurs
+          fetchSelections()
+        }
+      )
+      .subscribe((status) => {
+        console.log('🟢 [Realtime Selections] Channel subscription status:', status)
+      })
+
+    // Cleanup on unmount
     return () => {
-      window.removeEventListener('selectionSaved', handleStorageChange)
-      window.removeEventListener('storage', handleStorageChange)
+      console.log('🟡 [Realtime Selections] Cleaning up subscription')
+      if (supabase) {
+        supabase.removeChannel(channel)
+      }
     }
-  }, [shareToken])
+  }, [billId])
+
+  if (loading) {
+    return (
+      <div className="text-center py-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto"></div>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">Lade Selections...</p>
+      </div>
+    )
+  }
 
   return (
     <>
-      {savedSelections.length > 0 && (
+      {allSelections.length > 0 && (
         <SelectionSummary
-          selections={savedSelections}
+          selections={allSelections}
           items={items}
         />
       )}
       <div>
         <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-gray-800 dark:text-gray-100">
-          {savedSelections.length > 0 ? 'Weitere Position auswählen' : 'Deine Auswahl'}
+          {allSelections.length > 0 ? 'Weitere Position auswählen' : 'Deine Auswahl'}
         </h2>
         <SplitForm
           billId={billId}

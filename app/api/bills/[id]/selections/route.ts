@@ -16,11 +16,12 @@ export async function GET(
       )
     }
 
-    // Get all selections for this bill
+    // Get all selections for this bill (all fields for live updates)
     const { data: selections, error } = await supabaseAdmin
       .from('Selection')
-      .select('id, itemQuantities')
+      .select('id, billId, friendName, itemQuantities, tipAmount, paid, paymentMethod, createdAt')
       .eq('billId', id)
+      .order('createdAt', { ascending: false })
 
     if (error) {
       throw error

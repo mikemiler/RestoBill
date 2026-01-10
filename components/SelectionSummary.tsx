@@ -1,7 +1,6 @@
 'use client'
 
 import { formatEUR } from '@/lib/utils'
-import { SavedSelection } from '@/lib/selectionStorage'
 
 interface BillItem {
   id: string
@@ -9,8 +8,17 @@ interface BillItem {
   pricePerUnit: number
 }
 
+interface Selection {
+  id: string
+  friendName: string
+  itemQuantities: Record<string, number>
+  tipAmount: number
+  paymentMethod: 'PAYPAL' | 'CASH'
+  createdAt: string
+}
+
 interface SelectionSummaryProps {
-  selections: SavedSelection[]
+  selections: Selection[]
   items: BillItem[]
 }
 
@@ -22,24 +30,42 @@ export default function SelectionSummary({
     return null
   }
 
-  // Calculate total amount across all selections
-  const grandTotal = selections.reduce((sum, sel) => sum + sel.totalAmount, 0)
+  // Helper function to calculate subtotal from itemQuantities
+  const calculateSubtotal = (itemQuantities: Record<string, number>) => {
+    return Object.entries(itemQuantities).reduce((sum, [itemId, quantity]) => {
+      const item = items.find(i => i.id === itemId)
+      if (!item) return sum
+      return sum + item.pricePerUnit * quantity
+    }, 0)
+  }
+
+  // Calculate totals across all selections
+  const grandTotal = selections.reduce((sum, sel) => {
+    const subtotal = calculateSubtotal(sel.itemQuantities)
+    return sum + subtotal + sel.tipAmount
+  }, 0)
   const totalTip = selections.reduce((sum, sel) => sum + sel.tipAmount, 0)
-  const totalSubtotal = selections.reduce((sum, sel) => sum + sel.subtotal, 0)
+  const totalSubtotal = selections.reduce((sum, sel) => {
+    return sum + calculateSubtotal(sel.itemQuantities)
+  }, 0)
 
   return (
     <div className="bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-300 dark:border-blue-700 rounded-lg p-4 sm:p-5 mb-4 sm:mb-6">
       <div className="mb-4">
         <h3 className="font-semibold text-blue-900 dark:text-blue-300 text-base sm:text-lg flex items-center gap-2 mb-1">
-          ✅ Deine bisherigen Zahlungen
+          ✅ Alle Zahlungen
         </h3>
         <p className="text-xs text-blue-700 dark:text-blue-400">
-          Du hast bereits {selections.length} {selections.length === 1 ? 'Zahlung' : 'Zahlungen'} getätigt
+          {selections.length} {selections.length === 1 ? 'Zahlung' : 'Zahlungen'} insgesamt
         </p>
       </div>
 
       <div className="space-y-3">
         {selections.map((selection, idx) => {
+          // Calculate subtotal and total for this selection
+          const selectionSubtotal = calculateSubtotal(selection.itemQuantities)
+          const selectionTotal = selectionSubtotal + selection.tipAmount
+
           // Map item IDs to names and calculate totals
           const selectedItemsDetails = Object.entries(selection.itemQuantities)
             .map(([itemId, quantity]) => {
@@ -61,7 +87,7 @@ export default function SelectionSummary({
 
           return (
             <div
-              key={selection.selectionId}
+              key={selection.id}
               className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-blue-200 dark:border-blue-700"
             >
               <div className="flex items-start justify-between mb-2">
@@ -85,7 +111,7 @@ export default function SelectionSummary({
                   </p>
                 </div>
                 <span className="text-base font-bold text-blue-600 dark:text-blue-400">
-                  {formatEUR(selection.totalAmount)}
+                  {formatEUR(selectionTotal)}
                 </span>
               </div>
 
@@ -142,7 +168,7 @@ export default function SelectionSummary({
 
       <div className="mt-4 pt-3 border-t border-blue-300 dark:border-blue-700">
         <p className="text-xs text-blue-700 dark:text-blue-400 text-center">
-          Du kannst weitere Positionen auswählen und bezahlen
+          Weitere Positionen können unten ausgewählt und bezahlt werden
         </p>
       </div>
     </div>
