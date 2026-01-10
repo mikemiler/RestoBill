@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase'
 import { notFound } from 'next/navigation'
-import { formatEUR } from '@/lib/utils'
+import { formatEUR, getBaseUrl } from '@/lib/utils'
+import { headers } from 'next/headers'
 import Image from 'next/image'
 import ShareLink from '@/components/ShareLink'
 
@@ -21,7 +22,9 @@ export default async function ReviewBillPage({
 
   const billItems = bill.BillItem || []
   const totalAmount = billItems.reduce((sum: number, item: any) => sum + item.totalPrice, 0)
-  const shareUrl = `${process.env.NEXT_PUBLIC_APP_URL}/split/${bill.shareToken}`
+  const headersList = await headers()
+  const baseUrl = getBaseUrl(headersList)
+  const shareUrl = `${baseUrl}/split/${bill.shareToken}`
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 p-8">
