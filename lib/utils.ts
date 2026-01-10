@@ -85,3 +85,28 @@ export function validateImageFile(
 
   return { valid: true }
 }
+
+/**
+ * Get base URL for the application
+ * Uses env variable if set, otherwise falls back to request host header
+ * @param headersList - Optional headers from next/headers (for server components)
+ * @returns Base URL (e.g., "http://localhost:3000" or "https://restobill.vercel.app")
+ */
+export function getBaseUrl(headersList?: Headers): string {
+  // First try env variable (if explicitly set)
+  if (process.env.NEXT_PUBLIC_APP_URL && process.env.NEXT_PUBLIC_APP_URL !== 'undefined') {
+    return process.env.NEXT_PUBLIC_APP_URL
+  }
+
+  // Fallback to request headers (server-side only)
+  if (headersList) {
+    const host = headersList.get('host')
+    const protocol = headersList.get('x-forwarded-proto') || 'http'
+    if (host) {
+      return `${protocol}://${host}`
+    }
+  }
+
+  // Final fallback (shouldn't happen in production)
+  return 'http://localhost:3000'
+}

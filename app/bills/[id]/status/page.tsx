@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase'
 import { notFound } from 'next/navigation'
-import { formatEUR } from '@/lib/utils'
+import { formatEUR, getBaseUrl } from '@/lib/utils'
+import { headers } from 'next/headers'
 import CopyButton from '@/components/CopyButton'
 import SelectionCard from '@/components/SelectionCard'
 import RefreshButton from '@/components/RefreshButton'
@@ -36,7 +37,9 @@ export default async function BillStatusPage({
   const ownerSelection = selections.find((s: any) => s.friendName === bill.payerName)
   const guestSelections = selections.filter((s: any) => s.friendName !== bill.payerName)
 
-  const shareUrl = `${process.env.NEXT_PUBLIC_APP_URL}/split/${bill.shareToken}`
+  const headersList = await headers()
+  const baseUrl = getBaseUrl(headersList)
+  const shareUrl = `${baseUrl}/split/${bill.shareToken}`
 
   // Calculate totals
   const totalBillAmount = billItems.reduce((sum: number, item: any) => sum + item.totalPrice, 0)
