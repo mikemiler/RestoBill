@@ -66,6 +66,11 @@ export default function SplitForm({
   const isFirstFetch = useRef(true)
   // Store previous selections snapshot for comparison
   const prevSelectionsSnapshot = useRef<Map<string, Map<string, number>>>(new Map())
+  // Track if we've restored selections yet
+  const hasRestoredSelections = useRef(false)
+
+  // LocalStorage keys for persisting selections
+  const getSelectionStorageKey = () => `billSelection_${billId}_${friendName.trim()}`
 
   // Load friendName from localStorage on mount
   useEffect(() => {
@@ -81,6 +86,54 @@ export default function SplitForm({
       localStorage.setItem('friendName', friendName.trim())
     }
   }, [friendName])
+
+  // Restore selections from localStorage when friendName is ready
+  useEffect(() => {
+    // Only run once after friendName is loaded
+    if (hasRestoredSelections.current || !friendName.trim()) {
+      return
+    }
+
+    try {
+      const storageKey = getSelectionStorageKey()
+      const savedData = localStorage.getItem(storageKey)
+
+      if (savedData) {
+        const parsed = JSON.parse(savedData)
+
+        if (parsed.selectedItems && Object.keys(parsed.selectedItems).length > 0) {
+          setSelectedItems(parsed.selectedItems || {})
+          setCustomQuantityMode(parsed.customQuantityMode || {})
+          setCustomQuantityInput(parsed.customQuantityInput || {})
+        }
+      }
+    } catch (error) {
+      console.error('Error restoring selections from localStorage:', error)
+    }
+
+    // Mark as restored
+    hasRestoredSelections.current = true
+  }, [friendName, billId])
+
+  // Save selections to localStorage whenever they change
+  useEffect(() => {
+    if (!friendName.trim() || Object.keys(selectedItems).length === 0) {
+      return
+    }
+
+    try {
+      const storageKey = getSelectionStorageKey()
+      const dataToSave = {
+        selectedItems,
+        customQuantityMode,
+        customQuantityInput,
+        timestamp: new Date().toISOString()
+      }
+      localStorage.setItem(storageKey, JSON.stringify(dataToSave))
+    } catch (error) {
+      console.error('Error saving selections to localStorage:', error)
+    }
+  }, [selectedItems, customQuantityMode, customQuantityInput, friendName, billId])
 
   // Supabase Realtime for live selections and payments
   useEffect(() => {
@@ -145,7 +198,7 @@ export default function SplitForm({
         // Update snapshot for next comparison
         prevSelectionsSnapshot.current = currentSnapshot
 
-        // Mark first fetch as complete
+        // Mark first fetch as complete (restoration now happens in separate useEffect)
         if (isFirstFetch.current) {
           isFirstFetch.current = false
         }
@@ -461,8 +514,16 @@ export default function SplitForm({
         createdAt: new Date().toISOString(),
       })
 
-      // Cleanup live selections before redirecting
+      // Cleanup live selections and localStorage before redirecting
       await cleanupLiveSelections()
+
+      // Clear localStorage selection after successful submit
+      try {
+        const storageKey = getSelectionStorageKey()
+        localStorage.removeItem(storageKey)
+      } catch (error) {
+        console.error('Error clearing selection from localStorage:', error)
+      }
 
       if (paymentMethod === 'CASH') {
         // Redirect to confirmation page for cash payment
