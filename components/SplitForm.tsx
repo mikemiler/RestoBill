@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { formatEUR } from '@/lib/utils'
@@ -60,6 +60,12 @@ export default function SplitForm({
   const [error, setError] = useState('')
   const [liveSelections, setLiveSelections] = useState<Map<string, ActiveSelection[]>>(new Map())
   const [remainingQuantities, setRemainingQuantities] = useState<Record<string, number>>(itemRemainingQuantities)
+  const [animatingItems, setAnimatingItems] = useState<Set<string>>(new Set())
+
+  // Use ref to track if this is the first fetch (doesn't trigger re-renders)
+  const isFirstFetch = useRef(true)
+  // Store previous selections snapshot for comparison
+  const prevSelectionsSnapshot = useRef<Map<string, Map<string, number>>>(new Map())
 
   // Load friendName from localStorage on mount
   useEffect(() => {
@@ -80,13 +86,71 @@ export default function SplitForm({
   useEffect(() => {
     if (!supabase) return
 
-    // Fetch initial live selections
+    // Fetch live selections and detect changes
     const fetchLiveSelections = async () => {
       try {
         const response = await fetch(`/api/bills/${billId}/live-selections`)
         const data: ActiveSelection[] = await response.json()
 
-        // Group by itemId
+        const currentGuestName = (friendName || localStorage.getItem('friendName') || '').trim()
+
+        // Create current snapshot: itemId -> guestName -> quantity
+        const currentSnapshot = new Map<string, Map<string, number>>()
+        data.forEach(sel => {
+          if (!currentSnapshot.has(sel.itemId)) {
+            currentSnapshot.set(sel.itemId, new Map())
+          }
+          currentSnapshot.get(sel.itemId)!.set(sel.guestName, sel.quantity)
+        })
+
+        // Detect changes (only after first fetch and only for other users)
+        const changedKeys = new Set<string>()
+        if (!isFirstFetch.current) {
+          // Check for new/changed selections
+          currentSnapshot.forEach((guests, itemId) => {
+            guests.forEach((quantity, guestName) => {
+              // Skip current user
+              if (guestName === currentGuestName) return
+
+              const prevGuests = prevSelectionsSnapshot.current.get(itemId)
+              const prevQuantity = prevGuests?.get(guestName)
+
+              if (prevQuantity === undefined && quantity > 0) {
+                // New selection from another user
+                changedKeys.add(`${itemId}:${guestName}`)
+              } else if (prevQuantity !== undefined && prevQuantity !== quantity) {
+                // Quantity changed
+                changedKeys.add(`${itemId}:${guestName}`)
+              }
+            })
+          })
+
+          // Check for removed selections
+          prevSelectionsSnapshot.current.forEach((guests, itemId) => {
+            guests.forEach((prevQuantity, guestName) => {
+              // Skip current user
+              if (guestName === currentGuestName) return
+
+              const currentGuests = currentSnapshot.get(itemId)
+              const currentQuantity = currentGuests?.get(guestName)
+
+              if (currentQuantity === undefined && prevQuantity > 0) {
+                // Selection removed
+                changedKeys.add(`${itemId}:${guestName}`)
+              }
+            })
+          })
+        }
+
+        // Update snapshot for next comparison
+        prevSelectionsSnapshot.current = currentSnapshot
+
+        // Mark first fetch as complete
+        if (isFirstFetch.current) {
+          isFirstFetch.current = false
+        }
+
+        // Group selections by itemId for rendering
         const grouped = new Map<string, ActiveSelection[]>()
         data.forEach(sel => {
           if (!grouped.has(sel.itemId)) {
@@ -95,6 +159,14 @@ export default function SplitForm({
           grouped.get(sel.itemId)!.push(sel)
         })
         setLiveSelections(grouped)
+
+        // Trigger animations
+        if (changedKeys.size > 0) {
+          setAnimatingItems(changedKeys)
+          setTimeout(() => {
+            setAnimatingItems(new Set())
+          }, 1000)
+        }
       } catch (error) {
         console.error('Error fetching live selections:', error)
       }
@@ -458,16 +530,22 @@ export default function SplitForm({
                 {/* Live Selection Badges */}
                 {othersSelecting.length > 0 && (
                   <div className="absolute top-2 right-2 flex flex-wrap gap-1 justify-end max-w-[50%]">
-                    {othersSelecting.map((user, idx) => (
-                      <div
-                        key={idx}
-                        className="bg-blue-500 dark:bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1"
-                      >
-                        <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-                        <span className="font-medium">{user.guestName}</span>
-                        <span className="opacity-90">({user.quantity}×)</span>
-                      </div>
-                    ))}
+                    {othersSelecting.map((user, idx) => {
+                      // Animation should only show for other guests, not for the user who made the change
+                      const shouldAnimate = animatingItems.has(`${item.id}:${user.guestName}`)
+                      return (
+                        <div
+                          key={idx}
+                          className={`bg-blue-500 dark:bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                            shouldAnimate ? 'animate-bounce-subtle' : ''
+                          }`}
+                        >
+                          <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                          <span className="font-medium">{user.guestName}</span>
+                          <span className="opacity-90">({user.quantity}×)</span>
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
 
