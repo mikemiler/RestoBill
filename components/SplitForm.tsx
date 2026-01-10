@@ -582,6 +582,7 @@ export default function SplitForm({
             // Calculate total live selections for this item (including current user)
             const totalLiveSelected = liveUsers.reduce((sum, u) => sum + u.quantity, 0)
             const isOverselected = totalLiveSelected > item.quantity
+            const isFullyMarked = totalLiveSelected === item.quantity && totalLiveSelected > 0
 
             return (
               <div
@@ -637,6 +638,23 @@ export default function SplitForm({
                     </p>
                   </div>
                 </div>
+
+                {/* Fully Marked Success */}
+                {isFullyMarked && !isOverselected && (
+                  <div className="mb-3 p-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <span className="text-green-600 dark:text-green-400 text-sm">✓</span>
+                      <div className="flex-1">
+                        <p className="text-xs sm:text-sm text-green-700 dark:text-green-400 font-medium">
+                          Vollständig markiert!
+                        </p>
+                        <p className="text-xs text-green-600 dark:text-green-500 mt-0.5">
+                          Diese Position ist komplett aufgeteilt ({totalLiveSelected}x von {item.quantity}x).
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Overselection Warning */}
                 {isOverselected && (
