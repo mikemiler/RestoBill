@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 
-export default function PaymentRedirectPage() {
+function PaymentRedirectContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const [countdown, setCountdown] = useState(3)
@@ -79,5 +79,22 @@ export default function PaymentRedirectPage() {
         </button>
       </div>
     </div>
+  )
+}
+
+export default function PaymentRedirectPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 p-4">
+        <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8 text-center">
+          <div className="h-16 w-16 mx-auto border-4 border-blue-200 dark:border-blue-900 border-t-blue-600 dark:border-t-blue-400 rounded-full animate-spin"></div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mt-6">
+            Laden...
+          </h1>
+        </div>
+      </div>
+    }>
+      <PaymentRedirectContent />
+    </Suspense>
   )
 }
