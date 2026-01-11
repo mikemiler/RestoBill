@@ -34,8 +34,10 @@ export function generatePayPalUrl(
   // Round to 2 decimal places
   const roundedAmount = Math.round(amount * 100) / 100
 
-  // PayPal.me URL format: https://paypal.me/username/amount
-  return `https://paypal.me/${paypalHandle}/${roundedAmount}?locale.x=de_DE`
+  // PayPal.me URL format with query parameters for better mobile app compatibility
+  // Using /send endpoint with amount and currencyCode parameters works better in mobile app
+  // than path-based format (paypal.me/username/amount)
+  return `https://www.paypal.me/${paypalHandle}/send?amount=${roundedAmount}&currencyCode=EUR&locale.x=de_DE`
 }
 
 /**

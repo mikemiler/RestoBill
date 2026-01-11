@@ -716,7 +716,7 @@ export default function SplitForm({
         router.push(`/split/${shareToken}/cash-confirmed?selectionId=${data.selectionId}&total=${data.totalAmount}`)
       } else {
         // Validate PayPal URL before redirect
-        if (!data.paypalUrl || !data.paypalUrl.startsWith('https://paypal.me/')) {
+        if (!data.paypalUrl || !(data.paypalUrl.startsWith('https://paypal.me/') || data.paypalUrl.startsWith('https://www.paypal.me/'))) {
           throw new Error('Ungültige PayPal URL')
         }
         // Redirect to PayPal
