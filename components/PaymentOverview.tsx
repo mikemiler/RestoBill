@@ -195,52 +195,51 @@ export default function PaymentOverview({
           </p>
         </div>
 
-        {/* Paid (Selection) */}
+        {/* Payment Overview - Combined */}
         <div className="bg-white dark:bg-gray-800 rounded-lg p-3 sm:p-4 shadow-sm">
-          <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-1">
-            Bezahlt
+          <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-2">
+            Zahlungsstand
           </p>
-          <p className="text-xl sm:text-2xl font-bold text-green-600 dark:text-green-400">
-            {formatEUR(paidTotal)}
-          </p>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            {selections.length} {selections.length === 1 ? 'Gast' : 'Gäste'}
-          </p>
-        </div>
 
-        {/* Total Bill + Remaining */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg p-3 sm:p-4 shadow-sm">
-          <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-1">
-            Gesamtbetrag
-          </p>
-          <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">
-            {formatEUR(totalBillAmount)}
-          </p>
-          <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Noch offen:
-            </p>
-            <p className={`text-sm font-semibold ${
+          {/* Gesamtbetrag */}
+          <div className="flex justify-between items-center mb-1.5">
+            <span className="text-xs text-gray-600 dark:text-gray-400">Gesamtbetrag:</span>
+            <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+              {formatEUR(totalBillAmount)}
+            </span>
+          </div>
+
+          {/* Bezahlt */}
+          <div className="flex justify-between items-center mb-1.5">
+            <span className="text-xs text-gray-600 dark:text-gray-400">
+              Bezahlt ({selections.length} {selections.length === 1 ? 'Gast' : 'Gäste'}):
+            </span>
+            <span className="text-sm font-semibold text-green-600 dark:text-green-400">
+              {formatEUR(paidTotal)}
+            </span>
+          </div>
+
+          {/* Noch offen */}
+          <div className="flex justify-between items-center pt-2 mb-2 border-t border-gray-200 dark:border-gray-700">
+            <span className="text-xs font-medium text-gray-700 dark:text-gray-300">Noch offen:</span>
+            <span className={`text-base font-bold ${
               remaining <= 0
                 ? 'text-green-600 dark:text-green-400'
                 : 'text-orange-600 dark:text-orange-400'
             }`}>
               {formatEUR(Math.max(0, remaining))}
-            </p>
+            </span>
           </div>
-        </div>
 
-        {/* Tips */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg p-3 sm:p-4 shadow-sm">
-          <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-1">
-            Trinkgeld
-          </p>
-          <p className="text-xl sm:text-2xl font-bold text-purple-600 dark:text-purple-400">
-            {formatEUR(totalTips)}
-          </p>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            Bereits bezahlt
-          </p>
+          {/* Trinkgeld */}
+          {totalTips > 0 && (
+            <div className="flex justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-700">
+              <span className="text-xs text-gray-600 dark:text-gray-400">+ Trinkgeld:</span>
+              <span className="text-sm font-semibold text-purple-600 dark:text-purple-400">
+                {formatEUR(totalTips)}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
