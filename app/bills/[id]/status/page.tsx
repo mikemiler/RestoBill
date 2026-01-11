@@ -7,6 +7,8 @@ import SplitFormContainer from '@/components/SplitFormContainer'
 import CollapsibleReceipt from '@/components/CollapsibleReceipt'
 import BillAutoSave from '@/components/BillAutoSave'
 import CopyButton from '@/components/CopyButton'
+import PaymentOverview from '@/components/PaymentOverview'
+import QRCode from '@/components/QRCode'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -26,10 +28,10 @@ export default async function BillStatusPage({
     notFound()
   }
 
-  // Fetch all selections for this bill to calculate remaining quantities
+  // Fetch all selections for this bill (with all fields for payment overview)
   const { data: selections } = await supabaseAdmin
     .from('Selection')
-    .select('itemQuantities')
+    .select('id, friendName, itemQuantities, tipAmount, paid')
     .eq('billId', bill.id)
 
   // Calculate remaining quantities for each item
@@ -102,7 +104,7 @@ export default async function BillStatusPage({
             <p className="text-sm sm:text-base text-gray-600 dark:text-gray-300 mb-3 sm:mb-4">
               Teile diesen Link mit deinen Freunden, damit sie ihre Positionen auswählen können
             </p>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 mb-4">
               <input
                 type="text"
                 value={shareUrl}
@@ -111,6 +113,24 @@ export default async function BillStatusPage({
               />
               <CopyButton text={shareUrl} />
             </div>
+            <div className="share-qr-section">
+              <p className="text-sm text-gray-600 dark:text-gray-300 mb-3 text-center">
+                Oder lasse deine Freunde den QR-Code scannen
+              </p>
+              <div className="share-qr-wrapper">
+                <QRCode value={shareUrl} size={180} />
+              </div>
+            </div>
+          </div>
+
+          {/* Payment Overview */}
+          <div className="mb-4 md:mb-6">
+            <PaymentOverview
+              billId={bill.id}
+              totalBillAmount={totalBillAmount}
+              selections={selections || []}
+              items={sortedItems}
+            />
           </div>
 
           {/* Receipt Image - Collapsible */}

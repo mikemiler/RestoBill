@@ -1,0 +1,269 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { createClient } from '@supabase/supabase-js'
+import { formatEUR } from '@/lib/utils'
+
+// Browser-only Supabase client
+const supabase = typeof window !== 'undefined'
+  ? createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
+  : null
+
+interface BillItem {
+  id: string
+  pricePerUnit: number
+}
+
+interface Selection {
+  id: string
+  friendName: string
+  itemQuantities: Record<string, number>
+  tipAmount: number
+  paid: boolean
+}
+
+interface ActiveSelection {
+  id: string
+  itemId: string
+  guestName: string
+  quantity: number
+}
+
+interface PaymentOverviewProps {
+  billId: string
+  totalBillAmount: number
+  selections: Selection[]
+  items: BillItem[]
+}
+
+export default function PaymentOverview({
+  billId,
+  totalBillAmount,
+  selections: initialSelections,
+  items,
+}: PaymentOverviewProps) {
+  const [selections, setSelections] = useState<Selection[]>(initialSelections)
+  const [activeSelections, setActiveSelections] = useState<ActiveSelection[]>([])
+
+  // Fetch selections from API
+  const fetchSelections = async () => {
+    try {
+      const response = await fetch(`/api/bills/${billId}/selections`)
+      const data = await response.json()
+      setSelections(data)
+    } catch (error) {
+      console.error('Error fetching selections for payment overview:', error)
+    }
+  }
+
+  // Fetch active selections (live selections)
+  const fetchActiveSelections = async () => {
+    try {
+      const response = await fetch(`/api/bills/${billId}/live-selections`)
+      const data = await response.json()
+      setActiveSelections(data)
+    } catch (error) {
+      console.error('Error fetching active selections for payment overview:', error)
+    }
+  }
+
+  // Supabase Realtime subscription for Selection and ActiveSelection changes
+  useEffect(() => {
+    if (!supabase) return
+
+    // Initial fetch
+    fetchActiveSelections()
+
+    // Subscribe to realtime changes
+    const channel = supabase
+      .channel(`payment-overview:${billId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'Selection',
+          filter: `billId=eq.${billId}`
+        },
+        () => {
+          // Refetch selections when any change occurs
+          fetchSelections()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'ActiveSelection',
+          filter: `billId=eq.${billId}`
+        },
+        () => {
+          // Refetch active selections when any change occurs
+          fetchActiveSelections()
+        }
+      )
+      .subscribe()
+
+    // Cleanup on unmount
+    return () => {
+      if (supabase) {
+        supabase.removeChannel(channel)
+      }
+    }
+  }, [billId])
+
+  // Calculate total amount from all selections (items + tip)
+  const calculateSelectionTotal = (selection: Selection): number => {
+    let itemsTotal = 0
+
+    // Calculate items total
+    Object.entries(selection.itemQuantities).forEach(([itemId, quantity]) => {
+      const item = items.find((i) => i.id === itemId)
+      if (item) {
+        itemsTotal += item.pricePerUnit * quantity
+      }
+    })
+
+    return itemsTotal + selection.tipAmount
+  }
+
+  // Calculate total from active selections (live)
+  const calculateActiveSelectionsTotal = (): number => {
+    let total = 0
+
+    activeSelections.forEach((activeSel) => {
+      const item = items.find((i) => i.id === activeSel.itemId)
+      if (item) {
+        total += item.pricePerUnit * activeSel.quantity
+      }
+    })
+
+    return total
+  }
+
+  // Total from live selections (ActiveSelection)
+  const liveSelectedTotal = calculateActiveSelectionsTotal()
+
+  // Total from paid selections (Selection after bezahlen button)
+  const paidTotal = selections.reduce(
+    (sum, sel) => sum + calculateSelectionTotal(sel),
+    0
+  )
+
+  // Remaining amount
+  const remaining = totalBillAmount - paidTotal
+
+  // Total tips from paid selections
+  const totalTips = selections.reduce((sum, sel) => sum + sel.tipAmount, 0)
+
+  // Progress percentage (based on paid selections)
+  const progressPercent = totalBillAmount > 0
+    ? Math.min(100, (paidTotal / totalBillAmount) * 100)
+    : 0
+
+  return (
+    <div className="bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-lg p-4 sm:p-5 md:p-6 border border-purple-200 dark:border-purple-800">
+      <h2 className="text-lg sm:text-xl font-semibold mb-4 text-gray-800 dark:text-gray-100 flex items-center gap-2">
+        💰 Zahlungsübersicht
+      </h2>
+
+      {/* Main Stats Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4">
+        {/* Live Selected (ActiveSelection) */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg p-3 sm:p-4 shadow-sm">
+          <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-1 flex items-center gap-1">
+            Ausgewählt
+            <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" title="Live"></span>
+          </p>
+          <p className="text-xl sm:text-2xl font-bold text-blue-600 dark:text-blue-400">
+            {formatEUR(liveSelectedTotal)}
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Live Auswahl
+          </p>
+        </div>
+
+        {/* Paid (Selection) */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg p-3 sm:p-4 shadow-sm">
+          <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-1">
+            Bezahlt
+          </p>
+          <p className="text-xl sm:text-2xl font-bold text-green-600 dark:text-green-400">
+            {formatEUR(paidTotal)}
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            {selections.length} {selections.length === 1 ? 'Gast' : 'Gäste'}
+          </p>
+        </div>
+
+        {/* Total Bill + Remaining */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg p-3 sm:p-4 shadow-sm">
+          <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-1">
+            Gesamtbetrag
+          </p>
+          <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">
+            {formatEUR(totalBillAmount)}
+          </p>
+          <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Noch offen:
+            </p>
+            <p className={`text-sm font-semibold ${
+              remaining <= 0
+                ? 'text-green-600 dark:text-green-400'
+                : 'text-orange-600 dark:text-orange-400'
+            }`}>
+              {formatEUR(Math.max(0, remaining))}
+            </p>
+          </div>
+        </div>
+
+        {/* Tips */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg p-3 sm:p-4 shadow-sm">
+          <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-1">
+            Trinkgeld
+          </p>
+          <p className="text-xl sm:text-2xl font-bold text-purple-600 dark:text-purple-400">
+            {formatEUR(totalTips)}
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Bereits bezahlt
+          </p>
+        </div>
+      </div>
+
+      {/* Progress Bar */}
+      <div className="mb-3">
+        <div className="flex justify-between text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-2">
+          <span>Fortschritt</span>
+          <span>{Math.round(progressPercent)}%</span>
+        </div>
+        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
+          <div
+            className="bg-gradient-to-r from-purple-500 to-blue-500 h-full transition-all duration-500 ease-out"
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Status Message */}
+      {remaining <= 0 ? (
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3 text-center">
+          <p className="text-sm sm:text-base text-green-700 dark:text-green-400 font-medium">
+            ✓ Alle Positionen wurden bezahlt!
+          </p>
+        </div>
+      ) : (
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+          <p className="text-xs sm:text-sm text-blue-700 dark:text-blue-400">
+            <strong>Hinweis:</strong> Gäste können ihre Auswahl über den Share-Link treffen.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}

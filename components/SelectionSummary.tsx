@@ -122,15 +122,15 @@ export default function SelectionSummary({
               <div className="flex items-start justify-between mb-2">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-semibold text-blue-700 dark:text-blue-400">
-                      Zahlung #{selections.length - idx}
+                    <span className="text-sm font-semibold text-blue-900 dark:text-blue-200">
+                      {selection.friendName}
                     </span>
                     <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 text-xs font-medium rounded">
                       {selection.paymentMethod === 'CASH' ? '💵 Bar' : '💳 PayPal'}
                     </span>
                   </div>
                   <p className="text-xs text-gray-600 dark:text-gray-400">
-                    {selection.friendName} • {new Date(selection.createdAt).toLocaleString('de-DE', {
+                    {new Date(selection.createdAt).toLocaleString('de-DE', {
                       day: '2-digit',
                       month: '2-digit',
                       year: 'numeric',

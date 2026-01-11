@@ -910,7 +910,7 @@ export default function SplitForm({
                           </h3>
                           {isFullyClaimed && (
                             <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-xs font-medium rounded">
-                              Vergeben
+                              Bereits bezahlt
                             </span>
                           )}
                         </div>

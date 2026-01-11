@@ -288,3 +288,34 @@ input {
   border-radius: 0.75rem;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 }
+
+/* QR Code Styles */
+.share-qr-section {
+  border-top: 1px solid var(--border-color);
+  padding-top: 1rem;
+  margin-top: 0.5rem;
+}
+
+.share-qr-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1rem;
+  background: white;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border-color);
+  max-width: fit-content;
+  margin: 0 auto;
+}
+
+.qr-code-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.qr-code {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
