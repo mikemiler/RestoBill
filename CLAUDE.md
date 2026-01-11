@@ -19,6 +19,8 @@ This file should always represent the current state of the project.
 
 **Tech Stack:** Next.js 14 (App Router), TypeScript, Prisma, Supabase (PostgreSQL + Storage), Claude Vision API, Tailwind CSS
 
+**Deployment:** Vercel (ALL code must be Vercel-compatible - see Deployment Notes section)
+
 ## Core Principle: KISS (Keep It Simple, Stupid)
 
 - Favor simplicity over complexity
@@ -366,11 +368,59 @@ prisma/
 
 ## Deployment Notes
 
-**Vercel:**
+### Vercel Deployment
+
+**Platform:** This project is deployed on Vercel and ALL code must be Vercel-compatible.
+
+**Environment Setup:**
 - Framework preset: Next.js
 - Add all environment variables from `.env.local`
 - Update `NEXT_PUBLIC_APP_URL` to Vercel domain
 - Run `npx prisma db push` after first deploy
+
+**Vercel-Specific Requirements:**
+
+1. **Suspense Boundaries (Critical)**
+   - `useSearchParams()` MUST be wrapped in `<Suspense>` boundary
+   - `usePathname()` and `useRouter()` from `next/navigation` may also require Suspense
+   - Example pattern:
+     ```tsx
+     function Content() {
+       const searchParams = useSearchParams() // OK here
+       return <div>...</div>
+     }
+
+     export default function Page() {
+       return (
+         <Suspense fallback={<Loading />}>
+           <Content />
+         </Suspense>
+       )
+     }
+     ```
+
+2. **Static vs Dynamic Routes**
+   - Server components are pre-rendered by default
+   - Use `'use client'` for client-side interactivity
+   - Dynamic routes (with params/searchParams) need proper handling
+   - Avoid mixing static generation with dynamic runtime features
+
+3. **Serverless Function Limits**
+   - API routes run as serverless functions
+   - 10-second timeout on Hobby plan, 60s on Pro
+   - Keep API routes fast and efficient
+   - No long-running processes
+
+4. **Dependencies**
+   - All imports must be resolvable at build time
+   - Avoid optional dependencies that may not install
+   - Check package.json for missing dependencies before deploying
+
+5. **Build Errors**
+   - Fix ALL TypeScript errors before deployment
+   - Test build locally: `npm run build`
+   - Check for missing Suspense boundaries
+   - Validate all environment variables are set
 
 **Database:**
 - Supabase provides PostgreSQL (free tier: 500MB)
