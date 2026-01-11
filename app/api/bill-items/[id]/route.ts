@@ -78,8 +78,7 @@ export async function PUT(
         name: name.trim(),
         quantity,
         pricePerUnit,
-        totalPrice,
-        updatedAt: new Date().toISOString()
+        totalPrice
       })
       .eq('id', id)
       .select()

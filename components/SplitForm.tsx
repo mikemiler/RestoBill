@@ -64,6 +64,21 @@ export default function SplitForm({
   const [remainingQuantities, setRemainingQuantities] = useState<Record<string, number>>(itemRemainingQuantities)
   const [animatingItems, setAnimatingItems] = useState<Set<string>>(new Set())
 
+  // Item management states (Owner only)
+  const [openMenuItemId, setOpenMenuItemId] = useState<string | null>(null)
+  const [editingItemId, setEditingItemId] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState<{
+    name: string
+    quantity: number
+    pricePerUnit: number
+  } | null>(null)
+  const [addingNew, setAddingNew] = useState(false)
+  const [newItemForm, setNewItemForm] = useState({
+    name: '',
+    quantity: 1,
+    pricePerUnit: 0
+  })
+
   // Use ref to track if this is the first fetch (doesn't trigger re-renders)
   const isFirstFetch = useRef(true)
   // Store previous selections snapshot for comparison
@@ -92,6 +107,22 @@ export default function SplitForm({
       localStorage.setItem('friendName', friendName.trim())
     }
   }, [friendName])
+
+  // Close dropdown menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (openMenuItemId) {
+        setOpenMenuItemId(null)
+      }
+    }
+
+    if (openMenuItemId) {
+      document.addEventListener('click', handleClickOutside)
+      return () => {
+        document.removeEventListener('click', handleClickOutside)
+      }
+    }
+  }, [openMenuItemId])
 
   // Restore selections from localStorage when friendName is ready
   useEffect(() => {
@@ -353,6 +384,138 @@ export default function SplitForm({
     }
   }
 
+  // Item management functions (Owner only)
+  function startEditItem(item: BillItem) {
+    setEditingItemId(item.id)
+    setEditForm({
+      name: item.name,
+      quantity: item.quantity,
+      pricePerUnit: item.pricePerUnit
+    })
+    setOpenMenuItemId(null)
+    setError('')
+  }
+
+  function cancelEditItem() {
+    setEditingItemId(null)
+    setEditForm(null)
+    setError('')
+  }
+
+  async function saveEditItem(itemId: string) {
+    if (!editForm) return
+
+    setLoading(true)
+    setError('')
+
+    try {
+      const response = await fetch(`/api/bill-items/${itemId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(editForm),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Fehler beim Speichern')
+      }
+
+      setEditingItemId(null)
+      setEditForm(null)
+
+      // Broadcast item change to all clients
+      if (supabase) {
+        await supabase.channel(`bill-updates:${billId}`).send({
+          type: 'broadcast',
+          event: 'item-changed',
+          payload: { action: 'updated', itemId }
+        })
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ein Fehler ist aufgetreten')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function deleteItem(itemId: string) {
+    if (!confirm('Möchtest du diese Position wirklich löschen?')) {
+      return
+    }
+
+    setOpenMenuItemId(null)
+    setLoading(true)
+    setError('')
+
+    try {
+      const response = await fetch(`/api/bill-items/${itemId}`, {
+        method: 'DELETE',
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Fehler beim Löschen')
+      }
+
+      // Broadcast item change to all clients
+      if (supabase) {
+        await supabase.channel(`bill-updates:${billId}`).send({
+          type: 'broadcast',
+          event: 'item-changed',
+          payload: { action: 'deleted', itemId }
+        })
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ein Fehler ist aufgetreten')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function addNewItem() {
+    setLoading(true)
+    setError('')
+
+    try {
+      const response = await fetch('/api/bill-items/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          billId,
+          ...newItemForm
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Fehler beim Erstellen')
+      }
+
+      setAddingNew(false)
+      setNewItemForm({ name: '', quantity: 1, pricePerUnit: 0 })
+
+      // Broadcast item change to all clients
+      if (supabase) {
+        await supabase.channel(`bill-updates:${billId}`).send({
+          type: 'broadcast',
+          event: 'item-changed',
+          payload: { action: 'created', itemId: data.item?.id }
+        })
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ein Fehler ist aufgetreten')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // Generate quantity options based on remaining quantity
   function getQuantityOptions(remainingQty: number): number[] {
     if (remainingQty === 0) return []
@@ -540,7 +703,6 @@ export default function SplitForm({
         setCustomTip('')
         setLoading(false)
         // The SelectionSummary will automatically update via Supabase realtime
-        router.refresh()
       } else if (paymentMethod === 'CASH') {
         // Redirect to confirmation page for cash payment
         router.push(`/split/${shareToken}/cash-confirmed?selectionId=${data.selectionId}&total=${data.totalAmount}`)
@@ -602,6 +764,8 @@ export default function SplitForm({
             const isOverselected = totalLiveSelected > item.quantity
             const isFullyMarked = totalLiveSelected === item.quantity && totalLiveSelected > 0
 
+            const isEditingThis = editingItemId === item.id
+
             return (
               <div
                 key={item.id}
@@ -611,54 +775,161 @@ export default function SplitForm({
                     : 'border-gray-200 dark:border-gray-600 hover:border-green-300 dark:hover:border-green-500 dark:bg-gray-700/50'
                 }`}
               >
-                {/* Live Selection Badges */}
-                {othersSelecting.length > 0 && (
-                  <div className="absolute top-2 right-2 flex flex-wrap gap-1 justify-end max-w-[50%]">
-                    {othersSelecting.map((user, idx) => {
-                      // Animation should only show for other guests, not for the user who made the change
-                      const shouldAnimate = animatingItems.has(`${item.id}:${user.guestName}`)
-                      return (
-                        <div
-                          key={idx}
-                          className={`bg-blue-500 dark:bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${
-                            shouldAnimate ? 'animate-bounce-subtle' : ''
-                          }`}
-                        >
-                          <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-                          <span className="font-medium">{user.guestName}</span>
-                          <span className="opacity-90">({user.quantity}×)</span>
-                        </div>
-                      )
-                    })}
+                {isEditingThis && editForm ? (
+                  // Edit Mode
+                  <div className="space-y-3">
+                    <h3 className="font-medium text-gray-900 dark:text-gray-100 text-sm">Position bearbeiten</h3>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Bezeichnung
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.name}
+                        onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                        className="w-full px-2.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 focus:border-transparent dark:bg-gray-700 dark:text-gray-100"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Anzahl
+                        </label>
+                        <input
+                          type="number"
+                          step="0.25"
+                          min="0.25"
+                          value={editForm.quantity}
+                          onChange={(e) => setEditForm({ ...editForm, quantity: parseFloat(e.target.value) || 0 })}
+                          className="w-full px-2.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 focus:border-transparent dark:bg-gray-700 dark:text-gray-100"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Preis/Einheit
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={editForm.pricePerUnit}
+                          onChange={(e) => setEditForm({ ...editForm, pricePerUnit: parseFloat(e.target.value) || 0 })}
+                          className="w-full px-2.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 focus:border-transparent dark:bg-gray-700 dark:text-gray-100"
+                        />
+                      </div>
+                    </div>
+                    <div className="text-xs text-gray-600 dark:text-gray-300">
+                      Gesamtpreis: {formatEUR(editForm.quantity * editForm.pricePerUnit)}
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => saveEditItem(item.id)}
+                        disabled={loading}
+                        className="flex-1 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 dark:bg-purple-500 dark:hover:bg-purple-600 dark:disabled:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+                      >
+                        {loading ? 'Speichern...' : 'Speichern'}
+                      </button>
+                      <button
+                        onClick={cancelEditItem}
+                        disabled={loading}
+                        className="flex-1 px-3 py-1.5 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 dark:bg-gray-600 dark:hover:bg-gray-500 dark:disabled:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg text-sm font-medium transition-colors"
+                      >
+                        Abbrechen
+                      </button>
+                    </div>
                   </div>
+                ) : (
+                  <>
+                    {/* Menu Button (Owner only) */}
+                    {isOwner && (
+                      <div className="absolute top-2 right-2 z-10" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setOpenMenuItemId(openMenuItemId === item.id ? null : item.id)
+                          }}
+                          className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                          title="Aktionen"
+                        >
+                          <svg className="w-5 h-5 text-gray-600 dark:text-gray-300" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                          </svg>
+                        </button>
+                        {openMenuItemId === item.id && (
+                          <div className="absolute right-0 mt-1 w-40 bg-white dark:bg-gray-700 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 overflow-hidden z-20">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                startEditItem(item)
+                              }}
+                              className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                            >
+                              ✏️ Bearbeiten
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                deleteItem(item.id)
+                              }}
+                              className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                            >
+                              🗑️ Löschen
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Live Selection Badges */}
+                    {othersSelecting.length > 0 && (
+                      <div className={`absolute top-2 ${isOwner ? 'right-10' : 'right-2'} flex flex-wrap gap-1 justify-end max-w-[50%]`}>
+                        {othersSelecting.map((user, idx) => {
+                          // Animation should only show for other guests, not for the user who made the change
+                          const shouldAnimate = animatingItems.has(`${item.id}:${user.guestName}`)
+                          return (
+                            <div
+                              key={idx}
+                              className={`bg-blue-500 dark:bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                                shouldAnimate ? 'animate-bounce-subtle' : ''
+                              }`}
+                            >
+                              <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                              <span className="font-medium">{user.guestName}</span>
+                              <span className="opacity-90">({user.quantity}×)</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex-1 pr-2">
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-medium text-gray-900 dark:text-gray-100 text-sm sm:text-base">
+                            {item.name}
+                          </h3>
+                          {isFullyClaimed && (
+                            <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-xs font-medium rounded">
+                              Vergeben
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
+                          {item.quantity}x à {formatEUR(item.pricePerUnit)} ={' '}
+                          {formatEUR(item.totalPrice)}
+                          {!isFullyClaimed && remainingQty < item.quantity && (
+                            <span className="ml-2 text-orange-600 dark:text-orange-400 font-medium">
+                              (noch {remainingQty}x verfügbar)
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  </>
                 )}
 
-                <div className="flex justify-between items-start mb-2">
-                  <div className="flex-1 pr-2">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-medium text-gray-900 dark:text-gray-100 text-sm sm:text-base">
-                        {item.name}
-                      </h3>
-                      {isFullyClaimed && (
-                        <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-xs font-medium rounded">
-                          Vergeben
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
-                      {item.quantity}x à {formatEUR(item.pricePerUnit)} ={' '}
-                      {formatEUR(item.totalPrice)}
-                      {!isFullyClaimed && remainingQty < item.quantity && (
-                        <span className="ml-2 text-orange-600 dark:text-orange-400 font-medium">
-                          (noch {remainingQty}x verfügbar)
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                </div>
-
                 {/* Fully Marked Success */}
-                {isFullyMarked && !isOverselected && (
+                {!isEditingThis && isFullyMarked && !isOverselected && (
                   <div className="mb-3 p-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
                     <div className="flex items-start gap-2">
                       <span className="text-green-600 dark:text-green-400 text-sm">✓</span>
@@ -675,7 +946,7 @@ export default function SplitForm({
                 )}
 
                 {/* Overselection Warning */}
-                {isOverselected && (
+                {!isEditingThis && isOverselected && (
                   <div className="mb-3 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
                     <div className="flex items-start gap-2">
                       <span className="text-red-600 dark:text-red-400 text-sm">⚠️</span>
@@ -692,7 +963,7 @@ export default function SplitForm({
                   </div>
                 )}
 
-                {!isFullyClaimed && (
+                {!isFullyClaimed && !isEditingThis && (
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 w-full sm:w-auto">
@@ -834,6 +1105,87 @@ export default function SplitForm({
               </div>
             )
           })}
+
+          {/* Add New Item (Owner only) */}
+          {isOwner && (
+            addingNew ? (
+              <div className="border-2 border-dashed border-purple-300 dark:border-purple-600 rounded-lg p-3 bg-purple-50 dark:bg-purple-900/20">
+                <h3 className="font-medium text-gray-900 dark:text-gray-100 text-sm mb-3">Neue Position hinzufügen</h3>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Bezeichnung
+                    </label>
+                    <input
+                      type="text"
+                      value={newItemForm.name}
+                      onChange={(e) => setNewItemForm({ ...newItemForm, name: e.target.value })}
+                      placeholder="z.B. Pizza Margherita"
+                      className="w-full px-2.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 focus:border-transparent dark:bg-gray-700 dark:text-gray-100"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Anzahl
+                      </label>
+                      <input
+                        type="number"
+                        step="0.25"
+                        min="0.25"
+                        value={newItemForm.quantity}
+                        onChange={(e) => setNewItemForm({ ...newItemForm, quantity: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-2.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 focus:border-transparent dark:bg-gray-700 dark:text-gray-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Preis pro Einheit
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={newItemForm.pricePerUnit}
+                        onChange={(e) => setNewItemForm({ ...newItemForm, pricePerUnit: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-2.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 focus:border-transparent dark:bg-gray-700 dark:text-gray-100"
+                      />
+                    </div>
+                  </div>
+                  <div className="text-xs text-gray-600 dark:text-gray-300">
+                    Gesamtpreis: {formatEUR(newItemForm.quantity * newItemForm.pricePerUnit)}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={addNewItem}
+                      disabled={loading || !newItemForm.name.trim()}
+                      className="flex-1 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 dark:bg-purple-500 dark:hover:bg-purple-600 dark:disabled:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+                    >
+                      {loading ? 'Hinzufügen...' : 'Hinzufügen'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setAddingNew(false)
+                        setNewItemForm({ name: '', quantity: 1, pricePerUnit: 0 })
+                        setError('')
+                      }}
+                      disabled={loading}
+                      className="flex-1 px-3 py-1.5 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 dark:bg-gray-600 dark:hover:bg-gray-500 dark:disabled:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg text-sm font-medium transition-colors"
+                    >
+                      Abbrechen
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setAddingNew(true)}
+                className="w-full border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-3 text-gray-600 dark:text-gray-300 hover:border-purple-400 dark:hover:border-purple-500 hover:text-purple-600 dark:hover:text-purple-400 transition-colors text-sm font-medium"
+              >
+                + Neue Position hinzufügen
+              </button>
+            )
+          )}
         </div>
       </div>
 

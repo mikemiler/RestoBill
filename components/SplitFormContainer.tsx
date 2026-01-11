@@ -49,12 +49,29 @@ export default function SplitFormContainer({
   shareToken,
   payerName,
   paypalHandle,
-  items,
-  itemRemainingQuantities,
+  items: initialItems,
+  itemRemainingQuantities: initialRemainingQuantities,
   isOwner = false,
 }: SplitFormContainerProps) {
   const [allSelections, setAllSelections] = useState<DatabaseSelection[]>([])
+  const [items, setItems] = useState<BillItem[]>(initialItems)
+  const [itemRemainingQuantities, setItemRemainingQuantities] = useState<Record<string, number>>(initialRemainingQuantities)
   const [loading, setLoading] = useState(true)
+
+  // Fetch items from API
+  const fetchItems = async () => {
+    try {
+      const response = await fetch(`/api/bills/${billId}/items`)
+      if (!response.ok) {
+        console.error('Error fetching items:', response.statusText)
+        return
+      }
+      const data: BillItem[] = await response.json()
+      setItems(data)
+    } catch (error) {
+      console.error('Error fetching items:', error)
+    }
+  }
 
   // Fetch all selections from API (all guests)
   const fetchSelections = async () => {
@@ -69,16 +86,41 @@ export default function SplitFormContainer({
     }
   }
 
-  // Supabase Realtime subscription for Selection table
+  // Recalculate remaining quantities when items or selections change
+  useEffect(() => {
+    const claimed: Record<string, number> = {}
+
+    // Calculate claimed quantities from selections
+    allSelections.forEach((selection) => {
+      const itemQuantities = selection.itemQuantities as Record<string, number> | null
+      if (itemQuantities) {
+        Object.entries(itemQuantities).forEach(([itemId, quantity]) => {
+          claimed[itemId] = (claimed[itemId] || 0) + quantity
+        })
+      }
+    })
+
+    // Calculate remaining for each item
+    const remaining: Record<string, number> = {}
+    items.forEach(item => {
+      const claimedQty = claimed[item.id] || 0
+      remaining[item.id] = Math.max(0, item.quantity - claimedQty)
+    })
+
+    setItemRemainingQuantities(remaining)
+  }, [items, allSelections])
+
+  // Supabase Realtime subscription for Selection changes and BillItem broadcasts
   useEffect(() => {
     if (!supabase) return
 
     // Initial fetch
     fetchSelections()
+    // Don't fetch items initially - use props instead
 
     // Subscribe to realtime changes
     const channel = supabase
-      .channel(`bill-selections:${billId}`)
+      .channel(`bill-updates:${billId}`)
       .on(
         'postgres_changes',
         {
@@ -87,12 +129,24 @@ export default function SplitFormContainer({
           table: 'Selection',
           filter: `billId=eq.${billId}`
         },
-        () => {
+        (payload) => {
+          console.log('Selection change detected:', payload)
           // Refetch all selections when any change occurs
           fetchSelections()
         }
       )
-      .subscribe()
+      .on(
+        'broadcast',
+        { event: 'item-changed' },
+        (payload) => {
+          console.log('Item change broadcast received:', payload)
+          // Refetch items when broadcast is received
+          fetchItems()
+        }
+      )
+      .subscribe((status) => {
+        console.log('Supabase subscription status:', status)
+      })
 
     // Cleanup on unmount
     return () => {
