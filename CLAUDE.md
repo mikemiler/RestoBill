@@ -85,8 +85,9 @@ npx ts-node test-supabase-connection.ts  # Verify Supabase connection
 3. Select items with quantities (0, 0.5, 1, 2, custom fractions)
 4. Add tip (0%, 7%, 10%, 15%, or custom)
 5. Submit → `POST /api/selections/create` → Selection saved to localStorage → Returns PayPal.me URL
-6. Redirect to PayPal for payment
-7. Can return and make additional selections (multiple payments per guest supported)
+6. Redirect to `/payment-redirect` page (intermediary to keep browser open)
+7. Auto-redirect to PayPal for payment (stays in browser, not app)
+8. Can return and make additional selections (multiple payments per guest supported)
 
 ### API Routes Structure
 
@@ -140,6 +141,9 @@ All routes follow RESTful patterns:
 **Server Components (default):**
 - `/split/[token]/page.tsx` - Public split page (no JS needed)
 - `/bills/[id]/status/page.tsx` - Status dashboard
+
+**Redirect Pages (client-side):**
+- `/payment-redirect/page.tsx` - Intermediary page that redirects to PayPal (helps keep browser open instead of opening PayPal app)
 
 **Client Components (interactive):**
 - `SplitFormContainer` - Container managing guest selections and form display
@@ -217,7 +221,18 @@ All routes follow RESTful patterns:
 - Status dashboard cards: "Bezahlt" (total collected) vs "Zahlung bestätigt" (confirmed by owner)
 - Item status labels: "Noch nicht bezahlt", "Bezahlt, nicht bestätigt", "Zahlung bestätigt"
 
-### 12. Error Handling
+### 12. PayPal Mobile Redirect Strategy
+**Problem:** PayPal.me links opened on mobile often trigger the PayPal app, which may not properly prefill the amount.
+
+**Solution:** Intermediary redirect page (`/payment-redirect`)
+- Guest submits selection → Redirects to our `/payment-redirect` page (not a universal link)
+- Our page opens in browser → Shows countdown + amount
+- JavaScript redirect to PayPal → Stays in browser (more reliable amount prefilling)
+- URL format: `https://paypal.me/username/25.50` (NO currency code for mobile compatibility)
+
+**Important:** PayPal.me links WITH currency codes (e.g., `/25.50EUR`) work in browsers but fail in mobile app (known bug since March 2024). Always omit currency code.
+
+### 13. Error Handling
 - Consistent format: `{ error: "German message" }`
 - Log errors server-side for debugging
 - User-friendly messages (no stack traces)
@@ -313,6 +328,7 @@ rm -rf .next && npm run build  # Clear cache and rebuild
 app/
 ├── page.tsx                           # Landing page
 ├── create/page.tsx                    # Create bill form
+├── payment-redirect/page.tsx          # PayPal redirect intermediary (keeps browser open)
 ├── bills/[id]/
 │   ├── upload/page.tsx               # Image upload
 │   ├── status/page.tsx               # Payer dashboard (server)

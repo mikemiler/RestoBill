@@ -34,10 +34,12 @@ export function generatePayPalUrl(
   // Round to 2 decimal places
   const roundedAmount = Math.round(amount * 100) / 100
 
-  // PayPal.me URL format with query parameters for better mobile app compatibility
-  // Using /send endpoint with amount and currencyCode parameters works better in mobile app
-  // than path-based format (paypal.me/username/amount)
-  return `https://www.paypal.me/${paypalHandle}/send?amount=${roundedAmount}&currencyCode=EUR&locale.x=de_DE`
+  // PayPal.me URL format WITHOUT currency code for mobile app compatibility
+  // According to PayPal Community (March 2024), links WITH currency code (e.g., /20EUR)
+  // work in browsers but NOT in mobile app. Links WITHOUT currency work everywhere.
+  // PayPal will use the recipient's default currency automatically.
+  // Format: https://paypal.me/username/amount
+  return `https://paypal.me/${paypalHandle}/${roundedAmount}`
 }
 
 /**

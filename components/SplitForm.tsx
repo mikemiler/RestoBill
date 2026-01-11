@@ -719,8 +719,19 @@ export default function SplitForm({
         if (!data.paypalUrl || !(data.paypalUrl.startsWith('https://paypal.me/') || data.paypalUrl.startsWith('https://www.paypal.me/'))) {
           throw new Error('Ungültige PayPal URL')
         }
-        // Redirect to PayPal
-        window.location.href = data.paypalUrl
+        // Open payment redirect page in new tab to keep the browser open
+        // This helps ensure PayPal opens in browser instead of the PayPal app
+        const redirectUrl = `/payment-redirect?url=${encodeURIComponent(data.paypalUrl)}&amount=${data.totalAmount.toFixed(2)}`
+        window.open(redirectUrl, '_blank', 'noopener,noreferrer')
+
+        // Reset form after opening payment page
+        setSelectedItems({})
+        setCustomQuantityMode({})
+        setCustomQuantityInput({})
+        setTipPercent(0)
+        setCustomTip('')
+        setLoading(false)
+        // The SelectionSummary will automatically update via Supabase realtime
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ein Fehler ist aufgetreten')
