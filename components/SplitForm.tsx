@@ -172,134 +172,142 @@ export default function SplitForm({
     }
   }, [selectedItems, customQuantityMode, customQuantityInput, friendName, billId])
 
-  // Supabase Realtime for live selections and payments
-  useEffect(() => {
-    if (!supabase) return
+  // Fetch live selections and detect changes
+  const fetchLiveSelections = async () => {
+    try {
+      const response = await fetch(`/api/bills/${billId}/live-selections`)
+      const data: ActiveSelection[] = await response.json()
 
-    // Fetch live selections and detect changes
-    const fetchLiveSelections = async () => {
-      try {
-        const response = await fetch(`/api/bills/${billId}/live-selections`)
-        const data: ActiveSelection[] = await response.json()
+      const currentGuestName = (friendName || localStorage.getItem('friendName') || '').trim()
 
-        const currentGuestName = (friendName || localStorage.getItem('friendName') || '').trim()
+      // Create current snapshot: itemId -> guestName -> quantity
+      const currentSnapshot = new Map<string, Map<string, number>>()
+      data.forEach(sel => {
+        if (!currentSnapshot.has(sel.itemId)) {
+          currentSnapshot.set(sel.itemId, new Map())
+        }
+        currentSnapshot.get(sel.itemId)!.set(sel.guestName, sel.quantity)
+      })
 
-        // Create current snapshot: itemId -> guestName -> quantity
-        const currentSnapshot = new Map<string, Map<string, number>>()
-        data.forEach(sel => {
-          if (!currentSnapshot.has(sel.itemId)) {
-            currentSnapshot.set(sel.itemId, new Map())
-          }
-          currentSnapshot.get(sel.itemId)!.set(sel.guestName, sel.quantity)
+      // Detect changes (only after first fetch and only for other users)
+      const changedKeys = new Set<string>()
+      if (!isFirstFetch.current) {
+        // Check for new/changed selections
+        currentSnapshot.forEach((guests, itemId) => {
+          guests.forEach((quantity, guestName) => {
+            // Skip current user
+            if (guestName === currentGuestName) return
+
+            const prevGuests = prevSelectionsSnapshot.current.get(itemId)
+            const prevQuantity = prevGuests?.get(guestName)
+
+            if (prevQuantity === undefined && quantity > 0) {
+              // New selection from another user
+              changedKeys.add(`${itemId}:${guestName}`)
+            } else if (prevQuantity !== undefined && prevQuantity !== quantity) {
+              // Quantity changed
+              changedKeys.add(`${itemId}:${guestName}`)
+            }
+          })
         })
 
-        // Detect changes (only after first fetch and only for other users)
-        const changedKeys = new Set<string>()
-        if (!isFirstFetch.current) {
-          // Check for new/changed selections
-          currentSnapshot.forEach((guests, itemId) => {
-            guests.forEach((quantity, guestName) => {
-              // Skip current user
-              if (guestName === currentGuestName) return
+        // Check for removed selections
+        prevSelectionsSnapshot.current.forEach((guests, itemId) => {
+          guests.forEach((prevQuantity, guestName) => {
+            // Skip current user
+            if (guestName === currentGuestName) return
 
-              const prevGuests = prevSelectionsSnapshot.current.get(itemId)
-              const prevQuantity = prevGuests?.get(guestName)
+            const currentGuests = currentSnapshot.get(itemId)
+            const currentQuantity = currentGuests?.get(guestName)
 
-              if (prevQuantity === undefined && quantity > 0) {
-                // New selection from another user
-                changedKeys.add(`${itemId}:${guestName}`)
-              } else if (prevQuantity !== undefined && prevQuantity !== quantity) {
-                // Quantity changed
-                changedKeys.add(`${itemId}:${guestName}`)
-              }
-            })
+            if (currentQuantity === undefined && prevQuantity > 0) {
+              // Selection removed
+              changedKeys.add(`${itemId}:${guestName}`)
+            }
           })
-
-          // Check for removed selections
-          prevSelectionsSnapshot.current.forEach((guests, itemId) => {
-            guests.forEach((prevQuantity, guestName) => {
-              // Skip current user
-              if (guestName === currentGuestName) return
-
-              const currentGuests = currentSnapshot.get(itemId)
-              const currentQuantity = currentGuests?.get(guestName)
-
-              if (currentQuantity === undefined && prevQuantity > 0) {
-                // Selection removed
-                changedKeys.add(`${itemId}:${guestName}`)
-              }
-            })
-          })
-        }
-
-        // Update snapshot for next comparison
-        prevSelectionsSnapshot.current = currentSnapshot
-
-        // Mark first fetch as complete (restoration now happens in separate useEffect)
-        if (isFirstFetch.current) {
-          isFirstFetch.current = false
-        }
-
-        // Group selections by itemId for rendering
-        const grouped = new Map<string, ActiveSelection[]>()
-        data.forEach(sel => {
-          if (!grouped.has(sel.itemId)) {
-            grouped.set(sel.itemId, [])
-          }
-          grouped.get(sel.itemId)!.push(sel)
         })
-        setLiveSelections(grouped)
-
-        // Trigger animations
-        if (changedKeys.size > 0) {
-          setAnimatingItems(changedKeys)
-          setTimeout(() => {
-            setAnimatingItems(new Set())
-          }, 1000)
-        }
-      } catch (error) {
-        console.error('Error fetching live selections:', error)
       }
+
+      // Update snapshot for next comparison
+      prevSelectionsSnapshot.current = currentSnapshot
+
+      // Mark first fetch as complete (restoration now happens in separate useEffect)
+      if (isFirstFetch.current) {
+        isFirstFetch.current = false
+      }
+
+      // Group selections by itemId for rendering
+      const grouped = new Map<string, ActiveSelection[]>()
+      data.forEach(sel => {
+        if (!grouped.has(sel.itemId)) {
+          grouped.set(sel.itemId, [])
+        }
+        grouped.get(sel.itemId)!.push(sel)
+      })
+      setLiveSelections(grouped)
+
+      // Trigger animations
+      if (changedKeys.size > 0) {
+        setAnimatingItems(changedKeys)
+        setTimeout(() => {
+          setAnimatingItems(new Set())
+        }, 1000)
+      }
+    } catch (error) {
+      console.error('Error fetching live selections:', error)
     }
+  }
 
-    // Subscribe to realtime changes
-    const channel = supabase!
-      .channel(`bill:${billId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'ActiveSelection',
-          filter: `billId=eq.${billId}`
-        },
-        () => {
-          // Refetch when any change occurs
-          fetchLiveSelections()
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'Selection',
-          filter: `billId=eq.${billId}`
-        },
-        () => {
-          // When someone pays, recalculate remaining quantities
-          calculateRemainingQuantities()
-        }
-      )
-      .subscribe()
-
+  // Polling + Realtime for live selections and payments
+  useEffect(() => {
     // Initial fetch
     fetchLiveSelections()
     calculateRemainingQuantities()
 
+    // Set up polling (every 2 seconds for more responsive live updates)
+    const pollInterval = setInterval(() => {
+      fetchLiveSelections()
+      calculateRemainingQuantities()
+    }, 2000)
+
+    // Also subscribe to realtime for instant updates (when it works)
+    let channel: any = null
+    if (supabase) {
+      channel = supabase
+        .channel(`bill:${billId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'ActiveSelection',
+            filter: `billId=eq.${billId}`
+          },
+          () => {
+            // Refetch when any change occurs
+            fetchLiveSelections()
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'Selection',
+            filter: `billId=eq.${billId}`
+          },
+          () => {
+            // When someone pays, recalculate remaining quantities
+            calculateRemainingQuantities()
+          }
+        )
+        .subscribe()
+    }
+
     // Cleanup on unmount
     return () => {
-      if (supabase) {
+      clearInterval(pollInterval)
+      if (supabase && channel) {
         supabase.removeChannel(channel)
       }
     }

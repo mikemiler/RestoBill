@@ -110,47 +110,55 @@ export default function SplitFormContainer({
     setItemRemainingQuantities(remaining)
   }, [items, allSelections])
 
-  // Supabase Realtime subscription for Selection changes and BillItem broadcasts
+  // Polling + Realtime subscription for Selection changes and BillItem broadcasts
   useEffect(() => {
-    if (!supabase) return
-
     // Initial fetch
     fetchSelections()
     // Don't fetch items initially - use props instead
 
-    // Subscribe to realtime changes
-    const channel = supabase
-      .channel(`bill-updates:${billId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'Selection',
-          filter: `billId=eq.${billId}`
-        },
-        (payload) => {
-          console.log('Selection change detected:', payload)
-          // Refetch all selections when any change occurs
-          fetchSelections()
-        }
-      )
-      .on(
-        'broadcast',
-        { event: 'item-changed' },
-        (payload) => {
-          console.log('Item change broadcast received:', payload)
-          // Refetch items when broadcast is received
-          fetchItems()
-        }
-      )
-      .subscribe((status) => {
-        console.log('Supabase subscription status:', status)
-      })
+    // Set up polling (every 3 seconds)
+    const pollInterval = setInterval(() => {
+      fetchSelections()
+      fetchItems()
+    }, 3000)
+
+    // Also subscribe to realtime for instant updates (when it works)
+    let channel: any = null
+    if (supabase) {
+      channel = supabase
+        .channel(`bill-updates:${billId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'Selection',
+            filter: `billId=eq.${billId}`
+          },
+          (payload) => {
+            console.log('Selection change detected:', payload)
+            // Refetch all selections when any change occurs
+            fetchSelections()
+          }
+        )
+        .on(
+          'broadcast',
+          { event: 'item-changed' },
+          (payload) => {
+            console.log('Item change broadcast received:', payload)
+            // Refetch items when broadcast is received
+            fetchItems()
+          }
+        )
+        .subscribe((status) => {
+          console.log('Supabase subscription status:', status)
+        })
+    }
 
     // Cleanup on unmount
     return () => {
-      if (supabase) {
+      clearInterval(pollInterval)
+      if (supabase && channel) {
         supabase.removeChannel(channel)
       }
     }

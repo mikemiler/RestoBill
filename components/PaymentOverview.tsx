@@ -70,47 +70,55 @@ export default function PaymentOverview({
     }
   }
 
-  // Supabase Realtime subscription for Selection and ActiveSelection changes
+  // Polling + Realtime subscription for Selection and ActiveSelection changes
   useEffect(() => {
-    if (!supabase) return
-
     // Initial fetch
     fetchActiveSelections()
 
-    // Subscribe to realtime changes
-    const channel = supabase
-      .channel(`payment-overview:${billId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'Selection',
-          filter: `billId=eq.${billId}`
-        },
-        () => {
-          // Refetch selections when any change occurs
-          fetchSelections()
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'ActiveSelection',
-          filter: `billId=eq.${billId}`
-        },
-        () => {
-          // Refetch active selections when any change occurs
-          fetchActiveSelections()
-        }
-      )
-      .subscribe()
+    // Set up polling (every 3 seconds)
+    const pollInterval = setInterval(() => {
+      fetchSelections()
+      fetchActiveSelections()
+    }, 3000)
+
+    // Also subscribe to realtime for instant updates (when it works)
+    let channel: any = null
+    if (supabase) {
+      channel = supabase
+        .channel(`payment-overview:${billId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'Selection',
+            filter: `billId=eq.${billId}`
+          },
+          () => {
+            // Refetch selections when any change occurs
+            fetchSelections()
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'ActiveSelection',
+            filter: `billId=eq.${billId}`
+          },
+          () => {
+            // Refetch active selections when any change occurs
+            fetchActiveSelections()
+          }
+        )
+        .subscribe()
+    }
 
     // Cleanup on unmount
     return () => {
-      if (supabase) {
+      clearInterval(pollInterval)
+      if (supabase && channel) {
         supabase.removeChannel(channel)
       }
     }
