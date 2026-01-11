@@ -39,6 +39,7 @@ interface SplitFormProps {
   paypalHandle: string
   items: BillItem[]
   itemRemainingQuantities: Record<string, number>
+  isOwner?: boolean
 }
 
 export default function SplitForm({
@@ -48,6 +49,7 @@ export default function SplitForm({
   paypalHandle,
   items,
   itemRemainingQuantities,
+  isOwner = false,
 }: SplitFormProps) {
   const router = useRouter()
   const [friendName, setFriendName] = useState('')
@@ -72,13 +74,17 @@ export default function SplitForm({
   // LocalStorage keys for persisting selections
   const getSelectionStorageKey = () => `billSelection_${billId}_${friendName.trim()}`
 
-  // Load friendName from localStorage on mount
+  // Load friendName from localStorage on mount (or set to payerName if owner)
   useEffect(() => {
-    const savedFriendName = localStorage.getItem('friendName')
-    if (savedFriendName) {
-      setFriendName(savedFriendName)
+    if (isOwner) {
+      setFriendName(payerName)
+    } else {
+      const savedFriendName = localStorage.getItem('friendName')
+      if (savedFriendName) {
+        setFriendName(savedFriendName)
+      }
     }
-  }, [])
+  }, [isOwner, payerName])
 
   // Save friendName to localStorage whenever it changes
   useEffect(() => {
@@ -525,7 +531,17 @@ export default function SplitForm({
         console.error('Error clearing selection from localStorage:', error)
       }
 
-      if (paymentMethod === 'CASH') {
+      if (isOwner) {
+        // Owner confirmed selection - reset form and show success
+        setSelectedItems({})
+        setCustomQuantityMode({})
+        setCustomQuantityInput({})
+        setTipPercent(0)
+        setCustomTip('')
+        setLoading(false)
+        // The SelectionSummary will automatically update via Supabase realtime
+        router.refresh()
+      } else if (paymentMethod === 'CASH') {
         // Redirect to confirmation page for cash payment
         router.push(`/split/${shareToken}/cash-confirmed?selectionId=${data.selectionId}&total=${data.totalAmount}`)
       } else {
@@ -544,23 +560,25 @@ export default function SplitForm({
 
   return (
     <div className="space-y-4 sm:space-y-5 md:space-y-6">
-      <div>
-        <label
-          htmlFor="friendName"
-          className="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
-        >
-          Dein Name
-        </label>
-        <input
-          type="text"
-          id="friendName"
-          value={friendName}
-          onChange={(e) => setFriendName(e.target.value)}
-          placeholder="Max Mustermann"
-          required
-          className="w-full px-3 py-2.5 sm:px-4 sm:py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:focus:ring-green-400 focus:border-transparent text-sm sm:text-base dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-400"
-        />
-      </div>
+      {!isOwner && (
+        <div>
+          <label
+            htmlFor="friendName"
+            className="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+          >
+            Dein Name
+          </label>
+          <input
+            type="text"
+            id="friendName"
+            value={friendName}
+            onChange={(e) => setFriendName(e.target.value)}
+            placeholder="Max Mustermann"
+            required
+            className="w-full px-3 py-2.5 sm:px-4 sm:py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:focus:ring-green-400 focus:border-transparent text-sm sm:text-base dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-400"
+          />
+        </div>
+      )}
 
       <div>
         <label className="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 sm:mb-3">
@@ -892,37 +910,54 @@ export default function SplitForm({
       )}
 
       {/* Payment Buttons */}
-      <div className="space-y-3">
-        <button
-          type="button"
-          onClick={() => handleSubmit('PAYPAL')}
-          disabled={loading || total === 0}
-          className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 dark:bg-blue-500 dark:hover:bg-blue-600 dark:disabled:bg-gray-600 text-white font-semibold py-3 sm:py-4 px-4 sm:px-6 rounded-lg transition-colors text-base sm:text-lg flex items-center justify-center gap-2"
-        >
-          {loading ? (
-            'Weiterleitung...'
-          ) : (
-            <>
-              💳 Mit PayPal bezahlen {total > 0 && `• ${formatEUR(total)}`}
-            </>
-          )}
-        </button>
-
+      {isOwner ? (
         <button
           type="button"
           onClick={() => handleSubmit('CASH')}
           disabled={loading || total === 0}
-          className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 dark:bg-green-500 dark:hover:bg-green-600 dark:disabled:bg-gray-600 text-white font-semibold py-3 sm:py-4 px-4 sm:px-6 rounded-lg transition-colors text-base sm:text-lg flex items-center justify-center gap-2"
+          className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 dark:bg-purple-500 dark:hover:bg-purple-600 dark:disabled:bg-gray-600 text-white font-semibold py-3 sm:py-4 px-4 sm:px-6 rounded-lg transition-colors text-base sm:text-lg flex items-center justify-center gap-2"
         >
           {loading ? (
-            'Weiterleitung...'
+            'Wird gespeichert...'
           ) : (
             <>
-              💵 Bar bezahlen {total > 0 && `• ${formatEUR(total)}`}
+              ✓ Auswahl bestätigen {total > 0 && `• ${formatEUR(total)}`}
             </>
           )}
         </button>
-      </div>
+      ) : (
+        <div className="space-y-3">
+          <button
+            type="button"
+            onClick={() => handleSubmit('PAYPAL')}
+            disabled={loading || total === 0}
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 dark:bg-blue-500 dark:hover:bg-blue-600 dark:disabled:bg-gray-600 text-white font-semibold py-3 sm:py-4 px-4 sm:px-6 rounded-lg transition-colors text-base sm:text-lg flex items-center justify-center gap-2"
+          >
+            {loading ? (
+              'Weiterleitung...'
+            ) : (
+              <>
+                💳 Mit PayPal bezahlen {total > 0 && `• ${formatEUR(total)}`}
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleSubmit('CASH')}
+            disabled={loading || total === 0}
+            className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 dark:bg-green-500 dark:hover:bg-green-600 dark:disabled:bg-gray-600 text-white font-semibold py-3 sm:py-4 px-4 sm:px-6 rounded-lg transition-colors text-base sm:text-lg flex items-center justify-center gap-2"
+          >
+            {loading ? (
+              'Weiterleitung...'
+            ) : (
+              <>
+                💵 Bar bezahlen {total > 0 && `• ${formatEUR(total)}`}
+              </>
+            )}
+          </button>
+        </div>
+      )}
     </div>
   )
 }
