@@ -56,11 +56,12 @@ enum PaymentMethod {
 }
 
 model Selection {
-  id     String @id @default(uuid())
-  billId String
-  bill   Bill   @relation(fields: [billId], references: [id], onDelete: Cascade)
+  id        String  @id @default(uuid())
+  billId    String
+  bill      Bill    @relation(fields: [billId], references: [id], onDelete: Cascade)
 
-  friendName String // Eingegebener Name
+  sessionId  String? // Unique browser session (for future /my-bills feature)
+  friendName String  // Display name
 
   // Selected Items - Many-to-Many relationship
   items BillItem[]
@@ -82,23 +83,28 @@ model Selection {
   createdAt DateTime @default(now())
 
   @@index([billId])
+  @@index([sessionId])
 }
 
 // Live-Anzeige: Temporäre Auswahlen für Realtime-Features
+// Session-based tracking: sessionId identifies unique browser sessions
+// guestName is used for display only (can have duplicates)
 model ActiveSelection {
   id        String   @id @default(uuid())
   billId    String
   itemId    String
-  guestName String
-  quantity  Float // 0, 0.5, 1, 2, etc.
+  sessionId String   // Unique browser session identifier
+  guestName String   // Display name (can have duplicates)
+  quantity  Float    // 0, 0.5, 1, 2, etc.
   createdAt DateTime @default(now())
   expiresAt DateTime // Fallback-Cleanup nach z.B. 30 Minuten
 
   bill Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
   item BillItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
-  // Ein Gast kann pro Item nur einen Eintrag haben
-  @@unique([billId, itemId, guestName])
+  // Each browser session can only have one entry per item
+  @@unique([billId, itemId, sessionId])
   @@index([billId])
   @@index([expiresAt])
+  @@index([sessionId])
 }

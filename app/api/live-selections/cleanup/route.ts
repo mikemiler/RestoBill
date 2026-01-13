@@ -1,43 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { sanitizeInput } from '@/lib/utils'
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { billId, guestName } = body
+    const { billId, sessionId } = body
 
     // Validation
-    if (!billId || !guestName) {
+    if (!billId || !sessionId) {
       return NextResponse.json(
         { error: 'Fehlende Pflichtfelder' },
         { status: 400 }
       )
     }
 
-    // Validate UUID
-    if (!/^[a-f0-9-]{36}$/i.test(billId)) {
+    // Validate UUIDs
+    const uuidRegex = /^[a-f0-9-]{36}$/i
+    if (!uuidRegex.test(billId) || !uuidRegex.test(sessionId)) {
       return NextResponse.json(
         { error: 'Ungültige ID Format' },
         { status: 400 }
       )
     }
 
-    // Sanitize guestName
-    const sanitizedName = sanitizeInput(guestName, 100)
-    if (sanitizedName.length === 0) {
-      return NextResponse.json(
-        { error: 'Name ist ungültig' },
-        { status: 400 }
-      )
-    }
-
-    // Delete all active selections for this guest on this bill
+    // Delete all active selections for this session on this bill
     const { error: deleteError } = await supabaseAdmin
       .from('ActiveSelection')
       .delete()
       .eq('billId', billId)
-      .eq('guestName', sanitizedName)
+      .eq('sessionId', sessionId)
 
     if (deleteError) {
       throw deleteError

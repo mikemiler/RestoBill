@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { formatEUR } from '@/lib/utils'
 import { saveSelection } from '@/lib/selectionStorage'
+import { getOrCreateSessionId } from '@/lib/sessionStorage'
 
 // Browser-only Supabase client
 const supabase = typeof window !== 'undefined'
@@ -26,6 +27,7 @@ interface ActiveSelection {
   id: string
   billId: string
   itemId: string
+  sessionId: string
   guestName: string
   quantity: number
   createdAt: string
@@ -53,6 +55,7 @@ export default function SplitForm({
 }: SplitFormProps) {
   const router = useRouter()
   const [friendName, setFriendName] = useState('')
+  const [sessionId, setSessionId] = useState('')
   const [selectedItems, setSelectedItems] = useState<Record<string, number>>({})
   const [customQuantityMode, setCustomQuantityMode] = useState<Record<string, boolean>>({})
   const [customQuantityInput, setCustomQuantityInput] = useState<Record<string, string>>({})
@@ -88,6 +91,12 @@ export default function SplitForm({
 
   // LocalStorage keys for persisting selections
   const getSelectionStorageKey = () => `billSelection_${billId}_${friendName.trim()}`
+
+  // Initialize sessionId on mount
+  useEffect(() => {
+    const sid = getOrCreateSessionId()
+    setSessionId(sid)
+  }, [])
 
   // Load friendName from localStorage on mount (or set to payerName if owner)
   useEffect(() => {
@@ -178,51 +187,51 @@ export default function SplitForm({
       const response = await fetch(`/api/bills/${billId}/live-selections`)
       const data: ActiveSelection[] = await response.json()
 
-      const currentGuestName = (friendName || localStorage.getItem('friendName') || '').trim()
+      const currentSessionId = sessionId || getOrCreateSessionId()
 
-      // Create current snapshot: itemId -> guestName -> quantity
+      // Create current snapshot: itemId -> sessionId -> quantity
       const currentSnapshot = new Map<string, Map<string, number>>()
       data.forEach(sel => {
         if (!currentSnapshot.has(sel.itemId)) {
           currentSnapshot.set(sel.itemId, new Map())
         }
-        currentSnapshot.get(sel.itemId)!.set(sel.guestName, sel.quantity)
+        currentSnapshot.get(sel.itemId)!.set(sel.sessionId, sel.quantity)
       })
 
       // Detect changes (only after first fetch and only for other users)
       const changedKeys = new Set<string>()
       if (!isFirstFetch.current) {
         // Check for new/changed selections
-        currentSnapshot.forEach((guests, itemId) => {
-          guests.forEach((quantity, guestName) => {
+        currentSnapshot.forEach((sessions, itemId) => {
+          sessions.forEach((quantity, sid) => {
             // Skip current user
-            if (guestName === currentGuestName) return
+            if (sid === currentSessionId) return
 
-            const prevGuests = prevSelectionsSnapshot.current.get(itemId)
-            const prevQuantity = prevGuests?.get(guestName)
+            const prevSessions = prevSelectionsSnapshot.current.get(itemId)
+            const prevQuantity = prevSessions?.get(sid)
 
             if (prevQuantity === undefined && quantity > 0) {
               // New selection from another user
-              changedKeys.add(`${itemId}:${guestName}`)
+              changedKeys.add(`${itemId}:${sid}`)
             } else if (prevQuantity !== undefined && prevQuantity !== quantity) {
               // Quantity changed
-              changedKeys.add(`${itemId}:${guestName}`)
+              changedKeys.add(`${itemId}:${sid}`)
             }
           })
         })
 
         // Check for removed selections
-        prevSelectionsSnapshot.current.forEach((guests, itemId) => {
-          guests.forEach((prevQuantity, guestName) => {
+        prevSelectionsSnapshot.current.forEach((sessions, itemId) => {
+          sessions.forEach((prevQuantity, sid) => {
             // Skip current user
-            if (guestName === currentGuestName) return
+            if (sid === currentSessionId) return
 
-            const currentGuests = currentSnapshot.get(itemId)
-            const currentQuantity = currentGuests?.get(guestName)
+            const currentSessions = currentSnapshot.get(itemId)
+            const currentQuantity = currentSessions?.get(sid)
 
             if (currentQuantity === undefined && prevQuantity > 0) {
               // Selection removed
-              changedKeys.add(`${itemId}:${guestName}`)
+              changedKeys.add(`${itemId}:${sid}`)
             }
           })
         })
@@ -375,8 +384,8 @@ export default function SplitForm({
 
   // Cleanup live selections for current user
   const cleanupLiveSelections = async () => {
-    const currentFriendName = friendName || localStorage.getItem('friendName')
-    if (!currentFriendName || !currentFriendName.trim()) return
+    const currentSessionId = sessionId || getOrCreateSessionId()
+    if (!currentSessionId) return
 
     try {
       await fetch('/api/live-selections/cleanup', {
@@ -384,7 +393,7 @@ export default function SplitForm({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           billId,
-          guestName: currentFriendName.trim()
+          sessionId: currentSessionId
         })
       })
     } catch (error) {
@@ -567,9 +576,10 @@ export default function SplitForm({
       })
     }
 
-    // Update live selection (only if friendName is set)
-    const currentFriendName = friendName || localStorage.getItem('friendName')
-    if (currentFriendName && currentFriendName.trim()) {
+    // Update live selection
+    const currentSessionId = sessionId || getOrCreateSessionId()
+    const currentFriendName = friendName || localStorage.getItem('friendName') || 'Gast'
+    if (currentSessionId) {
       try {
         await fetch('/api/live-selections/update', {
           method: 'POST',
@@ -577,6 +587,7 @@ export default function SplitForm({
           body: JSON.stringify({
             billId,
             itemId,
+            sessionId: currentSessionId,
             guestName: currentFriendName.trim(),
             quantity
           })
@@ -614,8 +625,9 @@ export default function SplitForm({
     }
 
     // Update live selection
-    const currentFriendName = friendName || localStorage.getItem('friendName')
-    if (currentFriendName && currentFriendName.trim()) {
+    const currentSessionId = sessionId || getOrCreateSessionId()
+    const currentFriendName = friendName || localStorage.getItem('friendName') || 'Gast'
+    if (currentSessionId) {
       try {
         await fetch('/api/live-selections/update', {
           method: 'POST',
@@ -623,6 +635,7 @@ export default function SplitForm({
           body: JSON.stringify({
             billId,
             itemId,
+            sessionId: currentSessionId,
             guestName: currentFriendName.trim(),
             quantity: finalQuantity
           })
@@ -664,6 +677,7 @@ export default function SplitForm({
         body: JSON.stringify({
           billId,
           shareToken,
+          sessionId: sessionId || getOrCreateSessionId(),
           friendName: friendName.trim(),
           itemQuantities: selectedItems,
           tipAmount,
@@ -773,15 +787,15 @@ export default function SplitForm({
 
             // Get live selections for this item (excluding current user and quantity 0)
             const liveUsers = liveSelections.get(item.id) || []
-            const currentGuestName = (friendName || localStorage.getItem('friendName') || '').trim()
+            const currentSessionId = sessionId || getOrCreateSessionId()
             const othersSelecting = liveUsers.filter(u =>
-              u.guestName !== currentGuestName && u.quantity > 0
+              u.sessionId !== currentSessionId && u.quantity > 0
             )
 
             // Calculate total live selections for this item (including current user)
             const totalLiveSelected = liveUsers.reduce((sum, u) => sum + u.quantity, 0)
-            const isOverselected = totalLiveSelected > item.quantity
-            const isFullyMarked = totalLiveSelected === item.quantity && totalLiveSelected > 0
+            const isOverselected = totalLiveSelected > remainingQty
+            const isFullyMarked = totalLiveSelected === remainingQty && totalLiveSelected > 0
 
             const isEditingThis = editingItemId === item.id
 
@@ -791,8 +805,23 @@ export default function SplitForm({
                 className={`border rounded-lg p-2.5 sm:p-3 transition-colors relative ${
                   isFullyClaimed
                     ? 'border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 opacity-60'
-                    : 'border-gray-200 dark:border-gray-600 hover:border-green-300 dark:hover:border-green-500 dark:bg-gray-700/50'
+                    : isOverselected
+                    ? 'border-red-500 dark:border-red-600 bg-red-50 dark:bg-red-900/20'
+                    : isFullyMarked
+                    ? 'border-green-500 dark:border-green-600 bg-green-50 dark:bg-green-900/20'
+                    : 'border-gray-200 dark:border-gray-600 hover:border-green-300 dark:hover:border-green-500 dark:bg-gray-700/50 cursor-pointer'
                 }`}
+                onClick={(e) => {
+                  // Don't auto-select if clicking on interactive elements (buttons, inputs)
+                  const target = e.target as HTMLElement
+                  if (target.tagName === 'BUTTON' || target.tagName === 'INPUT' || target.closest('button') || target.closest('input')) {
+                    return
+                  }
+                  // Auto-select as 1x when clicking on unselected item
+                  if ((!selectedItems[item.id] || selectedItems[item.id] === 0) && !isFullyClaimed && remainingQty >= 1) {
+                    handleItemQuantityChange(item.id, 1)
+                  }
+                }}
               >
                 {isEditingThis && editForm ? (
                   // Edit Mode
@@ -904,7 +933,7 @@ export default function SplitForm({
                       <div className={`absolute top-2 ${isOwner ? 'right-10' : 'right-2'} flex flex-wrap gap-1 justify-end max-w-[50%]`}>
                         {othersSelecting.map((user, idx) => {
                           // Animation should only show for other guests, not for the user who made the change
-                          const shouldAnimate = animatingItems.has(`${item.id}:${user.guestName}`)
+                          const shouldAnimate = animatingItems.has(`${item.id}:${user.sessionId}`)
                           return (
                             <div
                               key={idx}
@@ -924,6 +953,9 @@ export default function SplitForm({
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex-1 pr-2">
                         <div className="flex items-center gap-2">
+                          {isFullyMarked && !isOverselected && (
+                            <span className="text-green-600 dark:text-green-400 text-lg">✓</span>
+                          )}
                           <h3 className="font-medium text-gray-900 dark:text-gray-100 text-sm sm:text-base">
                             {item.name}
                           </h3>
@@ -945,23 +977,6 @@ export default function SplitForm({
                       </div>
                     </div>
                   </>
-                )}
-
-                {/* Fully Marked Success */}
-                {!isEditingThis && isFullyMarked && !isOverselected && (
-                  <div className="mb-3 p-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                    <div className="flex items-start gap-2">
-                      <span className="text-green-600 dark:text-green-400 text-sm">✓</span>
-                      <div className="flex-1">
-                        <p className="text-xs sm:text-sm text-green-700 dark:text-green-400 font-medium">
-                          Vollständig markiert!
-                        </p>
-                        <p className="text-xs text-green-600 dark:text-green-500 mt-0.5">
-                          Diese Position ist komplett aufgeteilt ({totalLiveSelected}x von {item.quantity}x).
-                        </p>
-                      </div>
-                    </div>
-                  </div>
                 )}
 
                 {/* Overselection Warning */}

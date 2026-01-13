@@ -5,7 +5,7 @@ import { generatePayPalUrl, sanitizeInput } from '@/lib/utils'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { billId, shareToken, friendName, itemQuantities, tipAmount, paymentMethod } = body
+    const { billId, shareToken, sessionId, friendName, itemQuantities, tipAmount, paymentMethod } = body
 
     // Validation
     if (!billId || !shareToken || !friendName || !itemQuantities) {
@@ -24,9 +24,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate billId and shareToken format (UUID)
-    if (!/^[a-f0-9-]{36}$/i.test(billId) || !/^[a-f0-9-]{36}$/i.test(shareToken)) {
+    const uuidRegex = /^[a-f0-9-]{36}$/i
+    if (!uuidRegex.test(billId) || !uuidRegex.test(shareToken)) {
       return NextResponse.json(
         { error: 'Ungültige ID Format' },
+        { status: 400 }
+      )
+    }
+
+    // Validate sessionId format if provided (optional but recommended)
+    if (sessionId && !uuidRegex.test(sessionId)) {
+      return NextResponse.json(
+        { error: 'Ungültige SessionId Format' },
         { status: 400 }
       )
     }
@@ -114,6 +123,7 @@ export async function POST(request: NextRequest) {
       .insert({
         id: selectionId,
         billId: billId,
+        sessionId: sessionId || null,
         friendName: sanitizedName,
         itemQuantities: itemQuantities,
         tipAmount: tip,
