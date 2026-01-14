@@ -578,14 +578,41 @@ export default function SplitForm({
     }
   }
 
+  // Format quantity as fraction if applicable
+  function formatQuantity(quantity: number): string {
+    const fractions = [
+      { value: 1/3, label: '1/3' },
+      { value: 1/4, label: '1/4' },
+      { value: 1/5, label: '1/5' },
+      { value: 1/6, label: '1/6' },
+      { value: 1/7, label: '1/7' },
+      { value: 1/8, label: '1/8' },
+      { value: 1/9, label: '1/9' },
+      { value: 1/10, label: '1/10' },
+      { value: 1/2, label: '1/2' },
+      { value: 2/3, label: '2/3' },
+      { value: 3/4, label: '3/4' },
+    ]
+
+    // Check if quantity matches a common fraction (with small tolerance for floating point errors)
+    for (const fraction of fractions) {
+      if (Math.abs(quantity - fraction.value) < 0.001) {
+        return fraction.label
+      }
+    }
+
+    // Return as decimal if not a common fraction
+    return quantity.toString()
+  }
+
   // Generate quantity options based on remaining quantity
   function getQuantityOptions(remainingQty: number): number[] {
     if (remainingQty === 0) return []
 
     const options = [0]
 
-    // Add whole numbers up to remaining quantity (max 3 buttons for whole numbers)
-    const maxWholeNumber = Math.min(Math.floor(remainingQty), 3)
+    // Add whole numbers up to remaining quantity (all available quantities)
+    const maxWholeNumber = Math.floor(remainingQty)
     for (let i = 1; i <= maxWholeNumber; i++) {
       options.push(i)
     }
@@ -849,7 +876,7 @@ export default function SplitForm({
                     ? 'border-red-500 dark:border-red-600 bg-red-50 dark:bg-red-900/20'
                     : isFullyMarked
                     ? 'border-green-500 dark:border-green-600 bg-green-50 dark:bg-green-900/20'
-                    : 'border-gray-200 dark:border-gray-600 hover:border-green-300 dark:hover:border-green-500 dark:bg-gray-700/50 cursor-pointer'
+                    : 'border-gray-200 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500 dark:bg-gray-700/50 cursor-pointer'
                 }`}
                 onClick={(e) => {
                   // Don't auto-select if clicking on interactive elements (buttons, inputs)
@@ -976,7 +1003,7 @@ export default function SplitForm({
                           <div className="bg-green-500 dark:bg-green-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
                             <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
                             <span className="font-medium">{friendName || 'Ich'}</span>
-                            <span className="opacity-90">({selectedItems[item.id]}×)</span>
+                            <span className="opacity-90">({formatQuantity(selectedItems[item.id])}×)</span>
                           </div>
                         )}
                         {/* Other guests' selection badges (blue) */}
@@ -992,7 +1019,7 @@ export default function SplitForm({
                             >
                               <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
                               <span className="font-medium">{user.guestName}</span>
-                              <span className="opacity-90">({user.quantity}×)</span>
+                              <span className="opacity-90">({formatQuantity(user.quantity)}×)</span>
                             </div>
                           )
                         })}
@@ -1102,7 +1129,8 @@ export default function SplitForm({
                               { label: '1/9', value: 1/9 },
                               { label: '1/10', value: 1/10 },
                             ].map((fraction) => {
-                              const actualValue = Math.min(fraction.value * item.quantity, remainingQty)
+                              // Use fraction value directly (1/4 of 1 portion, not of total quantity)
+                              const actualValue = Math.min(fraction.value, remainingQty)
                               return (
                                 <button
                                   key={fraction.label}
