@@ -46,6 +46,9 @@ export default async function SplitBillPage({
     a.name.localeCompare(b.name)
   ) || []
 
+  // Calculate total amount from items (consistent with status page)
+  const totalBillAmount = sortedItems.reduce((sum: number, item: any) => sum + item.totalPrice, 0)
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-green-50 to-white dark:from-gray-900 dark:to-gray-800 p-3 sm:p-4 md:p-8">
       <div className="max-w-4xl mx-auto">
@@ -85,6 +88,7 @@ export default async function SplitBillPage({
             paypalHandle={bill.paypalHandle}
             items={sortedItems}
             itemRemainingQuantities={itemRemainingQuantities}
+            totalAmount={totalBillAmount}
           />
         </div>
 

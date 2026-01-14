@@ -150,6 +150,7 @@ export default async function BillStatusPage({
               paypalHandle={bill.paypalHandle}
               items={sortedItems}
               itemRemainingQuantities={itemRemainingQuantities}
+              totalAmount={totalBillAmount}
               isOwner={true}
             />
           </div>

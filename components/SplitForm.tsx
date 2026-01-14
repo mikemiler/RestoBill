@@ -35,6 +35,17 @@ interface ActiveSelection {
   expiresAt: string
 }
 
+interface DatabaseSelection {
+  id: string
+  billId: string
+  friendName: string
+  itemQuantities: Record<string, number>
+  tipAmount: number
+  paid: boolean
+  paymentMethod: 'PAYPAL' | 'CASH'
+  createdAt: string
+}
+
 interface SplitFormProps {
   billId: string
   shareToken: string
@@ -42,6 +53,8 @@ interface SplitFormProps {
   paypalHandle: string
   items: BillItem[]
   itemRemainingQuantities: Record<string, number>
+  totalAmount: number
+  allSelections: DatabaseSelection[]
   isOwner?: boolean
 }
 
@@ -52,6 +65,8 @@ export default function SplitForm({
   paypalHandle,
   items,
   itemRemainingQuantities,
+  totalAmount,
+  allSelections,
   isOwner = false,
 }: SplitFormProps) {
   const router = useRouter()
@@ -149,9 +164,20 @@ export default function SplitForm({
         const parsed = JSON.parse(savedData)
 
         if (parsed.selectedItems && Object.keys(parsed.selectedItems).length > 0) {
-          setSelectedItems(parsed.selectedItems || {})
-          setCustomQuantityMode(parsed.customQuantityMode || {})
-          setCustomQuantityInput(parsed.customQuantityInput || {})
+          // Filter out items with quantity 0 (should not be restored)
+          const filteredItems: Record<string, number> = {}
+          Object.entries(parsed.selectedItems).forEach(([itemId, quantity]) => {
+            if (typeof quantity === 'number' && quantity > 0) {
+              filteredItems[itemId] = quantity
+            }
+          })
+
+          // Only restore if there are valid items
+          if (Object.keys(filteredItems).length > 0) {
+            setSelectedItems(filteredItems)
+            setCustomQuantityMode(parsed.customQuantityMode || {})
+            setCustomQuantityInput(parsed.customQuantityInput || {})
+          }
         }
       }
     } catch (error) {
@@ -164,12 +190,20 @@ export default function SplitForm({
 
   // Save selections to localStorage whenever they change
   useEffect(() => {
-    if (!friendName.trim() || Object.keys(selectedItems).length === 0) {
+    if (!friendName.trim()) {
       return
     }
 
+    const storageKey = getSelectionStorageKey()
+
     try {
-      const storageKey = getSelectionStorageKey()
+      // If no items selected, remove from localStorage
+      if (Object.keys(selectedItems).length === 0) {
+        localStorage.removeItem(storageKey)
+        return
+      }
+
+      // Save to localStorage
       const dataToSave = {
         selectedItems,
         customQuantityMode,
@@ -190,9 +224,13 @@ export default function SplitForm({
 
       const currentSessionId = sessionId || getOrCreateSessionId()
 
+      // Filter out expired selections
+      const now = new Date()
+      const activeData = data.filter(sel => new Date(sel.expiresAt) > now)
+
       // Create current snapshot: itemId -> sessionId -> quantity
       const currentSnapshot = new Map<string, Map<string, number>>()
-      data.forEach(sel => {
+      activeData.forEach(sel => {
         if (!currentSnapshot.has(sel.itemId)) {
           currentSnapshot.set(sel.itemId, new Map())
         }
@@ -246,9 +284,9 @@ export default function SplitForm({
         isFirstFetch.current = false
       }
 
-      // Group selections by itemId for rendering
+      // Group selections by itemId for rendering (only active ones)
       const grouped = new Map<string, ActiveSelection[]>()
-      data.forEach(sel => {
+      activeData.forEach(sel => {
         if (!grouped.has(sel.itemId)) {
           grouped.set(sel.itemId, [])
         }
@@ -297,21 +335,9 @@ export default function SplitForm({
     debug: process.env.NODE_ENV === 'development'
   })
 
-  // Cleanup live selections on unmount or page leave
-  useEffect(() => {
-    // Cleanup when user leaves page
-    const handleBeforeUnload = () => {
-      cleanupLiveSelections()
-    }
-
-    window.addEventListener('beforeunload', handleBeforeUnload)
-
-    // Cleanup on component unmount
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload)
-      cleanupLiveSelections()
-    }
-  }, [billId, friendName])
+  // Note: We no longer cleanup ActiveSelections when leaving the page
+  // This allows guests to return later and continue where they left off
+  // ActiveSelections are only cleaned up when the guest actually submits payment
 
   // Calculate subtotal from selected items
   const subtotal = items.reduce((sum, item) => {
@@ -326,6 +352,50 @@ export default function SplitForm({
       : (subtotal * tipPercent) / 100
 
   const total = subtotal + tipAmount
+
+  // Calculate total paid amount from all selections
+  const totalPaidAmount = allSelections.reduce((sum, selection) => {
+    // Calculate selection subtotal from item quantities
+    const selectionSubtotal = Object.entries(selection.itemQuantities).reduce((itemSum, [itemId, quantity]) => {
+      const item = items.find(i => i.id === itemId)
+      if (item) {
+        return itemSum + (item.pricePerUnit * quantity)
+      }
+      return itemSum
+    }, 0)
+    return sum + selectionSubtotal + selection.tipAmount
+  }, 0)
+
+  // Calculate own active selection from local state (for instant feedback)
+  const ownActiveAmount = items.reduce((sum, item) => {
+    const quantity = selectedItems[item.id] || 0
+    return sum + (item.pricePerUnit * quantity)
+  }, 0)
+
+  // Calculate other guests' active selections from liveSelections (realtime)
+  const currentSessionId = sessionId || getOrCreateSessionId()
+  const othersActiveAmount = Array.from(liveSelections.values()).reduce((sum, selections) => {
+    return sum + selections.reduce((itemSum, sel) => {
+      // Skip current user's selections to avoid double counting
+      if (sel.sessionId === currentSessionId) return itemSum
+      const item = items.find(i => i.id === sel.itemId)
+      if (item) {
+        return itemSum + (item.pricePerUnit * sel.quantity)
+      }
+      return itemSum
+    }, 0)
+  }, 0)
+
+  // Total active amount = own selections + others' selections
+  const totalActiveAmount = ownActiveAmount + othersActiveAmount
+
+  // Calculate remaining amount
+  const remainingAmount = totalAmount - totalPaidAmount - totalActiveAmount
+
+  // Calculate percentage for progress
+  const paidPercentage = totalAmount > 0 ? (totalPaidAmount / totalAmount) * 100 : 0
+  const activePercentage = totalAmount > 0 ? (totalActiveAmount / totalAmount) * 100 : 0
+  const totalCoveredPercentage = Math.min(100, paidPercentage + activePercentage)
 
   // Calculate remaining quantities from selections
   const calculateRemainingQuantities = async () => {
@@ -729,7 +799,7 @@ export default function SplitForm({
   }
 
   return (
-    <div className="space-y-4 sm:space-y-5 md:space-y-6">
+    <div className="space-y-4 sm:space-y-5 md:space-y-6 pb-32">
       {!isOwner && (
         <div>
           <label
@@ -1319,6 +1389,53 @@ export default function SplitForm({
           </button>
         </div>
       )}
+
+      {/* Fixed Bottom Summary - Bill Split Progress */}
+      <div className="fixed bottom-0 left-0 right-0 z-50 px-4 sm:px-5 md:px-6 py-2.5 sm:py-3 bg-white dark:bg-gray-800 border-t-2 border-gray-200 dark:border-gray-600 shadow-lg">
+        <div className="space-y-2">
+          {/* Progress Bar with Percentage Inside */}
+          <div className="relative w-full bg-gray-200 dark:bg-gray-700 rounded-full h-6 sm:h-7 overflow-hidden shadow-inner">
+            <div
+              className="h-full bg-gradient-to-r from-green-500 via-green-500 to-blue-500 dark:from-green-600 dark:via-green-600 dark:to-blue-600 transition-all duration-500 flex items-center justify-center"
+              style={{ width: `${totalCoveredPercentage}%` }}
+            >
+              {totalCoveredPercentage > 15 && (
+                <span className="text-xs sm:text-sm font-bold text-white drop-shadow-md">
+                  {totalCoveredPercentage.toFixed(0)}%
+                </span>
+              )}
+            </div>
+            {totalCoveredPercentage <= 15 && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-xs sm:text-sm font-bold text-gray-600 dark:text-gray-300">
+                  {totalCoveredPercentage.toFixed(0)}%
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Compact Summary - 2 Columns */}
+          <div className="grid grid-cols-2 gap-2 text-center text-xs sm:text-sm">
+            <div className="text-gray-600 dark:text-gray-400">
+              Gesamt: <span className="font-bold text-gray-900 dark:text-gray-100">{formatEUR(totalAmount)}</span>
+            </div>
+            <div className={`font-bold ${
+              remainingAmount === 0 && totalPaidAmount > 0
+                ? 'text-green-600 dark:text-green-400'
+                : remainingAmount > 0
+                ? 'text-orange-600 dark:text-orange-400'
+                : 'text-red-600 dark:text-red-400'
+            }`}>
+              {remainingAmount === 0 && totalPaidAmount > 0
+                ? '✓ Vollständig aufgeteilt!'
+                : remainingAmount > 0
+                ? `Noch offen: ${formatEUR(remainingAmount)}`
+                : `❗ Überbucht: ${formatEUR(Math.abs(remainingAmount))}`
+              }
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

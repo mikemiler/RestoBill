@@ -316,14 +316,23 @@ All routes follow RESTful patterns:
 - Payer sees live updates in PaymentOverview component on status page
 - Uses **Supabase Realtime ONLY** (WebSocket-based) - no polling!
 - Automatic reconnection with exponential backoff if connection drops
-- Entries expire after 30 minutes (cleanup via `/api/live-selections/cleanup`)
+- Entries are **persistent** (expire after 30 days) to allow multi-day bill splitting
+- **Not deleted when guest leaves page** - allows guests to return and continue
+- Only deleted when guest submits payment (converts to final Selection)
 
 **Data flow:**
 1. SplitForm tracks quantity changes → Updates ActiveSelection via API
 2. PaymentOverview subscribes to ActiveSelection changes via WebSocket
 3. Instant updates (< 100ms latency) when changes occur
 4. Displays "Ausgewählt" total with live indicator (blue pulse dot)
-5. When guest submits payment → ActiveSelection converted to Selection (final)
+5. Guest can leave and return - selections are restored from localStorage + ActiveSelection
+6. When guest submits payment → ActiveSelection deleted, Selection created (final)
+
+**Persistence:**
+- ActiveSelections expire after 30 days (not 30 minutes)
+- Guests can close browser and return days later - their selections persist
+- localStorage restores UI state, ActiveSelection provides live tracking
+- Manual cleanup only on payment submission (`cleanupLiveSelections()`)
 
 **Benefits:**
 - Instant updates (< 100ms vs 3s with polling)
@@ -332,6 +341,7 @@ All routes follow RESTful patterns:
 - Payer sees real-time progress (who's selecting what)
 - Prevents over-selection (guests see what others selected)
 - Better UX for large groups
+- Multi-day bill splitting supported
 
 ### 16. Cash Payment Flow
 **Why:** Not everyone has PayPal - cash option provides flexibility

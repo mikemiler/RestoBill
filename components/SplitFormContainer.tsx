@@ -33,6 +33,7 @@ interface SplitFormContainerProps {
   paypalHandle: string
   items: BillItem[]
   itemRemainingQuantities: Record<string, number>
+  totalAmount: number
   isOwner?: boolean
 }
 
@@ -43,6 +44,7 @@ export default function SplitFormContainer({
   paypalHandle,
   items: initialItems,
   itemRemainingQuantities: initialRemainingQuantities,
+  totalAmount,
   isOwner = false,
 }: SplitFormContainerProps) {
   const [allSelections, setAllSelections] = useState<DatabaseSelection[]>([])
@@ -153,6 +155,8 @@ export default function SplitFormContainer({
           paypalHandle={paypalHandle}
           items={items}
           itemRemainingQuantities={itemRemainingQuantities}
+          totalAmount={totalAmount}
+          allSelections={allSelections}
           isOwner={isOwner}
         />
       </div>
