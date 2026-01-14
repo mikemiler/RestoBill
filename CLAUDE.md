@@ -15,7 +15,7 @@ This file should always represent the current state of the project.
 
 ## Project Overview
 
-**RestoBill** is a German-language web application for splitting restaurant bills. Users upload a receipt photo, Claude Vision API analyzes items automatically, and friends select their items via a shareable link to pay through PayPal.
+**RestoBill** is a German-language web application for splitting restaurant bills. Users upload a receipt photo, Claude Vision API analyzes items automatically, and friends select their items via a shareable link to pay through PayPal or cash.
 
 **Tech Stack:** Next.js 14 (App Router), TypeScript, Prisma, Supabase (PostgreSQL + Storage), Claude Vision API, Tailwind CSS
 
@@ -55,53 +55,91 @@ npx ts-node test-supabase-connection.ts  # Verify Supabase connection
 
 ### Database Schema (Prisma)
 
-**Three main models with cascade delete:**
+**Four main models with cascade delete:**
 
 1. **Bill** - Restaurant bill created by payer
-   - Contains: `payerName`, `paypalHandle`, `imageUrl`, `shareToken` (UUID)
-   - Relations: `items[]`, `selections[]`
+   - Contains: `payerName`, `paypalHandle`, `imageUrl`, `shareToken` (UUID), `restaurantName`, `totalAmount`
+   - Relations: `items[]`, `selections[]`, `activeSelections[]`
 
 2. **BillItem** - Individual items on the bill
    - Contains: `name`, `quantity`, `pricePerUnit`, `totalPrice`
    - Belongs to one Bill
+   - Relations: `selections[]`, `activeSelections[]`
 
-3. **Selection** - Friend's item selection
-   - Contains: `friendName`, `itemQuantities` (JSON), `tipAmount`, `paid`
+3. **Selection** - Friend's final item selection (after payment submission)
+   - Contains: `friendName`, `itemQuantities` (JSON), `tipAmount`, `paid`, `paymentMethod`, `sessionId`
    - `itemQuantities` format: `{"itemId": multiplier}` (e.g., `{"uuid": 0.5}` for half portion)
+   - `paymentMethod`: PAYPAL or CASH (enum)
+   - `sessionId`: Browser session identifier (UUID, optional for future features)
    - Belongs to one Bill, references multiple BillItems
 
-**Important:** Items can only be edited/deleted if no selections exist yet.
+4. **ActiveSelection** - Temporary live selections (real-time tracking)
+   - Contains: `billId`, `itemId`, `sessionId`, `guestName`, `quantity`, `expiresAt`
+   - Tracks guest selections in real-time BEFORE they submit payment
+   - Expires after 30 minutes (automatic cleanup)
+   - Unique constraint: `[billId, itemId, sessionId]` (one entry per item per browser session)
+   - Used for live payment overview dashboard
+
+**Payment Methods Enum:**
+- `PAYPAL` - Payment via PayPal.me link
+- `CASH` - Cash payment (guest notifies payer, no redirect)
+
+**Important:**
+- Items can only be edited/deleted if no selections exist yet
+- ActiveSelections are temporary and auto-expire (cleaned up via `/api/live-selections/cleanup`)
+- Sessions are tracked per browser using unique sessionId (stored in localStorage)
 
 ### Application Flow
 
 **Payer Flow:**
 1. Create bill → `POST /api/bills/create` → Get billId + shareToken
 2. Upload image → `POST /api/bills/[id]/upload` → Claude analyzes items
-3. Review/edit items (optional) → API routes in `/api/bill-items/`
-4. Share link with friends → `/split/[shareToken]`
-5. Monitor status → `/bills/[id]/status`
+3. Review items → `/bills/[id]/review` → View analyzed items, share link with QR code
+4. Edit items (optional) → API routes in `/api/bill-items/` (only if no selections exist)
+5. Share link with friends → `/split/[shareToken]` (via link copy, WhatsApp, or QR code)
+6. Monitor status → `/bills/[id]/status` → See live selections and payment progress
 
-**Friend Flow:**
+**Friend Flow (PayPal):**
 1. Open share link → Server-rendered page with bill data
 2. View previous selections (if any) from localStorage
-3. Select items with quantities (0, 0.5, 1, 2, custom fractions)
-4. Add tip (0%, 7%, 10%, 15%, or custom)
-5. Submit → `POST /api/selections/create` → Selection saved to localStorage → Returns PayPal.me URL
-6. Redirect to `/payment-redirect` page (intermediary to keep browser open)
-7. Auto-redirect to PayPal for payment (stays in browser, not app)
-8. Can return and make additional selections (multiple payments per guest supported)
+3. Enter name → Session tracked via unique sessionId (browser-specific)
+4. Select items with quantities (0, 0.5, 1, 2, custom fractions)
+   - Live selections tracked in ActiveSelection table (visible to payer in real-time)
+5. Add tip (0%, 7%, 10%, 15%, or custom)
+6. Choose payment method: PayPal or Cash
+7. Submit → `POST /api/selections/create` → Selection saved to database & localStorage
+8. **PayPal:** Redirect to `/payment-redirect` page → Auto-redirect to PayPal.me (stays in browser)
+9. Can return and make additional selections (multiple payments per guest supported)
+
+**Friend Flow (Cash):**
+1-7. Same as PayPal flow
+8. **Cash:** Redirect to `/split/[token]/cash-confirmed` → Confirmation page with payment instructions
+9. Guest pays cash directly to payer (no online payment needed)
 
 ### API Routes Structure
 
 All routes follow RESTful patterns:
 
+**Bill Management:**
 - `POST /api/bills/create` - Create bill with payer info
 - `POST /api/bills/[id]/upload` - Upload & analyze image
+- `GET /api/bills/[id]/items` - Get all items for a bill
+- `GET /api/bills/[id]/selections` - Get all selections for a bill
+- `GET /api/bills/[id]/live-selections` - Get active (live) selections for a bill
+
+**Bill Items:**
 - `POST /api/bill-items/create` - Add item manually
 - `PUT /api/bill-items/[id]` - Edit item (only if no selections)
 - `DELETE /api/bill-items/[id]` - Delete item (only if no selections)
-- `POST /api/selections/create` - Friend creates selection
-- `POST /api/selections/[id]/mark-paid` - Mark as paid (manual/webhook)
+
+**Selections (Final Payments):**
+- `POST /api/selections/create` - Friend creates selection (PayPal or Cash)
+- `POST /api/selections/[id]/mark-paid` - Mark as paid (manual confirmation by payer)
+- `GET /api/selections/owner` - Owner-specific selection data
+
+**Live Selections (Real-time Tracking):**
+- `POST /api/live-selections/update` - Update/create active selection (real-time tracking)
+- `POST /api/live-selections/cleanup` - Clean up expired active selections
 
 **Security:** All public routes validate `shareToken` before proceeding.
 
@@ -135,6 +173,12 @@ All routes follow RESTful patterns:
 - Stores: selectionId, friendName, itemQuantities, amounts, paymentMethod, timestamp
 - Dispatches custom events for same-tab updates
 
+**lib/sessionStorage.ts**
+- Browser session management for unique user identification
+- Functions: `getOrCreateSessionId()`, `getSessionId()`, `clearSessionId()`
+- Generates UUID v4 per browser (persists across page reloads)
+- Used for ActiveSelection tracking (prevents duplicate entries from same browser)
+
 **lib/prisma.ts**
 - Singleton PrismaClient (prevents multiple instances in dev)
 
@@ -142,17 +186,25 @@ All routes follow RESTful patterns:
 
 **Server Components (default):**
 - `/split/[token]/page.tsx` - Public split page (no JS needed)
-- `/bills/[id]/status/page.tsx` - Status dashboard
+- `/split/[token]/cash-confirmed/page.tsx` - Cash payment confirmation page
+- `/bills/[id]/status/page.tsx` - Status dashboard with real-time updates
+- `/bills/[id]/review/page.tsx` - Review analyzed items after upload
 
 **Redirect Pages (client-side):**
 - `/payment-redirect/page.tsx` - Intermediary page that redirects to PayPal (helps keep browser open instead of opening PayPal app)
 
 **Client Components (interactive):**
 - `SplitFormContainer` - Container managing guest selections and form display
-- `SplitForm` - Item selection with quantity buttons
+- `SplitForm` - Item selection with quantity buttons, live selection tracking
 - `SelectionSummary` - Display all previous selections from localStorage (multiple payments)
+- `PaymentOverview` - Real-time payment dashboard with live selections, polling + Supabase realtime
 - `BillItemsEditor` - Add/edit/delete items (payer only)
 - `SelectionCard` - Display individual selection on status page
+- `ShareLink` - Share link with copy button and WhatsApp integration
+- `QRCode` - QR code generator for share links (uses react-qr-code)
+- `CollapsibleReceipt` - Expandable receipt image view
+- `BillsList` - List of bill history
+- `BillAutoSave` - Auto-save functionality for bill drafts
 - `CopyButton`, `RefreshButton` - Interactive controls
 - `ThemeProvider`, `ThemeToggle` - Dark mode support
 
@@ -239,6 +291,81 @@ All routes follow RESTful patterns:
 - Log errors server-side for debugging
 - User-friendly messages (no stack traces)
 
+### 14. Session-based Tracking
+- Each browser gets unique sessionId (UUID v4) stored in localStorage
+- Generated via `getOrCreateSessionId()` from `lib/sessionStorage.ts`
+- Used for:
+  - ActiveSelection unique constraint (prevents duplicate entries per browser)
+  - Future feature: "My Bills" page to show user's selections across devices
+- Persists across page reloads but unique per browser
+- Optional field in Selection model for future use
+
+### 15. Live Selections (Real-time Tracking)
+**Purpose:** Show payer which items guests are currently selecting BEFORE payment submission
+
+**How it works:**
+- Guest enters name and selects items → `POST /api/live-selections/update` called in real-time
+- Creates/updates ActiveSelection entries (unique per billId + itemId + sessionId)
+- Payer sees live updates in PaymentOverview component on status page
+- Uses both polling (3s interval) and Supabase Realtime for instant updates
+- Entries expire after 30 minutes (cleanup via `/api/live-selections/cleanup`)
+
+**Data flow:**
+1. SplitForm tracks quantity changes → Updates ActiveSelection via API
+2. PaymentOverview polls + subscribes to ActiveSelection changes
+3. Displays "Ausgewählt" total with live indicator (blue pulse dot)
+4. When guest submits payment → ActiveSelection converted to Selection (final)
+
+**Benefits:**
+- Payer sees real-time progress (who's selecting what)
+- Prevents over-selection (guests see what others selected)
+- Better UX for large groups
+
+### 16. Cash Payment Flow
+**Why:** Not everyone has PayPal - cash option provides flexibility
+
+**Flow:**
+1. Guest selects items, adds tip, chooses "Barzahlung" option
+2. Submits → `POST /api/selections/create` with `paymentMethod: CASH`
+3. Redirects to `/split/[token]/cash-confirmed` (NOT payment-redirect)
+4. Confirmation page shows:
+   - Payment method: 💵 Barzahlung
+   - Amount to pay in cash
+   - Instructions to pay payer directly
+5. Selection saved as `paid: false` initially
+6. Payer manually confirms payment via "Zahlung bestätigen" button on status page
+
+**Important:**
+- No external redirect (unlike PayPal flow)
+- Manual confirmation required by payer
+- paymentMethod field distinguishes CASH from PAYPAL in Selection model
+
+### 17. Share Link Features
+**Purpose:** Make sharing bills with friends as easy as possible
+
+**ShareLink Component Features:**
+1. **Copy to Clipboard**
+   - One-click copy of share URL
+   - Visual feedback ("✓ Kopiert!" for 2 seconds)
+   - Uses `navigator.clipboard.writeText()`
+
+2. **WhatsApp Integration**
+   - One-click share via WhatsApp Web/App
+   - Pre-formatted message in German with share link
+   - Opens WhatsApp with `https://wa.me/?text=...`
+
+3. **QR Code Generator**
+   - Displays on `/bills/[id]/review` page
+   - Uses `react-qr-code` library (QRCodeSVG component)
+   - Level "H" (high) error correction
+   - Configurable size (default 200px)
+   - Friends can scan QR code to open split page instantly
+
+**Usage Pattern:**
+- Review page shows: Copy button + WhatsApp button + QR code
+- All three methods open same share link: `/split/[shareToken]`
+- QR codes especially useful for in-person bill splitting (restaurant table)
+
 ## Environment Variables
 
 Required in `.env.local`:
@@ -287,6 +414,21 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 - Run `npx ts-node test-supabase-connection.ts`
 - Verifies: connection, storage bucket, permissions
 
+### Working with Live Selections (Real-time Features)
+**When adding/modifying real-time tracking:**
+1. Update `ActiveSelection` model in `prisma/schema.prisma` if schema changes needed
+2. Run `npx prisma db push` to sync database
+3. Update `/api/live-selections/update` route if API changes needed
+4. Update `SplitForm.tsx` quantity handlers to call live-selections API
+5. Update `PaymentOverview.tsx` subscription logic for new fields
+6. Test with multiple browser windows to verify real-time sync
+
+**Important:**
+- ActiveSelections expire after 30 minutes (set in `expiresAt` field)
+- Cleanup happens via `/api/live-selections/cleanup` (can be run as cron job)
+- Unique constraint: `[billId, itemId, sessionId]` prevents duplicates per browser
+- Both polling (3s) AND Supabase Realtime are used for redundancy
+
 ## Security Considerations
 
 **Implemented:**
@@ -324,6 +466,35 @@ npx prisma generate  # Regenerate client
 rm -rf .next && npm run build  # Clear cache and rebuild
 ```
 
+### Real-time/Live Selection Issues
+**Symptoms:** Live selections not updating, stale data, or missing updates
+
+**Common causes and fixes:**
+1. **Supabase Realtime not enabled**
+   - Check Supabase dashboard → Database → Replication
+   - Enable realtime for `ActiveSelection` and `Selection` tables
+
+2. **Polling fallback working but Realtime not**
+   - Check browser console for Supabase connection errors
+   - Verify `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are set
+   - Realtime requires WebSocket support (check browser compatibility)
+
+3. **ActiveSelections not cleaning up**
+   - Manually run cleanup: `POST /api/live-selections/cleanup`
+   - Set up Vercel Cron Job to run cleanup every 10 minutes
+   - Check `expiresAt` timestamps are being set correctly
+
+4. **Duplicate entries per browser**
+   - Verify sessionId is consistent across component re-renders
+   - Check localStorage for `userSessionId` key
+   - Clear localStorage and refresh to generate new sessionId
+
+**Debug tips:**
+- Open PaymentOverview in one window, SplitForm in another (same bill)
+- Watch Network tab for `/api/live-selections/update` calls
+- Check Supabase Table Editor for ActiveSelection entries
+- Enable console logs in PaymentOverview subscription handlers
+
 ## Project Structure Reference
 
 ```
@@ -333,37 +504,60 @@ app/
 ├── payment-redirect/page.tsx          # PayPal redirect intermediary (keeps browser open)
 ├── bills/[id]/
 │   ├── upload/page.tsx               # Image upload
-│   ├── status/page.tsx               # Payer dashboard (server)
-├── split/[token]/page.tsx            # Public split page (server)
+│   ├── review/page.tsx               # Review analyzed items with share link
+│   └── status/page.tsx               # Payer dashboard with live updates
+├── split/[token]/
+│   ├── page.tsx                      # Public split page (server)
+│   └── cash-confirmed/page.tsx       # Cash payment confirmation
+├── test-supabase/page.tsx            # Supabase connection test page
 └── api/
     ├── bills/
-    │   ├── create/route.ts
-    │   └── [id]/upload/route.ts
+    │   ├── create/route.ts           # Create new bill
+    │   └── [id]/
+    │       ├── upload/route.ts       # Upload & analyze receipt
+    │       ├── items/route.ts        # Get all items for bill
+    │       ├── selections/route.ts   # Get all selections for bill
+    │       └── live-selections/route.ts  # Get active selections
     ├── bill-items/
-    │   ├── create/route.ts
-    │   ├── [id]/route.ts
-    └── selections/
-        ├── create/route.ts
-        └── [id]/mark-paid/route.ts
+    │   ├── create/route.ts           # Add item manually
+    │   └── [id]/route.ts             # Edit/delete item (PUT/DELETE)
+    ├── selections/
+    │   ├── create/route.ts           # Create selection (PayPal/Cash)
+    │   ├── owner/route.ts            # Owner-specific data
+    │   └── [id]/mark-paid/route.ts   # Confirm payment received
+    ├── live-selections/
+    │   ├── update/route.ts           # Update active selection (realtime)
+    │   └── cleanup/route.ts          # Clean up expired selections
+    └── test-supabase/route.ts        # Test Supabase connection
 
 components/
 ├── SplitFormContainer.tsx             # Container for split form & selection summary
-├── SplitForm.tsx                      # Item selection UI
+├── SplitForm.tsx                      # Item selection UI with live tracking
 ├── SelectionSummary.tsx               # Display previous guest selections
-├── BillItemsEditor.tsx                # Add/edit/delete items
-├── SelectionCard.tsx                  # Friend selection display
-└── [other UI components]
+├── PaymentOverview.tsx                # Real-time payment dashboard
+├── BillItemsEditor.tsx                # Add/edit/delete items (owner only)
+├── SelectionCard.tsx                  # Display individual selection
+├── ShareLink.tsx                      # Share link with copy & WhatsApp
+├── QRCode.tsx                         # QR code generator
+├── CollapsibleReceipt.tsx             # Expandable receipt image
+├── BillsList.tsx                      # Bill history list
+├── BillAutoSave.tsx                   # Auto-save functionality
+├── CopyButton.tsx                     # Copy to clipboard button
+├── RefreshButton.tsx                  # Refresh data button
+├── ThemeProvider.tsx                  # Dark mode provider
+└── ThemeToggle.tsx                    # Dark mode toggle
 
 lib/
-├── prisma.ts                          # Database client
-├── supabase.ts                        # Storage client
-├── claude.ts                          # Vision API
-├── utils.ts                           # Helpers
+├── prisma.ts                          # Database client (singleton)
+├── supabase.ts                        # Storage client (admin + anon)
+├── claude.ts                          # Vision API integration
+├── utils.ts                           # Helpers (formatEUR, sanitize, etc.)
 ├── billStorage.ts                     # Bill history localStorage utils
-└── selectionStorage.ts                # Guest selection localStorage utils
+├── selectionStorage.ts                # Guest selection localStorage utils
+└── sessionStorage.ts                  # Session ID management (browser tracking)
 
 prisma/
-└── schema.prisma                      # Database schema
+└── schema.prisma                      # Database schema (Bill, BillItem, Selection, ActiveSelection)
 ```
 
 ## Deployment Notes
