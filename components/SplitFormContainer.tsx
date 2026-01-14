@@ -1,19 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
 import SplitForm from './SplitForm'
 import SelectionSummary from './SelectionSummary'
 import { getSelectionsByToken } from '@/lib/selectionStorage'
 import type { SavedSelection } from '@/lib/selectionStorage'
-
-// Browser-only Supabase client
-const supabase = typeof window !== 'undefined'
-  ? createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
-  : null
+import { useRealtimeSubscription } from '@/lib/hooks'
 
 interface DatabaseSelection {
   id: string
@@ -110,59 +102,28 @@ export default function SplitFormContainer({
     setItemRemainingQuantities(remaining)
   }, [items, allSelections])
 
-  // Polling + Realtime subscription for Selection changes and BillItem broadcasts
-  useEffect(() => {
-    // Initial fetch
-    fetchSelections()
-    // Don't fetch items initially - use props instead
+  // Realtime subscription for Selection changes and BillItem broadcasts
+  const { isConnected } = useRealtimeSubscription(billId, {
+    // Initial data fetch on mount and after reconnection
+    onInitialFetch: async () => {
+      await fetchSelections()
+      // Don't fetch items initially - use props instead
+    },
 
-    // Set up polling (every 3 seconds)
-    const pollInterval = setInterval(() => {
+    // Selection table changes (final payments)
+    onSelectionChange: () => {
       fetchSelections()
+    },
+
+    // Item changes broadcast from owner
+    onItemChange: () => {
+      // Refetch items when broadcast is received
       fetchItems()
-    }, 3000)
+    },
 
-    // Also subscribe to realtime for instant updates (when it works)
-    let channel: any = null
-    if (supabase) {
-      channel = supabase
-        .channel(`bill-updates:${billId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'Selection',
-            filter: `billId=eq.${billId}`
-          },
-          (payload) => {
-            console.log('Selection change detected:', payload)
-            // Refetch all selections when any change occurs
-            fetchSelections()
-          }
-        )
-        .on(
-          'broadcast',
-          { event: 'item-changed' },
-          (payload) => {
-            console.log('Item change broadcast received:', payload)
-            // Refetch items when broadcast is received
-            fetchItems()
-          }
-        )
-        .subscribe((status) => {
-          console.log('Supabase subscription status:', status)
-        })
-    }
-
-    // Cleanup on unmount
-    return () => {
-      clearInterval(pollInterval)
-      if (supabase && channel) {
-        supabase.removeChannel(channel)
-      }
-    }
-  }, [billId])
+    // Enable debug logging in development
+    debug: process.env.NODE_ENV === 'development'
+  })
 
   if (loading) {
     return (

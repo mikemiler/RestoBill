@@ -1,16 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { useState } from 'react'
 import { formatEUR } from '@/lib/utils'
-
-// Browser-only Supabase client
-const supabase = typeof window !== 'undefined'
-  ? createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
-  : null
+import { useRealtimeSubscription } from '@/lib/hooks'
 
 interface BillItem {
   id: string
@@ -70,59 +62,25 @@ export default function PaymentOverview({
     }
   }
 
-  // Polling + Realtime subscription for Selection and ActiveSelection changes
-  useEffect(() => {
-    // Initial fetch
-    fetchActiveSelections()
+  // Realtime subscription for Selection and ActiveSelection changes
+  const { isConnected, connectionStatus } = useRealtimeSubscription(billId, {
+    // Initial data fetch on mount and after reconnection
+    onInitialFetch: async () => {
+      await Promise.all([
+        fetchSelections(),
+        fetchActiveSelections()
+      ])
+    },
 
-    // Set up polling (every 3 seconds)
-    const pollInterval = setInterval(() => {
-      fetchSelections()
-      fetchActiveSelections()
-    }, 3000)
+    // Selection table changes (final payments)
+    onSelectionChange: () => fetchSelections(),
 
-    // Also subscribe to realtime for instant updates (when it works)
-    let channel: any = null
-    if (supabase) {
-      channel = supabase
-        .channel(`payment-overview:${billId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'Selection',
-            filter: `billId=eq.${billId}`
-          },
-          () => {
-            // Refetch selections when any change occurs
-            fetchSelections()
-          }
-        )
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'ActiveSelection',
-            filter: `billId=eq.${billId}`
-          },
-          () => {
-            // Refetch active selections when any change occurs
-            fetchActiveSelections()
-          }
-        )
-        .subscribe()
-    }
+    // ActiveSelection table changes (live tracking)
+    onActiveSelectionChange: () => fetchActiveSelections(),
 
-    // Cleanup on unmount
-    return () => {
-      clearInterval(pollInterval)
-      if (supabase && channel) {
-        supabase.removeChannel(channel)
-      }
-    }
-  }, [billId])
+    // Enable debug logging (optional - set to false in production)
+    debug: process.env.NODE_ENV === 'development'
+  })
 
   // Calculate total amount from all selections (items + tip)
   const calculateSelectionTotal = (selection: Selection): number => {

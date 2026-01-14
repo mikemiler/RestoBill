@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js'
 import { formatEUR } from '@/lib/utils'
 import { saveSelection } from '@/lib/selectionStorage'
 import { getOrCreateSessionId } from '@/lib/sessionStorage'
+import { useRealtimeSubscription } from '@/lib/hooks'
 
 // Browser-only Supabase client
 const supabase = typeof window !== 'undefined'
@@ -267,60 +268,34 @@ export default function SplitForm({
     }
   }
 
-  // Polling + Realtime for live selections and payments
-  useEffect(() => {
-    // Initial fetch
-    fetchLiveSelections()
-    calculateRemainingQuantities()
+  // Realtime subscription for live selections and payments
+  const { isConnected } = useRealtimeSubscription(billId, {
+    // Initial data fetch on mount and after reconnection
+    onInitialFetch: async () => {
+      await fetchLiveSelections()
+      calculateRemainingQuantities()
+    },
 
-    // Set up polling (every 2 seconds for more responsive live updates)
-    const pollInterval = setInterval(() => {
+    // ActiveSelection table changes (live tracking)
+    onActiveSelectionChange: () => {
+      fetchLiveSelections()
+    },
+
+    // Selection table changes (final payments) - recalculate remaining quantities
+    onSelectionChange: () => {
+      calculateRemainingQuantities()
+    },
+
+    // Item changes broadcast from owner
+    onItemChange: () => {
+      // Refetch live selections when items change
       fetchLiveSelections()
       calculateRemainingQuantities()
-    }, 2000)
+    },
 
-    // Also subscribe to realtime for instant updates (when it works)
-    let channel: any = null
-    if (supabase) {
-      channel = supabase
-        .channel(`bill:${billId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'ActiveSelection',
-            filter: `billId=eq.${billId}`
-          },
-          () => {
-            // Refetch when any change occurs
-            fetchLiveSelections()
-          }
-        )
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'Selection',
-            filter: `billId=eq.${billId}`
-          },
-          () => {
-            // When someone pays, recalculate remaining quantities
-            calculateRemainingQuantities()
-          }
-        )
-        .subscribe()
-    }
-
-    // Cleanup on unmount
-    return () => {
-      clearInterval(pollInterval)
-      if (supabase && channel) {
-        supabase.removeChannel(channel)
-      }
-    }
-  }, [billId])
+    // Enable debug logging in development
+    debug: process.env.NODE_ENV === 'development'
+  })
 
   // Cleanup live selections on unmount or page leave
   useEffect(() => {
@@ -445,7 +420,7 @@ export default function SplitForm({
 
       // Broadcast item change to all clients
       if (supabase) {
-        await supabase.channel(`bill-updates:${billId}`).send({
+        await supabase.channel(`bill:${billId}`).send({
           type: 'broadcast',
           event: 'item-changed',
           payload: { action: 'updated', itemId }
@@ -480,7 +455,7 @@ export default function SplitForm({
 
       // Broadcast item change to all clients
       if (supabase) {
-        await supabase.channel(`bill-updates:${billId}`).send({
+        await supabase.channel(`bill:${billId}`).send({
           type: 'broadcast',
           event: 'item-changed',
           payload: { action: 'deleted', itemId }
@@ -520,7 +495,7 @@ export default function SplitForm({
 
       // Broadcast item change to all clients
       if (supabase) {
-        await supabase.channel(`bill-updates:${billId}`).send({
+        await supabase.channel(`bill:${billId}`).send({
           type: 'broadcast',
           event: 'item-changed',
           payload: { action: 'created', itemId: data.item?.id }
