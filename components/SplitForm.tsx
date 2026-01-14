@@ -584,11 +584,6 @@ export default function SplitForm({
 
     const options = [0]
 
-    // Add 0.5 if there's at least 0.5 remaining
-    if (remainingQty >= 0.5) {
-      options.push(0.5)
-    }
-
     // Add whole numbers up to remaining quantity (max 3 buttons for whole numbers)
     const maxWholeNumber = Math.min(Math.floor(remainingQty), 3)
     for (let i = 1; i <= maxWholeNumber; i++) {
@@ -974,8 +969,17 @@ export default function SplitForm({
                     )}
 
                     {/* Live Selection Badges */}
-                    {othersSelecting.length > 0 && (
+                    {(selectedItems[item.id] > 0 || othersSelecting.length > 0) && (
                       <div className={`absolute top-2 ${isOwner ? 'right-10' : 'right-2'} flex flex-wrap gap-1 justify-end max-w-[50%]`}>
+                        {/* Own selection badge (green, always first) */}
+                        {selectedItems[item.id] > 0 && (
+                          <div className="bg-green-500 dark:bg-green-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                            <span className="font-medium">{friendName || 'Ich'}</span>
+                            <span className="opacity-90">({selectedItems[item.id]}×)</span>
+                          </div>
+                        )}
+                        {/* Other guests' selection badges (blue) */}
                         {othersSelecting.map((user, idx) => {
                           // Animation should only show for other guests, not for the user who made the change
                           const shouldAnimate = animatingItems.has(`${item.id}:${user.sessionId}`)
@@ -1035,7 +1039,6 @@ export default function SplitForm({
                         </p>
                         <p className="text-xs text-red-600 dark:text-red-500 mt-0.5">
                           {totalLiveSelected}x ausgewählt, aber nur {item.quantity}x verfügbar.
-                          Bitte koordiniert euch.
                         </p>
                       </div>
                     </div>
@@ -1072,7 +1075,7 @@ export default function SplitForm({
                               : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500'
                           }`}
                         >
-                          Andere
+                          Anteilig
                         </button>
                       </div>
                       {selectedItems[item.id] > 0 && !customQuantityMode[item.id] && (
@@ -1416,8 +1419,9 @@ export default function SplitForm({
 
           {/* Compact Summary - 2 Columns */}
           <div className="grid grid-cols-2 gap-2 text-center text-xs sm:text-sm">
-            <div className="text-gray-600 dark:text-gray-400">
-              Gesamt: <span className="font-bold text-gray-900 dark:text-gray-100">{formatEUR(totalAmount)}</span>
+            <div>
+              <span className="text-gray-600 dark:text-gray-400">Deine Auswahl: </span>
+              <span className="font-bold text-green-600 dark:text-green-400">{formatEUR(ownActiveAmount)}</span>
             </div>
             <div className={`font-bold ${
               remainingAmount === 0 && totalPaidAmount > 0
@@ -1429,7 +1433,7 @@ export default function SplitForm({
               {remainingAmount === 0 && totalPaidAmount > 0
                 ? '✓ Vollständig aufgeteilt!'
                 : remainingAmount > 0
-                ? `Noch offen: ${formatEUR(remainingAmount)}`
+                ? `Noch offen: ${formatEUR(remainingAmount)} / ${formatEUR(totalAmount)}`
                 : `❗ Überbucht: ${formatEUR(Math.abs(remainingAmount))}`
               }
             </div>
