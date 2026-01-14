@@ -23,9 +23,8 @@ model Bill {
   totalAmount    Float?
 
   // Relations
-  items            BillItem[]
-  selections       Selection[]
-  activeSelections ActiveSelection[]
+  items      BillItem[]
+  selections Selection[]
 
   // Public Link Token
   shareToken String @unique @default(uuid())
@@ -44,8 +43,7 @@ model BillItem {
   totalPrice   Float // quantity * pricePerUnit
 
   // Relations
-  selections       Selection[]
-  activeSelections ActiveSelection[]
+  selections Selection[]
 
   @@index([billId])
 }
@@ -55,56 +53,52 @@ enum PaymentMethod {
   CASH
 }
 
+enum SelectionStatus {
+  SELECTING // Live tracking - Guest is selecting items (blue badge)
+  PAID      // Final payment - Guest has paid (green badge)
+}
+
 model Selection {
   id        String  @id @default(uuid())
   billId    String
   bill      Bill    @relation(fields: [billId], references: [id], onDelete: Cascade)
 
-  sessionId  String? // Unique browser session (for future /my-bills feature)
-  friendName String  // Display name
+  sessionId  String // Required - unique browser session identifier
+  friendName String // Display name
 
-  // Selected Items - Many-to-Many relationship
+  // Selected Items - Many-to-Many relationship (legacy, not used anymore)
   items BillItem[]
 
   // Quantity multiplier for each item (0.5x, 1x, 2x etc)
   // Stored as JSON: {"itemId": quantity}
+  // Updated in real-time during SELECTING status
   itemQuantities Json? // z.B. {"item-uuid-1": 0.5, "item-uuid-2": 1}
 
-  // Trinkgeld
+  // Selection Status (NEW)
+  status SelectionStatus @default(SELECTING)
+
+  // Trinkgeld (only set when status=PAID)
   tipAmount Float @default(0)
 
-  // Zahlungsmethode
+  // Zahlungsmethode (only set when status=PAID)
   paymentMethod PaymentMethod @default(PAYPAL)
 
-  // Status
+  // Payment Status (legacy compatibility)
   paid   Boolean   @default(false)
   paidAt DateTime?
 
-  createdAt DateTime @default(now())
+  // Auto-cleanup for abandoned selections
+  expiresAt DateTime // Cleanup after 30 days (changed from 30 minutes)
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Note: Unique constraint removed to allow multiple payments per guest
+  // Partial unique index created via SQL: unique(billId, sessionId) WHERE status='SELECTING'
+  // This allows: only one SELECTING per session, but multiple PAID per session
   @@index([billId])
   @@index([sessionId])
-}
-
-// Live-Anzeige: Temporäre Auswahlen für Realtime-Features
-// Session-based tracking: sessionId identifies unique browser sessions
-// guestName is used for display only (can have duplicates)
-model ActiveSelection {
-  id        String   @id @default(uuid())
-  billId    String
-  itemId    String
-  sessionId String   // Unique browser session identifier
-  guestName String   // Display name (can have duplicates)
-  quantity  Float    // 0, 0.5, 1, 2, etc.
-  createdAt DateTime @default(now())
-  expiresAt DateTime // Fallback-Cleanup nach z.B. 30 Minuten
-
-  bill Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
-  item BillItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
-
-  // Each browser session can only have one entry per item
-  @@unique([billId, itemId, sessionId])
-  @@index([billId])
+  @@index([status])
   @@index([expiresAt])
-  @@index([sessionId])
+  @@index([billId, sessionId]) // Composite index for lookups
 }

@@ -23,12 +23,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Delete all active selections for this session on this bill
+    // Delete Selection with status=SELECTING for this session on this bill
     const { error: deleteError } = await supabaseAdmin
-      .from('ActiveSelection')
+      .from('Selection')
       .delete()
       .eq('billId', billId)
       .eq('sessionId', sessionId)
+      .eq('status', 'SELECTING')
 
     if (deleteError) {
       throw deleteError

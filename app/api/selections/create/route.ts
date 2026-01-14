@@ -116,24 +116,69 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create selection in database
-    const selectionId = crypto.randomUUID()
-    const { data: selection, error: selectionError } = await supabaseAdmin
+    // Check if Selection with status=SELECTING already exists (from live tracking)
+    const { data: existingSelection, error: fetchError } = await supabaseAdmin
       .from('Selection')
-      .insert({
-        id: selectionId,
-        billId: billId,
-        sessionId: sessionId || null,
-        friendName: sanitizedName,
-        itemQuantities: itemQuantities,
-        tipAmount: tip,
-        paymentMethod: paymentMethod || 'PAYPAL',
-      })
-      .select()
+      .select('id')
+      .eq('billId', billId)
+      .eq('sessionId', sessionId || '')
+      .eq('status', 'SELECTING')
       .single()
 
-    if (selectionError) {
-      throw selectionError
+    let selection: any
+
+    if (existingSelection) {
+      // Update existing live selection to PAID
+      const { data: updated, error: updateError } = await supabaseAdmin
+        .from('Selection')
+        .update({
+          friendName: sanitizedName, // Update name if changed
+          itemQuantities: itemQuantities, // Use the submitted quantities (may differ from live tracking)
+          status: 'PAID',
+          tipAmount: tip,
+          paymentMethod: paymentMethod || 'PAYPAL',
+          paid: false, // Will be manually confirmed by owner
+          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          updatedAt: new Date().toISOString(),
+        })
+        .eq('id', existingSelection.id)
+        .select()
+        .single()
+
+      if (updateError) {
+        throw updateError
+      }
+
+      selection = updated
+    } else {
+      // No live selection exists - create new Selection directly with status=PAID
+      // (fallback for guests who pay without live tracking)
+      const selectionId = crypto.randomUUID()
+      const now = new Date().toISOString()
+      const { data: created, error: insertError } = await supabaseAdmin
+        .from('Selection')
+        .insert({
+          id: selectionId,
+          billId: billId,
+          sessionId: sessionId || crypto.randomUUID(), // Generate sessionId if missing
+          friendName: sanitizedName,
+          itemQuantities: itemQuantities,
+          status: 'PAID',
+          tipAmount: tip,
+          paymentMethod: paymentMethod || 'PAYPAL',
+          paid: false,
+          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          createdAt: now,
+          updatedAt: now,
+        })
+        .select()
+        .single()
+
+      if (insertError) {
+        throw insertError
+      }
+
+      selection = created
     }
 
     // For cash payment, no PayPal URL needed

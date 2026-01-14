@@ -28,10 +28,12 @@ export type ConnectionStatus =
 
 // Event handlers
 export interface RealtimeEventHandlers {
-  // Selection table changes (final payments)
+  // Selection table changes - final payments (status=PAID)
+  // NOTE: Also triggers for SELECTING status changes since unified table
   onSelectionChange?: () => void | Promise<void>
 
-  // ActiveSelection table changes (live tracking)
+  // Selection table changes - live tracking (status=SELECTING)
+  // NOTE: Now uses unified Selection table (no separate ActiveSelection table)
   onActiveSelectionChange?: () => void | Promise<void>
 
   // Item changes (broadcast from owner)
@@ -183,8 +185,10 @@ export function useRealtimeSubscription(
       // Create single channel for this bill
       const channel = supabase.channel(`bill:${billId}`)
 
-      // Subscribe to Selection table changes (final payments)
-      if (onSelectionChange) {
+      // Subscribe to Selection table changes (unified table for both SELECTING and PAID)
+      // Since we now use ONE table instead of ActiveSelection + Selection,
+      // we trigger BOTH callbacks on any Selection change
+      if (onSelectionChange || onActiveSelectionChange) {
         channel.on(
           'postgres_changes',
           {
@@ -193,34 +197,24 @@ export function useRealtimeSubscription(
             table: 'Selection',
             filter: `billId=eq.${billId}`
           },
-          async () => {
-            log('Selection changed')
-            try {
-              await onSelectionChange()
-            } catch (error) {
-              logError('Error in onSelectionChange:', error)
-              onError?.(error instanceof Error ? error : new Error(String(error)))
-            }
-          }
-        )
-      }
+          async (payload) => {
+            log('Selection changed (unified table)', {
+              eventType: payload.eventType,
+              table: payload.table,
+              hasOld: !!payload.old,
+              hasNew: !!payload.new
+            })
 
-      // Subscribe to ActiveSelection table changes (live tracking)
-      if (onActiveSelectionChange) {
-        channel.on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'ActiveSelection',
-            filter: `billId=eq.${billId}`
-          },
-          async () => {
-            log('ActiveSelection changed')
+            // Call both callbacks since Selection now handles both SELECTING and PAID statuses
             try {
-              await onActiveSelectionChange()
+              if (onSelectionChange) {
+                await onSelectionChange()
+              }
+              if (onActiveSelectionChange) {
+                await onActiveSelectionChange()
+              }
             } catch (error) {
-              logError('Error in onActiveSelectionChange:', error)
+              logError('Error in Selection change handlers:', error)
               onError?.(error instanceof Error ? error : new Error(String(error)))
             }
           }

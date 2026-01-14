@@ -17,11 +17,13 @@ export async function POST(
     }
 
     // Update selection to mark as paid
+    const now = new Date().toISOString()
     const { data: selection, error } = await supabaseAdmin
       .from('Selection')
       .update({
         paid: true,
-        paidAt: new Date().toISOString()
+        paidAt: now,
+        updatedAt: now
       })
       .eq('id', id)
       .select()
@@ -68,7 +70,8 @@ export async function DELETE(
       .from('Selection')
       .update({
         paid: false,
-        paidAt: null
+        paidAt: null,
+        updatedAt: new Date().toISOString()
       })
       .eq('id', id)
       .select()

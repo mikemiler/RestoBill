@@ -41,43 +41,42 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // If quantity is 0, delete the ActiveSelection instead of updating it
-    if (quantity === 0) {
-      const { error: deleteError } = await supabaseAdmin
-        .from('ActiveSelection')
-        .delete()
-        .eq('billId', billId)
-        .eq('itemId', itemId)
-        .eq('sessionId', sessionId)
-
-      if (deleteError) {
-        console.error('Error deleting ActiveSelection:', deleteError)
-        // Don't throw - it's ok if the entry doesn't exist
-      }
-
-      return NextResponse.json({ success: true })
-    }
-
     // Set expiration to 30 days from now (long-lived for multi-day bill splitting)
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
 
-    // Check if entry exists (by billId, itemId, sessionId)
-    const { data: existing } = await supabaseAdmin
-      .from('ActiveSelection')
-      .select('id')
+    // Get or create Selection with status=SELECTING
+    const { data: existing, error: fetchError } = await supabaseAdmin
+      .from('Selection')
+      .select('id, itemQuantities')
       .eq('billId', billId)
-      .eq('itemId', itemId)
       .eq('sessionId', sessionId)
+      .eq('status', 'SELECTING')
       .single()
 
+    // Parse existing item quantities or start fresh
+    let itemQuantities: Record<string, number> = {}
+    if (existing && existing.itemQuantities) {
+      itemQuantities = existing.itemQuantities as Record<string, number>
+    }
+
+    // Update quantity for this item
+    if (quantity === 0) {
+      // Remove item from selection
+      delete itemQuantities[itemId]
+    } else {
+      // Add or update item quantity
+      itemQuantities[itemId] = quantity
+    }
+
     if (existing) {
-      // Update existing entry (including guestName to support name changes)
+      // Update existing Selection (keep row even if empty to preserve tip)
       const { error: updateError } = await supabaseAdmin
-        .from('ActiveSelection')
+        .from('Selection')
         .update({
-          guestName: sanitizedName,
-          quantity,
+          friendName: sanitizedName, // Update name if changed
+          itemQuantities, // Can be empty {} - preserves tipAmount
           expiresAt,
+          updatedAt: new Date().toISOString(),
         })
         .eq('id', existing.id)
 
@@ -85,17 +84,27 @@ export async function POST(request: NextRequest) {
         throw updateError
       }
     } else {
-      // Create new entry
+      // Don't create new Selection if no items (edge case: should not happen)
+      if (Object.keys(itemQuantities).length === 0) {
+        return NextResponse.json({ success: true })
+      }
+      // Create new Selection with status=SELECTING
+      const now = new Date().toISOString()
       const { error: insertError } = await supabaseAdmin
-        .from('ActiveSelection')
+        .from('Selection')
         .insert({
           id: crypto.randomUUID(),
           billId,
-          itemId,
           sessionId,
-          guestName: sanitizedName,
-          quantity,
+          friendName: sanitizedName,
+          itemQuantities,
+          status: 'SELECTING',
+          tipAmount: 0,
+          paymentMethod: 'PAYPAL',
+          paid: false,
           expiresAt,
+          createdAt: now,
+          updatedAt: now,
         })
 
       if (insertError) {

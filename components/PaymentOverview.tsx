@@ -17,11 +17,15 @@ interface Selection {
   paid: boolean
 }
 
-interface ActiveSelection {
+interface LiveSelection {
   id: string
-  itemId: string
-  guestName: string
-  quantity: number
+  billId: string
+  sessionId: string
+  friendName: string
+  itemQuantities: Record<string, number>
+  status: 'SELECTING' | 'PAID'
+  createdAt: string
+  expiresAt: string
 }
 
 interface PaymentOverviewProps {
@@ -38,7 +42,7 @@ export default function PaymentOverview({
   items,
 }: PaymentOverviewProps) {
   const [selections, setSelections] = useState<Selection[]>(initialSelections)
-  const [activeSelections, setActiveSelections] = useState<ActiveSelection[]>([])
+  const [activeSelections, setActiveSelections] = useState<LiveSelection[]>([])
 
   // Fetch selections from API
   const fetchSelections = async () => {
@@ -51,14 +55,23 @@ export default function PaymentOverview({
     }
   }
 
-  // Fetch active selections (live selections)
+  // Fetch live selections (unified Selection with status='SELECTING')
   const fetchActiveSelections = async () => {
     try {
       const response = await fetch(`/api/bills/${billId}/live-selections`)
-      const data = await response.json()
-      setActiveSelections(data)
+      const data: LiveSelection[] = await response.json()
+
+      // Filter out expired selections and empty selections (no items selected)
+      const now = new Date()
+      const activeData = data.filter(sel => {
+        const hasItems = Object.keys(sel.itemQuantities || {}).length > 0
+        const notExpired = new Date(sel.expiresAt) > now
+        return hasItems && notExpired
+      })
+
+      setActiveSelections(activeData)
     } catch (error) {
-      console.error('Error fetching active selections for payment overview:', error)
+      console.error('Error fetching live selections for payment overview:', error)
     }
   }
 
@@ -97,18 +110,17 @@ export default function PaymentOverview({
     return itemsTotal + selection.tipAmount
   }
 
-  // Calculate total from active selections (live)
+  // Calculate total from live selections (unified Selection with status='SELECTING')
   const calculateActiveSelectionsTotal = (): number => {
-    let total = 0
+    return activeSelections.reduce((total, sel) => {
+      const quantities = sel.itemQuantities as Record<string, number>
+      if (!quantities) return total
 
-    activeSelections.forEach((activeSel) => {
-      const item = items.find((i) => i.id === activeSel.itemId)
-      if (item) {
-        total += item.pricePerUnit * activeSel.quantity
-      }
-    })
-
-    return total
+      return total + Object.entries(quantities).reduce((sum, [itemId, qty]) => {
+        const item = items.find(i => i.id === itemId)
+        return item ? sum + (item.pricePerUnit * qty) : sum
+      }, 0)
+    }, 0)
   }
 
   // Total from live selections (ActiveSelection)

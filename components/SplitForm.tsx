@@ -23,13 +23,13 @@ interface BillItem {
   totalPrice: number
 }
 
-interface ActiveSelection {
+interface LiveSelection {
   id: string
   billId: string
-  itemId: string
   sessionId: string
-  guestName: string
-  quantity: number
+  friendName: string
+  itemQuantities: Record<string, number>
+  status: 'SELECTING' | 'PAID'
   createdAt: string
   expiresAt: string
 }
@@ -78,9 +78,8 @@ export default function SplitForm({
   const [customTip, setCustomTip] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [liveSelections, setLiveSelections] = useState<Map<string, ActiveSelection[]>>(new Map())
+  const [liveSelections, setLiveSelections] = useState<LiveSelection[]>([])
   const [remainingQuantities, setRemainingQuantities] = useState<Record<string, number>>(itemRemainingQuantities)
-  const [animatingItems, setAnimatingItems] = useState<Set<string>>(new Set())
   const [selections, setSelections] = useState<DatabaseSelection[]>(allSelections)
 
   // Item management states (Owner only)
@@ -98,10 +97,6 @@ export default function SplitForm({
     pricePerUnit: 0
   })
 
-  // Use ref to track if this is the first fetch (doesn't trigger re-renders)
-  const isFirstFetch = useRef(true)
-  // Store previous selections snapshot for comparison
-  const prevSelectionsSnapshot = useRef<Map<string, Map<string, number>>>(new Map())
   // Track if we've restored selections yet
   const hasRestoredSelections = useRef(false)
 
@@ -146,42 +141,33 @@ export default function SplitForm({
     }
   }, [openMenuItemId])
 
-  // Restore selections from ActiveSelection table when friendName is ready
+  // Restore selections from unified Selection table (status='SELECTING') when friendName is ready
   useEffect(() => {
     // Only run once after friendName is loaded
     if (hasRestoredSelections.current || !friendName.trim()) {
       return
     }
 
-    // Restore from ActiveSelection table (DB as single source of truth)
-    const restoreFromActiveSelections = async () => {
+    // Restore from unified Selection table (DB as single source of truth)
+    const restoreFromLiveSelections = async () => {
       try {
         const response = await fetch(`/api/bills/${billId}/live-selections`)
-        const data: ActiveSelection[] = await response.json()
+        const data: LiveSelection[] = await response.json()
 
         const currentSessionId = sessionId || getOrCreateSessionId()
 
-        // Filter to only this session's selections
-        const myActiveSelections = data.filter(sel => sel.sessionId === currentSessionId)
+        // Find this session's selection
+        const mySelection = data.find(sel => sel.sessionId === currentSessionId)
 
-        if (myActiveSelections.length > 0) {
-          const restored: Record<string, number> = {}
-          myActiveSelections.forEach(sel => {
-            if (sel.quantity > 0) {
-              restored[sel.itemId] = sel.quantity
-            }
-          })
-
-          if (Object.keys(restored).length > 0) {
-            setSelectedItems(restored)
-          }
+        if (mySelection && mySelection.itemQuantities) {
+          setSelectedItems(mySelection.itemQuantities)
         }
       } catch (error) {
         console.error('Error restoring selections from DB:', error)
       }
     }
 
-    restoreFromActiveSelections()
+    restoreFromLiveSelections()
 
     // Mark as restored
     hasRestoredSelections.current = true
@@ -198,91 +184,33 @@ export default function SplitForm({
     }
   }
 
-  // Fetch live selections and detect changes
+  // Fetch live selections (unified Selection with status='SELECTING')
   const fetchLiveSelections = async () => {
     try {
+      console.log('[SplitForm] Fetching live selections...')
       const response = await fetch(`/api/bills/${billId}/live-selections`)
-      const data: ActiveSelection[] = await response.json()
+      const data: LiveSelection[] = await response.json()
 
-      const currentSessionId = sessionId || getOrCreateSessionId()
-
-      // Filter out expired selections
+      // Filter out expired selections and empty selections (no items selected)
       const now = new Date()
-      const activeData = data.filter(sel => new Date(sel.expiresAt) > now)
-
-      // Create current snapshot: itemId -> sessionId -> quantity
-      const currentSnapshot = new Map<string, Map<string, number>>()
-      activeData.forEach(sel => {
-        if (!currentSnapshot.has(sel.itemId)) {
-          currentSnapshot.set(sel.itemId, new Map())
-        }
-        currentSnapshot.get(sel.itemId)!.set(sel.sessionId, sel.quantity)
+      const activeData = data.filter(sel => {
+        const hasItems = Object.keys(sel.itemQuantities || {}).length > 0
+        const notExpired = new Date(sel.expiresAt) > now
+        return hasItems && notExpired
       })
 
-      // Detect changes (only after first fetch and only for other users)
-      const changedKeys = new Set<string>()
-      if (!isFirstFetch.current) {
-        // Check for new/changed selections
-        currentSnapshot.forEach((sessions, itemId) => {
-          sessions.forEach((quantity, sid) => {
-            // Skip current user
-            if (sid === currentSessionId) return
-
-            const prevSessions = prevSelectionsSnapshot.current.get(itemId)
-            const prevQuantity = prevSessions?.get(sid)
-
-            if (prevQuantity === undefined && quantity > 0) {
-              // New selection from another user
-              changedKeys.add(`${itemId}:${sid}`)
-            } else if (prevQuantity !== undefined && prevQuantity !== quantity) {
-              // Quantity changed
-              changedKeys.add(`${itemId}:${sid}`)
-            }
-          })
-        })
-
-        // Check for removed selections
-        prevSelectionsSnapshot.current.forEach((sessions, itemId) => {
-          sessions.forEach((prevQuantity, sid) => {
-            // Skip current user
-            if (sid === currentSessionId) return
-
-            const currentSessions = currentSnapshot.get(itemId)
-            const currentQuantity = currentSessions?.get(sid)
-
-            if (currentQuantity === undefined && prevQuantity > 0) {
-              // Selection removed
-              changedKeys.add(`${itemId}:${sid}`)
-            }
-          })
-        })
-      }
-
-      // Update snapshot for next comparison
-      prevSelectionsSnapshot.current = currentSnapshot
-
-      // Mark first fetch as complete (restoration now happens in separate useEffect)
-      if (isFirstFetch.current) {
-        isFirstFetch.current = false
-      }
-
-      // Group selections by itemId for rendering (only active ones)
-      const grouped = new Map<string, ActiveSelection[]>()
-      activeData.forEach(sel => {
-        if (!grouped.has(sel.itemId)) {
-          grouped.set(sel.itemId, [])
-        }
-        grouped.get(sel.itemId)!.push(sel)
+      console.log('[SplitForm] Live selections fetched:', {
+        total: data.length,
+        active: activeData.length,
+        selections: activeData.map(s => ({
+          id: s.id,
+          friendName: s.friendName,
+          sessionId: s.sessionId,
+          itemCount: Object.keys(s.itemQuantities || {}).length
+        }))
       })
-      setLiveSelections(grouped)
 
-      // Trigger animations
-      if (changedKeys.size > 0) {
-        setAnimatingItems(changedKeys)
-        setTimeout(() => {
-          setAnimatingItems(new Set())
-        }, 1000)
-      }
+      setLiveSelections(activeData)
     } catch (error) {
       console.error('Error fetching live selections:', error)
     }
@@ -296,30 +224,43 @@ export default function SplitForm({
         fetchSelections(),
         fetchLiveSelections(),
       ])
-      calculateRemainingQuantities()
+      // calculateRemainingQuantities() will be called by useEffect below
     },
 
-    // ActiveSelection table changes (live tracking)
-    onActiveSelectionChange: () => {
-      fetchLiveSelections()
+    // Selection table changes - fetch BOTH SELECTING and PAID
+    // This ensures live selections are updated when users select/deselect items
+    onSelectionChange: async () => {
+      await Promise.all([
+        fetchSelections(),      // PAID selections
+        fetchLiveSelections()   // SELECTING selections
+      ])
     },
 
-    // Selection table changes (final payments) - update paid selections AND recalculate
-    onSelectionChange: () => {
-      fetchSelections() // Update paid selections for status bar
-      calculateRemainingQuantities()
+    // Also handle via onActiveSelectionChange for backwards compatibility
+    onActiveSelectionChange: async () => {
+      await Promise.all([
+        fetchSelections(),
+        fetchLiveSelections()
+      ])
     },
 
     // Item changes broadcast from owner
-    onItemChange: () => {
-      // Refetch live selections when items change
-      fetchLiveSelections()
-      calculateRemainingQuantities()
+    onItemChange: async () => {
+      await Promise.all([
+        fetchSelections(),
+        fetchLiveSelections()
+      ])
     },
 
     // Enable debug logging in development
     debug: process.env.NODE_ENV === 'development'
   })
+
+  // Auto-recalculate remaining quantities when selections or liveSelections change
+  // This prevents race conditions by using the actual state values
+  useEffect(() => {
+    calculateRemainingQuantities()
+  }, [selections, liveSelections])
 
   // Note: We no longer cleanup ActiveSelections when leaving the page
   // This allows guests to return later and continue where they left off
@@ -360,15 +301,16 @@ export default function SplitForm({
 
   // Calculate other guests' active selections from liveSelections (realtime)
   const currentSessionId = sessionId || getOrCreateSessionId()
-  const othersActiveAmount = Array.from(liveSelections.values()).reduce((sum, selections) => {
-    return sum + selections.reduce((itemSum, sel) => {
-      // Skip current user's selections to avoid double counting
-      if (sel.sessionId === currentSessionId) return itemSum
-      const item = items.find(i => i.id === sel.itemId)
-      if (item) {
-        return itemSum + (item.pricePerUnit * sel.quantity)
-      }
-      return itemSum
+  const othersActiveAmount = liveSelections.reduce((sum, sel) => {
+    // Skip current user's selections to avoid double counting
+    if (sel.sessionId === currentSessionId) return sum
+
+    const quantities = sel.itemQuantities as Record<string, number>
+    if (!quantities) return sum
+
+    return sum + Object.entries(quantities).reduce((itemSum, [itemId, qty]) => {
+      const item = items.find(i => i.id === itemId)
+      return item ? itemSum + (item.pricePerUnit * qty) : itemSum
     }, 0)
   }, 0)
 
@@ -383,15 +325,22 @@ export default function SplitForm({
   const activePercentage = totalAmount > 0 ? (totalActiveAmount / totalAmount) * 100 : 0
   const totalCoveredPercentage = Math.min(100, paidPercentage + activePercentage)
 
-  // Calculate remaining quantities from selections
-  const calculateRemainingQuantities = async () => {
+  // Calculate remaining quantities from ALL selections (both SELECTING and PAID)
+  // Uses LOCAL states (selections + liveSelections) to avoid race conditions
+  // EXCLUDES current user's own live selection to show what's available for them
+  const calculateRemainingQuantities = () => {
     try {
-      const response = await fetch(`/api/bills/${billId}/selections`)
-      const selections = await response.json()
+      const currentSessionId = sessionId || getOrCreateSessionId()
 
-      // Calculate claimed quantities per item
+      // Filter out current user's own live selection (but keep their PAID selections)
+      const otherLiveSelections = liveSelections.filter(sel => sel.sessionId !== currentSessionId)
+
+      // Combine PAID selections (including own) and OTHER users' live selections
+      const allSelections = [...selections, ...otherLiveSelections]
+
+      // Calculate claimed quantities per item from ALL selections (excluding own live)
       const claimed: Record<string, number> = {}
-      selections.forEach((selection: any) => {
+      allSelections.forEach((selection: any) => {
         const itemQuantities = selection.itemQuantities as Record<string, number> | null
         if (itemQuantities) {
           Object.entries(itemQuantities).forEach(([itemId, quantity]) => {
@@ -813,21 +762,56 @@ export default function SplitForm({
         </label>
         <div className="space-y-2">
           {items.map((item) => {
+            // Calculate total PAID quantity for this item (ignore SELECTING)
+            const paidSelectionsForItem = selections
+              .filter(sel => {
+                const quantities = sel.itemQuantities as Record<string, number>
+                return quantities && quantities[item.id] > 0
+              })
+
+            const totalPaidForItem = paidSelectionsForItem.reduce((sum, sel) => {
+              const quantities = sel.itemQuantities as Record<string, number>
+              return sum + quantities[item.id]
+            }, 0)
+
+            const isFullyPaid = totalPaidForItem >= item.quantity
             const remainingQty = remainingQuantities[item.id] ?? item.quantity
-            const isFullyClaimed = remainingQty === 0
             const quantityOptions = getQuantityOptions(remainingQty)
 
-            // Get live selections for this item (excluding current user and quantity 0)
-            const liveUsers = liveSelections.get(item.id) || []
+            // Get live selections for this item from unified Selection table
             const currentSessionId = sessionId || getOrCreateSessionId()
-            const othersSelecting = liveUsers.filter(u =>
-              u.sessionId !== currentSessionId && u.quantity > 0
-            )
+            const othersSelecting = liveSelections
+              .filter(sel => {
+                // Skip own session
+                if (sel.sessionId === currentSessionId) return false
+                // Check if item is in selection
+                const quantities = sel.itemQuantities as Record<string, number>
+                return quantities && quantities[item.id] > 0
+              })
+              .map(sel => ({
+                sessionId: sel.sessionId,
+                guestName: sel.friendName,
+                quantity: (sel.itemQuantities as Record<string, number>)[item.id]
+              }))
 
-            // Calculate total live selections for this item (including current user)
-            const totalLiveSelected = liveUsers.reduce((sum, u) => sum + u.quantity, 0)
-            const isOverselected = totalLiveSelected > remainingQty
-            const isFullyMarked = totalLiveSelected === remainingQty && totalLiveSelected > 0
+            // Map paid selections for badge display
+            const paidSelectionsForDisplay = paidSelectionsForItem
+              .map(sel => ({
+                friendName: sel.friendName,
+                quantity: (sel.itemQuantities as Record<string, number>)[item.id]
+              }))
+
+            // Calculate total selections for this item (PAID + SELECTING)
+            const ownQuantity = selectedItems[item.id] || 0
+            const othersTotal = othersSelecting.reduce((sum, u) => sum + u.quantity, 0)
+            const totalLiveSelected = ownQuantity + othersTotal
+
+            // Total claimed = PAID + all SELECTING (including own)
+            const totalClaimed = totalPaidForItem + totalLiveSelected
+
+            // Overselected if total claimed exceeds item quantity
+            const isOverselected = totalClaimed > item.quantity
+            const isFullyMarked = totalClaimed === item.quantity && totalClaimed > 0
 
             const isEditingThis = editingItemId === item.id
 
@@ -835,7 +819,7 @@ export default function SplitForm({
               <div
                 key={item.id}
                 className={`border rounded-lg p-2.5 sm:p-3 transition-colors relative ${
-                  isFullyClaimed
+                  isFullyPaid
                     ? 'border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 opacity-60'
                     : isOverselected
                     ? 'border-red-500 dark:border-red-600 bg-red-50 dark:bg-red-900/20'
@@ -850,7 +834,7 @@ export default function SplitForm({
                     return
                   }
                   // Auto-select as 1x when clicking on unselected item
-                  if ((!selectedItems[item.id] || selectedItems[item.id] === 0) && !isFullyClaimed && remainingQty >= 1) {
+                  if ((!selectedItems[item.id] || selectedItems[item.id] === 0) && !isFullyPaid && remainingQty >= 1) {
                     handleItemQuantityChange(item.id, 1)
                   }
                 }}
@@ -962,17 +946,7 @@ export default function SplitForm({
 
                     {/* Selection Badges (Live + Paid) */}
                     {(() => {
-                      // Find paid selections for this item
-                      const paidSelectionsForItem = selections
-                        .filter(sel => {
-                          const quantities = sel.itemQuantities as Record<string, number>
-                          return quantities && quantities[item.id] > 0
-                        })
-                        .map(sel => ({
-                          friendName: sel.friendName,
-                          quantity: (sel.itemQuantities as Record<string, number>)[item.id]
-                        }))
-
+                      // paidSelectionsForItem already defined above
                       const hasBadges = selectedItems[item.id] > 0 || othersSelecting.length > 0 || paidSelectionsForItem.length > 0
 
                       if (!hasBadges) return null
@@ -989,24 +963,19 @@ export default function SplitForm({
                           )}
 
                           {/* Other guests' live selection badges (blue with pulse) */}
-                          {othersSelecting.map((user, idx) => {
-                            const shouldAnimate = animatingItems.has(`${item.id}:${user.sessionId}`)
-                            return (
-                              <div
-                                key={`live-${idx}`}
-                                className={`bg-blue-500 dark:bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${
-                                  shouldAnimate ? 'animate-bounce-subtle' : ''
-                                }`}
-                              >
-                                <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-                                <span className="font-medium">{user.guestName}</span>
-                                <span className="opacity-90">({formatQuantity(user.quantity)}×)</span>
-                              </div>
-                            )
-                          })}
+                          {othersSelecting.map((user, idx) => (
+                            <div
+                              key={`live-${idx}`}
+                              className="bg-blue-500 dark:bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1"
+                            >
+                              <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                              <span className="font-medium">{user.guestName}</span>
+                              <span className="opacity-90">({formatQuantity(user.quantity)}×)</span>
+                            </div>
+                          ))}
 
                           {/* Paid selections badges (darker green, no pulse) */}
-                          {paidSelectionsForItem.map((sel, idx) => (
+                          {paidSelectionsForDisplay.map((sel, idx) => (
                             <div
                               key={`paid-${idx}`}
                               className="bg-emerald-700 dark:bg-emerald-800 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1"
@@ -1030,7 +999,7 @@ export default function SplitForm({
                           <h3 className="font-medium text-gray-900 dark:text-gray-100 text-sm sm:text-base">
                             {item.name}
                           </h3>
-                          {isFullyClaimed && (
+                          {isFullyPaid && (
                             <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-xs font-medium rounded">
                               Bereits bezahlt
                             </span>
@@ -1039,7 +1008,7 @@ export default function SplitForm({
                         <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
                           {item.quantity}x à {formatEUR(item.pricePerUnit)} ={' '}
                           {formatEUR(item.totalPrice)}
-                          {!isFullyClaimed && remainingQty < item.quantity && (
+                          {!isFullyPaid && remainingQty < item.quantity && (
                             <span className="ml-2 text-orange-600 dark:text-orange-400 font-medium">
                               (noch {remainingQty}x verfügbar)
                             </span>
@@ -1060,14 +1029,14 @@ export default function SplitForm({
                           Zu viel ausgewählt!
                         </p>
                         <p className="text-xs text-red-600 dark:text-red-500 mt-0.5">
-                          {totalLiveSelected}x ausgewählt, aber nur {item.quantity}x verfügbar.
+                          {totalClaimed}x insgesamt ausgewählt, aber nur {item.quantity}x verfügbar.
                         </p>
                       </div>
                     </div>
                   </div>
                 )}
 
-                {!isFullyClaimed && !isEditingThis && (
+                {!isFullyPaid && !isEditingThis && (
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 w-full sm:w-auto">

@@ -16,11 +16,13 @@ export async function GET(
       )
     }
 
-    // Get all selections for this bill (all fields for live updates)
+    // Get only PAID selections for this bill (final payments only)
+    // SELECTING selections are fetched via /live-selections endpoint
     const { data: selections, error } = await supabaseAdmin
       .from('Selection')
-      .select('id, billId, friendName, itemQuantities, tipAmount, paid, paymentMethod, createdAt')
+      .select('id, billId, friendName, itemQuantities, tipAmount, paid, paymentMethod, createdAt, status')
       .eq('billId', id)
+      .eq('status', 'PAID')
       .order('createdAt', { ascending: false })
 
     if (error) {

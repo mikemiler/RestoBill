@@ -16,11 +16,12 @@ export async function GET(
       )
     }
 
-    // Get all active (not expired) selections for this bill
-    const { data: activeSelections, error } = await supabaseAdmin
-      .from('ActiveSelection')
+    // Get all Selections with status=SELECTING (live tracking) for this bill
+    const { data: liveSelections, error } = await supabaseAdmin
+      .from('Selection')
       .select('*')
       .eq('billId', id)
+      .eq('status', 'SELECTING')
       .gte('expiresAt', new Date().toISOString())
       .order('createdAt', { ascending: false })
 
@@ -28,7 +29,7 @@ export async function GET(
       throw error
     }
 
-    return NextResponse.json(activeSelections || [])
+    return NextResponse.json(liveSelections || [])
   } catch (error) {
     console.error('Error fetching live selections:', error)
     return NextResponse.json(

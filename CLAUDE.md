@@ -66,19 +66,16 @@ npx ts-node test-supabase-connection.ts  # Verify Supabase connection
    - Belongs to one Bill
    - Relations: `selections[]`, `activeSelections[]`
 
-3. **Selection** - Friend's final item selection (after payment submission)
-   - Contains: `friendName`, `itemQuantities` (JSON), `tipAmount`, `paid`, `paymentMethod`, `sessionId`
+3. **Selection** - Unified table for both live tracking (SELECTING) and final payments (PAID)
+   - Contains: `friendName`, `itemQuantities` (JSON), `tipAmount`, `paid`, `paymentMethod`, `sessionId`, `status`
    - `itemQuantities` format: `{"itemId": multiplier}` (e.g., `{"uuid": 0.5}` for half portion)
+   - `status`: SELECTING (live tracking) or PAID (final payment) - enum
    - `paymentMethod`: PAYPAL or CASH (enum)
-   - `sessionId`: Browser session identifier (UUID, optional for future features)
+   - `sessionId`: Browser session identifier (UUID, required)
    - Belongs to one Bill, references multiple BillItems
-
-4. **ActiveSelection** - Temporary live selections (real-time tracking)
-   - Contains: `billId`, `itemId`, `sessionId`, `guestName`, `quantity`, `expiresAt`
-   - Tracks guest selections in real-time BEFORE they submit payment
-   - Expires after 30 minutes (automatic cleanup)
-   - Unique constraint: `[billId, itemId, sessionId]` (one entry per item per browser session)
-   - Used for live payment overview dashboard
+   - **Live selections:** status=SELECTING, expires after 30 days (allows multi-day bill splitting)
+   - **Final payments:** status=PAID, no expiration
+   - **Unique constraint:** Partial index on (billId, sessionId) WHERE status='SELECTING' (only one live selection per session)
 
 **Payment Methods Enum:**
 - `PAYPAL` - Payment via PayPal.me link
@@ -86,8 +83,9 @@ npx ts-node test-supabase-connection.ts  # Verify Supabase connection
 
 **Important:**
 - Items can only be edited/deleted if no selections exist yet
-- ActiveSelections are temporary and auto-expire (cleaned up via `/api/live-selections/cleanup`)
+- Live selections (status=SELECTING) persist in database until payment is submitted
 - Sessions are tracked per browser using unique sessionId (stored in localStorage)
+- Multiple payments per guest are supported (unique constraint only applies to SELECTING status)
 
 ### Application Flow
 
@@ -297,37 +295,50 @@ All routes follow RESTful patterns:
 - Each browser gets unique sessionId (UUID v4) stored in localStorage
 - Generated via `getOrCreateSessionId()` from `lib/sessionStorage.ts`
 - Used for:
-  - ActiveSelection unique constraint (prevents duplicate entries per browser)
-  - Future feature: "My Bills" page to show user's selections across devices
+  - Selection unique constraint (prevents duplicate SELECTING per browser)
+  - Tracking multiple payments per guest (PAID selections per session)
+  - Restoring live selections when guest returns
 - Persists across page reloads but unique per browser
-- Optional field in Selection model for future use
+- Required field in Selection model (not optional)
 
-### 15. Live Selections (Real-time Tracking)
+### 15. Live Selections (Unified Real-time Tracking)
 **Purpose:** Show payer which items guests are currently selecting BEFORE payment submission
+
+**Architecture:** Uses unified Selection table with `status` field instead of separate ActiveSelection table
 
 **How it works:**
 - Guest enters name and selects items → `POST /api/live-selections/update` called in real-time
-- Creates/updates ActiveSelection entries (unique per billId + itemId + sessionId)
+- Creates/updates Selection entry with `status='SELECTING'` (unique per billId + sessionId)
 - Payer sees live updates in PaymentOverview component on status page
 - Uses **Supabase Realtime ONLY** (WebSocket-based) - no polling!
 - Automatic reconnection with exponential backoff if connection drops
 - Entries are **persistent** (expire after 30 days) to allow multi-day bill splitting
 - **Not deleted when guest leaves page** - allows guests to return and continue
-- Only deleted when guest submits payment (converts to final Selection)
+- When guest submits payment → Status changes to 'PAID' (not deleted!)
 
 **Data flow:**
-1. SplitForm tracks quantity changes → Updates ActiveSelection via API
-2. PaymentOverview subscribes to ActiveSelection changes via WebSocket
+1. SplitForm tracks quantity changes → Updates Selection (status=SELECTING) via API
+2. PaymentOverview subscribes to Selection table changes via WebSocket
 3. Instant updates (< 100ms latency) when changes occur
 4. Displays "Ausgewählt" total with live indicator (blue pulse dot)
-5. Guest can leave and return - selections are restored from ActiveSelection table (via sessionId)
-6. When guest submits payment → ActiveSelection deleted, Selection created (final)
+5. Guest can leave and return - selections are restored from Selection table (via sessionId + status=SELECTING)
+6. When guest submits payment → UPDATE Selection SET status='PAID' (converts to final payment)
 
 **Persistence:**
-- ActiveSelections expire after 30 days (not 30 minutes)
+- Live selections (status=SELECTING) expire after 30 days
 - Guests can close browser and return days later - their selections persist in DB
-- All data stored in database (single source of truth)
-- Manual cleanup only on payment submission (`cleanupLiveSelections()`)
+- All data stored in unified Selection table (single source of truth)
+- Cleanup happens via UPDATE (status change), not DELETE
+
+**Empty Selection Handling:**
+- When guest deselects ALL items, the Selection is UPDATED with `itemQuantities = {}`, NOT deleted
+- This preserves `tipAmount` and `friendName` so guest can continue selection process
+- Empty selections are filtered out client-side (no badges shown, not counted in totals)
+- Allows guests to:
+  - Select tip percentage first, then choose items
+  - Deselect all items to reconsider without losing tip
+  - Return to selection later with tip still saved
+- **Technical:** UPDATE events are used instead of DELETE events for better realtime support
 
 **Benefits:**
 - Instant updates (< 100ms vs 3s with polling)
@@ -337,6 +348,7 @@ All routes follow RESTful patterns:
 - Prevents over-selection (guests see what others selected)
 - Better UX for large groups
 - Multi-day bill splitting supported
+- Simplified architecture (one table instead of two)
 
 ### 16. Cash Payment Flow
 **Why:** Not everyone has PayPal - cash option provides flexibility
@@ -423,9 +435,11 @@ const { isConnected, connectionStatus } = useRealtimeSubscription(billId, {
 ```
 
 **Components using this hook:**
-- `PaymentOverview.tsx` - Subscribes to Selection and ActiveSelection changes
-- `SplitForm.tsx` - Subscribes to ActiveSelection, Selection, and item-changed broadcasts
-- `SplitFormContainer.tsx` - Subscribes to Selection and item-changed broadcasts
+- `PaymentOverview.tsx` - Subscribes to Selection changes (both SELECTING and PAID)
+- `SplitForm.tsx` - Subscribes to Selection changes and item-changed broadcasts
+- `SplitFormContainer.tsx` - Subscribes to Selection changes and item-changed broadcasts
+
+**Important:** All callbacks (`onSelectionChange`, `onActiveSelectionChange`) now fetch BOTH SELECTING and PAID selections to ensure realtime updates work for both selection and deselection
 
 **Connection Status:**
 - `CONNECTING` - Initial connection attempt
@@ -448,6 +462,62 @@ const { isConnected, connectionStatus } = useRealtimeSubscription(billId, {
 - Initial data fetch happens both on mount and after successful reconnection
 - All realtime subscriptions use same channel name: `bill:${billId}`
 - PostgreSQL filter applied: `filter: 'billId=eq.${billId}'` for efficiency
+- Event payload includes `eventType` (INSERT/UPDATE/DELETE) for debugging
+
+### 19. Critical Supabase RLS Policies for Realtime
+**IMPORTANT:** Realtime broadcasts require proper RLS policies on the `anon` role. Missing policies will silently block events!
+
+**Required Policies for Selection Table:**
+
+1. **SELECT Policy** (Read access - required for subscription)
+```sql
+CREATE POLICY "Allow public read access to Selection"
+ON "Selection" FOR SELECT TO anon, authenticated USING (true);
+```
+
+2. **UPDATE Policy** (CRITICAL for deselection!)
+```sql
+CREATE POLICY "Allow public update to Selection"
+ON "Selection" FOR UPDATE TO anon, authenticated
+USING (true) WITH CHECK (true);
+```
+**Why:** When guests deselect items (including ALL items), the Selection is UPDATED with modified `itemQuantities` (can be empty `{}`), NOT deleted. This preserves `tipAmount` and `friendName` so guests can continue their selection process. Without UPDATE policy, UPDATE events are blocked and other clients don't see deselections in realtime.
+
+3. **DELETE Policy** (Optional - not currently used)
+```sql
+CREATE POLICY "Allow public delete to Selection"
+ON "Selection" FOR DELETE TO anon, authenticated USING (true);
+```
+**Why:** Currently NOT used - we UPDATE with empty `itemQuantities` instead of deleting to preserve tip. May be needed for future manual cleanup functionality.
+
+4. **INSERT Policy** (For creating selections)
+```sql
+CREATE POLICY "Allow public insert to Selection"
+ON "Selection" FOR INSERT TO anon, authenticated WITH CHECK (true);
+```
+
+**How to Apply:**
+- Run `FIX-UPDATE-REALTIME.sql` in Supabase SQL Editor
+- Or use `fix-rls-policies.sql` for all tables
+- Verify with `DIAGNOSE-DELETE-REALTIME.sql`
+
+**Common Bug:** If deselection only works after selecting a different item, the UPDATE policy is missing!
+
+### 20. Selection Status Badge Logic
+**Important:** The app distinguishes between "fully paid" and "fully allocated" for item status display.
+
+**Badge Types:**
+1. **Green with pulse** - Own live selection (status=SELECTING, current user)
+2. **Blue with pulse** - Others' live selection (status=SELECTING, other users)
+3. **Dark green with ✓** - Paid selection (status=PAID)
+4. **Red "Bereits bezahlt"** - Item fully paid (all portions have status=PAID)
+
+**Key Variables in SplitForm.tsx:**
+- `isFullyPaid` - All portions have status=PAID → Shows "Bereits bezahlt" badge, grays out item
+- `isFullyMarked` - All portions allocated (PAID + SELECTING) → Shows green checkmark ✓
+- `isOverselected` - More than available quantity selected → Shows red warning
+
+**Critical Fix (2024):** Changed from `isFullyClaimed` (included SELECTING) to `isFullyPaid` (only PAID). This ensures "Bereits bezahlt" badge only shows when items are actually paid, not just selected.
 
 ## Environment Variables
 
@@ -499,26 +569,29 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 ### Working with Live Selections (Real-time Features)
 **When adding/modifying real-time tracking:**
-1. Update `ActiveSelection` model in `prisma/schema.prisma` if schema changes needed
+1. Update `Selection` model in `prisma/schema.prisma` if schema changes needed (unified table)
 2. Run `npx prisma db push` to sync database
 3. Update `/api/live-selections/update` route if API changes needed
 4. Update `SplitForm.tsx` quantity handlers to call live-selections API
 5. Update `useRealtimeSubscription` hook if new event types needed
 6. Update components using the hook (PaymentOverview, SplitForm, SplitFormContainer)
-7. Test with multiple browser windows to verify real-time sync
+7. **Ensure RLS policies exist** (SELECT, INSERT, UPDATE, DELETE) for Realtime to work
+8. Test with multiple browser windows to verify real-time sync
 
 **Important:**
-- ActiveSelections expire after 30 minutes (set in `expiresAt` field)
-- Cleanup happens via `/api/live-selections/cleanup` (can be run as cron job)
-- Unique constraint: `[billId, itemId, sessionId]` prevents duplicates per browser
+- Live selections (status=SELECTING) expire after 30 days (set in `expiresAt` field)
+- Cleanup happens via status change to PAID (not deletion)
+- Partial unique constraint: `(billId, sessionId) WHERE status='SELECTING'` prevents duplicate live selections
 - Uses **Realtime ONLY** (no polling) - WebSocket must be enabled in Supabase
 - All realtime logic is centralized in `useRealtimeSubscription` hook
 - Automatic reconnection with exponential backoff if connection drops
+- **Critical:** UPDATE and DELETE RLS policies required for deselection events!
 
 **Adding new realtime event types:**
 1. Add new callback to `RealtimeEventHandlers` interface in hook
 2. Add corresponding `.on()` subscription in hook's `subscribe()` function
 3. Use the new callback in components via hook options
+4. Ensure callbacks fetch BOTH SELECTING and PAID data for consistency
 
 ## Security Considerations
 
@@ -563,10 +636,17 @@ rm -rf .next && npm run build  # Clear cache and rebuild
 **Common causes and fixes:**
 1. **Supabase Realtime not enabled**
    - Check Supabase dashboard → Database → Replication
-   - Enable realtime for `ActiveSelection` and `Selection` tables
-   - Run SQL to enable: `ALTER PUBLICATION supabase_realtime ADD TABLE "ActiveSelection";`
+   - Enable realtime for `Selection` table (unified table, no ActiveSelection)
+   - Run SQL to enable: `ALTER PUBLICATION supabase_realtime ADD TABLE "Selection";`
    - Verify with: `SELECT * FROM pg_publication_tables WHERE pubname = 'supabase_realtime';`
    - Realtime is REQUIRED (no polling fallback anymore)
+
+1a. **Missing RLS Policies (MOST COMMON!)**
+   - Symptom: Deselection only works after selecting a different item
+   - Cause: UPDATE policy missing → UPDATE events are blocked
+   - Solution: Run `FIX-UPDATE-REALTIME.sql` in Supabase SQL Editor
+   - Required policies: SELECT, INSERT, **UPDATE**, DELETE (all on `anon` role)
+   - Verify: Check `pg_policies` table for all four policy types
 
 2. **WebSocket connection failing**
    - Check browser console for connection errors
@@ -581,15 +661,17 @@ rm -rf .next && npm run build  # Clear cache and rebuild
    - Clear browser cache and reload
    - Check Supabase status page for outages
 
-4. **ActiveSelections not cleaning up**
-   - Manually run cleanup: `POST /api/live-selections/cleanup`
-   - Set up Vercel Cron Job to run cleanup every 10 minutes
+4. **Live selections not expiring**
+   - Live selections (status=SELECTING) have 30-day expiration
+   - Cleanup happens when guest submits payment (status → PAID)
+   - Manual cleanup: Run SQL `DELETE FROM "Selection" WHERE status='SELECTING' AND "expiresAt" < NOW()`
    - Check `expiresAt` timestamps are being set correctly
 
-5. **Duplicate entries per browser**
+5. **Duplicate SELECTING entries per browser**
    - Verify sessionId is consistent across component re-renders
    - Check localStorage for `userSessionId` key
    - Clear localStorage and refresh to generate new sessionId
+   - Verify partial unique index exists: `(billId, sessionId) WHERE status='SELECTING'`
 
 6. **React Strict Mode causing connection loops**
    - Symptom: Channels repeatedly CLOSED → RECONNECTING → CONNECTED
@@ -600,12 +682,13 @@ rm -rf .next && npm run build  # Clear cache and rebuild
 
 **Debug tips:**
 - Enable debug mode: `debug: process.env.NODE_ENV === 'development'` in hook
-- Check browser console for `[Realtime]` messages
+- Check browser console for `[Realtime]` messages with eventType (INSERT/UPDATE/DELETE)
 - Monitor connection status: `connectionStatus` from hook
 - Open PaymentOverview in one window, SplitForm in another (same bill)
 - Watch Network tab for WebSocket connection (wss://)
-- Check Supabase Table Editor for ActiveSelection entries
+- Check Supabase Table Editor for Selection entries (filter by status=SELECTING)
 - Test reconnection: Turn WiFi off/on and watch reconnection attempts
+- Check console for `[SplitForm] Fetching live selections...` messages
 
 **Testing realtime connection:**
 ```typescript
