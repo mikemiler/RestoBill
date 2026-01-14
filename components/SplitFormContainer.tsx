@@ -3,8 +3,7 @@
 import { useState, useEffect } from 'react'
 import SplitForm from './SplitForm'
 import SelectionSummary from './SelectionSummary'
-import { getSelectionsByToken } from '@/lib/selectionStorage'
-import type { SavedSelection } from '@/lib/selectionStorage'
+import { getOrCreateSessionId } from '@/lib/sessionStorage'
 import { useRealtimeSubscription } from '@/lib/hooks'
 
 interface DatabaseSelection {
@@ -48,9 +47,16 @@ export default function SplitFormContainer({
   isOwner = false,
 }: SplitFormContainerProps) {
   const [allSelections, setAllSelections] = useState<DatabaseSelection[]>([])
+  const [mySelections, setMySelections] = useState<DatabaseSelection[]>([])
   const [items, setItems] = useState<BillItem[]>(initialItems)
   const [itemRemainingQuantities, setItemRemainingQuantities] = useState<Record<string, number>>(initialRemainingQuantities)
   const [loading, setLoading] = useState(true)
+  const [sessionId, setSessionId] = useState<string>('')
+
+  // Initialize sessionId on mount
+  useEffect(() => {
+    setSessionId(getOrCreateSessionId())
+  }, [])
 
   // Fetch items from API
   const fetchItems = async () => {
@@ -79,6 +85,30 @@ export default function SplitFormContainer({
       setLoading(false)
     }
   }
+
+  // Fetch my selections from API (this session only)
+  const fetchMySelections = async () => {
+    if (!sessionId) return
+
+    try {
+      const response = await fetch(`/api/selections/session?billId=${billId}&sessionId=${sessionId}`)
+      if (!response.ok) {
+        console.error('Error fetching my selections:', response.statusText)
+        return
+      }
+      const data: DatabaseSelection[] = await response.json()
+      setMySelections(data)
+    } catch (error) {
+      console.error('Error fetching my selections:', error)
+    }
+  }
+
+  // Fetch my selections when sessionId is available
+  useEffect(() => {
+    if (sessionId) {
+      fetchMySelections()
+    }
+  }, [sessionId, billId])
 
   // Recalculate remaining quantities when items or selections change
   useEffect(() => {
@@ -109,12 +139,14 @@ export default function SplitFormContainer({
     // Initial data fetch on mount and after reconnection
     onInitialFetch: async () => {
       await fetchSelections()
+      await fetchMySelections()
       // Don't fetch items initially - use props instead
     },
 
     // Selection table changes (final payments)
     onSelectionChange: () => {
       fetchSelections()
+      fetchMySelections()
     },
 
     // Item changes broadcast from owner
@@ -138,15 +170,15 @@ export default function SplitFormContainer({
 
   return (
     <>
-      {allSelections.length > 0 && (
+      {mySelections.length > 0 && (
         <SelectionSummary
-          selections={allSelections}
+          selections={mySelections}
           items={items}
         />
       )}
       <div>
         <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-gray-800 dark:text-gray-100">
-          {allSelections.length > 0 ? 'Weitere Position auswählen' : 'Deine Auswahl'}
+          {mySelections.length > 0 ? 'Weitere Position auswählen' : 'Deine Auswahl'}
         </h2>
         <SplitForm
           billId={billId}

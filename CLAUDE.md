@@ -101,13 +101,13 @@ npx ts-node test-supabase-connection.ts  # Verify Supabase connection
 
 **Friend Flow (PayPal):**
 1. Open share link → Server-rendered page with bill data
-2. View previous selections (if any) from localStorage
+2. View previous selections (if any) from database (via sessionId)
 3. Enter name → Session tracked via unique sessionId (browser-specific)
 4. Select items with quantities (0, 0.5, 1, 2, custom fractions)
    - Live selections tracked in ActiveSelection table (visible to payer in real-time)
 5. Add tip (0%, 7%, 10%, 15%, or custom)
 6. Choose payment method: PayPal or Cash
-7. Submit → `POST /api/selections/create` → Selection saved to database & localStorage
+7. Submit → `POST /api/selections/create` → Selection saved to database
 8. **PayPal:** Redirect to `/payment-redirect` page → Auto-redirect to PayPal.me (stays in browser)
 9. Can return and make additional selections (multiple payments per guest supported)
 
@@ -136,6 +136,7 @@ All routes follow RESTful patterns:
 - `POST /api/selections/create` - Friend creates selection (PayPal or Cash)
 - `POST /api/selections/[id]/mark-paid` - Mark as paid (manual confirmation by payer)
 - `GET /api/selections/owner` - Owner-specific selection data
+- `GET /api/selections/session` - Get selections for a specific browser session (sessionId)
 
 **Live Selections (Real-time Tracking):**
 - `POST /api/live-selections/update` - Update/create active selection (real-time tracking)
@@ -165,13 +166,6 @@ All routes follow RESTful patterns:
 **lib/billStorage.ts**
 - localStorage utilities for bill history (client-side only)
 - Stores: billId, shareToken, payerName, createdAt
-
-**lib/selectionStorage.ts**
-- localStorage utilities for guest selections (client-side only)
-- Supports multiple selections per bill/guest
-- Functions: `getSelectionsByToken()`, `saveSelection()`, `deleteSelection()`
-- Stores: selectionId, friendName, itemQuantities, amounts, paymentMethod, timestamp
-- Dispatches custom events for same-tab updates
 
 **lib/sessionStorage.ts**
 - Browser session management for unique user identification
@@ -203,7 +197,7 @@ All routes follow RESTful patterns:
 **Client Components (interactive):**
 - `SplitFormContainer` - Container managing guest selections and form display (uses useRealtimeSubscription)
 - `SplitForm` - Item selection with quantity buttons, live selection tracking (uses useRealtimeSubscription)
-- `SelectionSummary` - Display all previous selections from localStorage (multiple payments)
+- `SelectionSummary` - Display all previous selections from database via sessionId (multiple payments)
 - `PaymentOverview` - Real-time payment dashboard with live selections (uses useRealtimeSubscription)
 - `BillItemsEditor` - Add/edit/delete items (payer only)
 - `SelectionCard` - Display individual selection on status page
@@ -263,16 +257,17 @@ All routes follow RESTful patterns:
 ### 9. State Management
 - **No Redux/Zustand** - Local React state is sufficient
 - Use `useState`, `useEffect` for client components
-- Use `localStorage` for persistent data (see below)
+- **Single Source of Truth: Database** - All critical data (selections, items) stored in Supabase
+- localStorage only for UI preferences (theme, autocomplete names)
 - Server components fetch data directly (Prisma)
 
-### 10. Guest Selection Storage (localStorage)
+### 10. Guest Selection Storage (Database)
 - **Multiple payments per guest:** Guests can make multiple selections/payments for the same bill
-- **Automatic persistence:** Each selection is saved to localStorage after successful submission
-- **Display on return:** When revisiting the share link, all previous selections are displayed
-- **Real-time updates:** Uses custom events (`selectionSaved`) for same-tab updates
-- **Storage key:** `guestSelections` in localStorage
-- **Data structure:** Array of `SavedSelection` objects with selectionId, amounts, items, timestamp
+- **Database persistence:** Each selection is saved to Selection table via API
+- **Display on return:** When revisiting the share link, selections are loaded from DB via sessionId
+- **Real-time updates:** Uses Supabase Realtime (WebSocket) for instant updates across all users
+- **No localStorage:** All selection data comes from database (single source of truth)
+- **Session tracking:** Guest selections are filtered by sessionId (unique per browser)
 
 ### 11. Payment Status Terminology
 **Important:** The app uses consistent terminology for payment states:
@@ -325,13 +320,13 @@ All routes follow RESTful patterns:
 2. PaymentOverview subscribes to ActiveSelection changes via WebSocket
 3. Instant updates (< 100ms latency) when changes occur
 4. Displays "Ausgewählt" total with live indicator (blue pulse dot)
-5. Guest can leave and return - selections are restored from localStorage + ActiveSelection
+5. Guest can leave and return - selections are restored from ActiveSelection table (via sessionId)
 6. When guest submits payment → ActiveSelection deleted, Selection created (final)
 
 **Persistence:**
 - ActiveSelections expire after 30 days (not 30 minutes)
-- Guests can close browser and return days later - their selections persist
-- localStorage restores UI state, ActiveSelection provides live tracking
+- Guests can close browser and return days later - their selections persist in DB
+- All data stored in database (single source of truth)
 - Manual cleanup only on payment submission (`cleanupLiveSelections()`)
 
 **Benefits:**
@@ -690,7 +685,6 @@ lib/
 ├── claude.ts                          # Vision API integration
 ├── utils.ts                           # Helpers (formatEUR, sanitize, etc.)
 ├── billStorage.ts                     # Bill history localStorage utils
-├── selectionStorage.ts                # Guest selection localStorage utils
 └── sessionStorage.ts                  # Session ID management (browser tracking)
 
 prisma/

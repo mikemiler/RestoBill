@@ -126,9 +126,10 @@ export default function PaymentOverview({
   // Total tips from paid selections
   const totalTips = selections.reduce((sum, sel) => sum + sel.tipAmount, 0)
 
-  // Progress percentage (based on paid selections)
+  // Progress percentage (based on paid + live selections)
+  const totalCovered = paidTotal + liveSelectedTotal
   const progressPercent = totalBillAmount > 0
-    ? Math.min(100, (paidTotal / totalBillAmount) * 100)
+    ? Math.min(100, (totalCovered / totalBillAmount) * 100)
     : 0
 
   return (

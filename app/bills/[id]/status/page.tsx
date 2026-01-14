@@ -76,7 +76,7 @@ export default async function BillStatusPage({
           lastViewed: new Date().toISOString(),
         }}
       />
-      <div className="min-h-screen bg-gradient-to-b from-purple-50 to-white dark:from-gray-900 dark:to-gray-800 p-3 sm:p-4 md:p-8">
+      <div className="min-h-screen bg-gradient-to-b from-purple-50 to-white dark:from-gray-900 dark:to-gray-800 p-3 sm:p-4 md:p-8 pb-28">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-4 md:mb-6">
             <div className="mb-2 md:mb-3 flex justify-center">

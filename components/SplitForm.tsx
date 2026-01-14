@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { formatEUR } from '@/lib/utils'
-import { saveSelection } from '@/lib/selectionStorage'
 import { getOrCreateSessionId } from '@/lib/sessionStorage'
 import { useRealtimeSubscription } from '@/lib/hooks'
 
@@ -82,6 +81,7 @@ export default function SplitForm({
   const [liveSelections, setLiveSelections] = useState<Map<string, ActiveSelection[]>>(new Map())
   const [remainingQuantities, setRemainingQuantities] = useState<Record<string, number>>(itemRemainingQuantities)
   const [animatingItems, setAnimatingItems] = useState<Set<string>>(new Set())
+  const [selections, setSelections] = useState<DatabaseSelection[]>(allSelections)
 
   // Item management states (Owner only)
   const [openMenuItemId, setOpenMenuItemId] = useState<string | null>(null)
@@ -104,9 +104,6 @@ export default function SplitForm({
   const prevSelectionsSnapshot = useRef<Map<string, Map<string, number>>>(new Map())
   // Track if we've restored selections yet
   const hasRestoredSelections = useRef(false)
-
-  // LocalStorage keys for persisting selections
-  const getSelectionStorageKey = () => `billSelection_${billId}_${friendName.trim()}`
 
   // Initialize sessionId on mount
   useEffect(() => {
@@ -149,72 +146,57 @@ export default function SplitForm({
     }
   }, [openMenuItemId])
 
-  // Restore selections from localStorage when friendName is ready
+  // Restore selections from ActiveSelection table when friendName is ready
   useEffect(() => {
     // Only run once after friendName is loaded
     if (hasRestoredSelections.current || !friendName.trim()) {
       return
     }
 
-    try {
-      const storageKey = getSelectionStorageKey()
-      const savedData = localStorage.getItem(storageKey)
+    // Restore from ActiveSelection table (DB as single source of truth)
+    const restoreFromActiveSelections = async () => {
+      try {
+        const response = await fetch(`/api/bills/${billId}/live-selections`)
+        const data: ActiveSelection[] = await response.json()
 
-      if (savedData) {
-        const parsed = JSON.parse(savedData)
+        const currentSessionId = sessionId || getOrCreateSessionId()
 
-        if (parsed.selectedItems && Object.keys(parsed.selectedItems).length > 0) {
-          // Filter out items with quantity 0 (should not be restored)
-          const filteredItems: Record<string, number> = {}
-          Object.entries(parsed.selectedItems).forEach(([itemId, quantity]) => {
-            if (typeof quantity === 'number' && quantity > 0) {
-              filteredItems[itemId] = quantity
+        // Filter to only this session's selections
+        const myActiveSelections = data.filter(sel => sel.sessionId === currentSessionId)
+
+        if (myActiveSelections.length > 0) {
+          const restored: Record<string, number> = {}
+          myActiveSelections.forEach(sel => {
+            if (sel.quantity > 0) {
+              restored[sel.itemId] = sel.quantity
             }
           })
 
-          // Only restore if there are valid items
-          if (Object.keys(filteredItems).length > 0) {
-            setSelectedItems(filteredItems)
-            setCustomQuantityMode(parsed.customQuantityMode || {})
-            setCustomQuantityInput(parsed.customQuantityInput || {})
+          if (Object.keys(restored).length > 0) {
+            setSelectedItems(restored)
           }
         }
+      } catch (error) {
+        console.error('Error restoring selections from DB:', error)
       }
-    } catch (error) {
-      console.error('Error restoring selections from localStorage:', error)
     }
+
+    restoreFromActiveSelections()
 
     // Mark as restored
     hasRestoredSelections.current = true
-  }, [friendName, billId])
+  }, [friendName, billId, sessionId])
 
-  // Save selections to localStorage whenever they change
-  useEffect(() => {
-    if (!friendName.trim()) {
-      return
-    }
-
-    const storageKey = getSelectionStorageKey()
-
+  // Fetch paid selections (for status bar calculations)
+  const fetchSelections = async () => {
     try {
-      // If no items selected, remove from localStorage
-      if (Object.keys(selectedItems).length === 0) {
-        localStorage.removeItem(storageKey)
-        return
-      }
-
-      // Save to localStorage
-      const dataToSave = {
-        selectedItems,
-        customQuantityMode,
-        customQuantityInput,
-        timestamp: new Date().toISOString()
-      }
-      localStorage.setItem(storageKey, JSON.stringify(dataToSave))
+      const response = await fetch(`/api/bills/${billId}/selections`)
+      const data: DatabaseSelection[] = await response.json()
+      setSelections(data)
     } catch (error) {
-      console.error('Error saving selections to localStorage:', error)
+      console.error('Error fetching selections:', error)
     }
-  }, [selectedItems, customQuantityMode, customQuantityInput, friendName, billId])
+  }
 
   // Fetch live selections and detect changes
   const fetchLiveSelections = async () => {
@@ -310,7 +292,10 @@ export default function SplitForm({
   const { isConnected } = useRealtimeSubscription(billId, {
     // Initial data fetch on mount and after reconnection
     onInitialFetch: async () => {
-      await fetchLiveSelections()
+      await Promise.all([
+        fetchSelections(),
+        fetchLiveSelections(),
+      ])
       calculateRemainingQuantities()
     },
 
@@ -319,8 +304,9 @@ export default function SplitForm({
       fetchLiveSelections()
     },
 
-    // Selection table changes (final payments) - recalculate remaining quantities
+    // Selection table changes (final payments) - update paid selections AND recalculate
     onSelectionChange: () => {
+      fetchSelections() // Update paid selections for status bar
       calculateRemainingQuantities()
     },
 
@@ -354,7 +340,7 @@ export default function SplitForm({
   const total = subtotal + tipAmount
 
   // Calculate total paid amount from all selections
-  const totalPaidAmount = allSelections.reduce((sum, selection) => {
+  const totalPaidAmount = selections.reduce((sum, selection) => {
     // Calculate selection subtotal from item quantities
     const selectionSubtotal = Object.entries(selection.itemQuantities).reduce((itemSum, [itemId, quantity]) => {
       const item = items.find(i => i.id === itemId)
@@ -758,30 +744,9 @@ export default function SplitForm({
         throw new Error(data.error || 'Fehler beim Erstellen der Auswahl')
       }
 
-      // Save selection to localStorage for future reference
-      saveSelection({
-        selectionId: data.selectionId,
-        billId,
-        shareToken,
-        friendName: friendName.trim(),
-        itemQuantities: selectedItems,
-        subtotal,
-        tipAmount,
-        totalAmount: total,
-        paymentMethod,
-        createdAt: new Date().toISOString(),
-      })
-
-      // Cleanup live selections and localStorage before redirecting
+      // Cleanup live selections before redirecting
+      // (Selection is now saved in DB via API, no localStorage needed)
       await cleanupLiveSelections()
-
-      // Clear localStorage selection after successful submit
-      try {
-        const storageKey = getSelectionStorageKey()
-        localStorage.removeItem(storageKey)
-      } catch (error) {
-        console.error('Error clearing selection from localStorage:', error)
-      }
 
       if (isOwner) {
         // Owner confirmed selection - reset form and show success
@@ -995,36 +960,66 @@ export default function SplitForm({
                       </div>
                     )}
 
-                    {/* Live Selection Badges */}
-                    {(selectedItems[item.id] > 0 || othersSelecting.length > 0) && (
-                      <div className={`absolute top-2 ${isOwner ? 'right-10' : 'right-2'} flex flex-wrap gap-1 justify-end max-w-[50%]`}>
-                        {/* Own selection badge (green, always first) */}
-                        {selectedItems[item.id] > 0 && (
-                          <div className="bg-green-500 dark:bg-green-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-                            <span className="font-medium">{friendName || 'Ich'}</span>
-                            <span className="opacity-90">({formatQuantity(selectedItems[item.id])}×)</span>
-                          </div>
-                        )}
-                        {/* Other guests' selection badges (blue) */}
-                        {othersSelecting.map((user, idx) => {
-                          // Animation should only show for other guests, not for the user who made the change
-                          const shouldAnimate = animatingItems.has(`${item.id}:${user.sessionId}`)
-                          return (
-                            <div
-                              key={idx}
-                              className={`bg-blue-500 dark:bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${
-                                shouldAnimate ? 'animate-bounce-subtle' : ''
-                              }`}
-                            >
-                              <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-                              <span className="font-medium">{user.guestName}</span>
-                              <span className="opacity-90">({formatQuantity(user.quantity)}×)</span>
+                    {/* Selection Badges (Live + Paid) */}
+                    {(() => {
+                      // Find paid selections for this item
+                      const paidSelectionsForItem = selections
+                        .filter(sel => {
+                          const quantities = sel.itemQuantities as Record<string, number>
+                          return quantities && quantities[item.id] > 0
+                        })
+                        .map(sel => ({
+                          friendName: sel.friendName,
+                          quantity: (sel.itemQuantities as Record<string, number>)[item.id]
+                        }))
+
+                      const hasBadges = selectedItems[item.id] > 0 || othersSelecting.length > 0 || paidSelectionsForItem.length > 0
+
+                      if (!hasBadges) return null
+
+                      return (
+                        <div className={`absolute top-2 ${isOwner ? 'right-10' : 'right-2'} flex flex-wrap gap-1 justify-end max-w-[50%]`}>
+                          {/* Own live selection badge (green with pulse) */}
+                          {selectedItems[item.id] > 0 && (
+                            <div className="bg-green-500 dark:bg-green-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                              <span className="font-medium">{friendName || 'Ich'}</span>
+                              <span className="opacity-90">({formatQuantity(selectedItems[item.id])}×)</span>
                             </div>
-                          )
-                        })}
-                      </div>
-                    )}
+                          )}
+
+                          {/* Other guests' live selection badges (blue with pulse) */}
+                          {othersSelecting.map((user, idx) => {
+                            const shouldAnimate = animatingItems.has(`${item.id}:${user.sessionId}`)
+                            return (
+                              <div
+                                key={`live-${idx}`}
+                                className={`bg-blue-500 dark:bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                                  shouldAnimate ? 'animate-bounce-subtle' : ''
+                                }`}
+                              >
+                                <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                                <span className="font-medium">{user.guestName}</span>
+                                <span className="opacity-90">({formatQuantity(user.quantity)}×)</span>
+                              </div>
+                            )
+                          })}
+
+                          {/* Paid selections badges (darker green, no pulse) */}
+                          {paidSelectionsForItem.map((sel, idx) => (
+                            <div
+                              key={`paid-${idx}`}
+                              className="bg-emerald-700 dark:bg-emerald-800 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1"
+                              title="Bereits bezahlt"
+                            >
+                              <span className="text-[10px]">✓</span>
+                              <span className="font-medium">{sel.friendName}</span>
+                              <span className="opacity-90">({formatQuantity(sel.quantity)}×)</span>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })()}
 
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex-1 pr-2">
