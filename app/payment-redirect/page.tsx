@@ -11,14 +11,23 @@ function PaymentRedirectContent() {
   const paypalUrl = searchParams.get('url') || ''
   const amount = searchParams.get('amount') || ''
   const payerName = searchParams.get('payer') || 'Rechnungsersteller'
+  const shareToken = searchParams.get('token') || ''
 
   useEffect(() => {
+    // Debug: Log all URL parameters
+    console.log('Payment redirect params:', {
+      url: paypalUrl,
+      amount,
+      payer: payerName,
+      token: shareToken
+    })
+
     // Validate PayPal URL
     if (!paypalUrl || !paypalUrl.startsWith('https://paypal.me/')) {
       router.push('/')
       return
     }
-  }, [paypalUrl, router])
+  }, [paypalUrl, router, amount, payerName, shareToken])
 
   const handleCopyAmount = async () => {
     try {
@@ -121,6 +130,16 @@ function PaymentRedirectContent() {
           >
             Zuerst Betrag kopieren
           </button>
+        )}
+
+        {/* Back Button */}
+        {shareToken && (
+          <a
+            href={`/split/${shareToken}`}
+            className="block w-full text-center bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 font-medium py-4 px-6 rounded-lg transition-colors text-lg mt-3"
+          >
+            ← Zurück zur Übersicht
+          </a>
         )}
 
         {/* Amount display for reference */}

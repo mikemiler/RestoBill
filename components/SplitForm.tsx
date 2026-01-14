@@ -71,10 +71,11 @@ export default function SplitForm({
   const router = useRouter()
   const [friendName, setFriendName] = useState('')
   const [sessionId, setSessionId] = useState('')
+  const [nameConfirmed, setNameConfirmed] = useState(false)
   const [selectedItems, setSelectedItems] = useState<Record<string, number>>({})
   const [customQuantityMode, setCustomQuantityMode] = useState<Record<string, boolean>>({})
   const [customQuantityInput, setCustomQuantityInput] = useState<Record<string, string>>({})
-  const [tipPercent, setTipPercent] = useState(0)
+  const [tipPercent, setTipPercent] = useState(10)
   const [customTip, setCustomTip] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -110,10 +111,12 @@ export default function SplitForm({
   useEffect(() => {
     if (isOwner) {
       setFriendName(payerName)
+      setNameConfirmed(true) // Owner skips welcome screen
     } else {
       const savedFriendName = localStorage.getItem('friendName')
       if (savedFriendName) {
         setFriendName(savedFriendName)
+        setNameConfirmed(true) // Returning guest skips welcome screen
       }
     }
   }, [isOwner, payerName])
@@ -702,7 +705,7 @@ export default function SplitForm({
         setSelectedItems({})
         setCustomQuantityMode({})
         setCustomQuantityInput({})
-        setTipPercent(0)
+        setTipPercent(10)
         setCustomTip('')
         setLoading(false)
         // The SelectionSummary will automatically update via Supabase realtime
@@ -716,14 +719,18 @@ export default function SplitForm({
         }
         // Open payment redirect page in new tab to keep the browser open
         // This helps ensure PayPal opens in browser instead of the PayPal app
-        const redirectUrl = `/payment-redirect?url=${encodeURIComponent(data.paypalUrl)}&amount=${data.totalAmount.toFixed(2)}&payer=${encodeURIComponent(payerName)}`
+        console.log('DEBUG - shareToken value:', shareToken)
+        console.log('DEBUG - shareToken type:', typeof shareToken)
+        console.log('DEBUG - payerName:', payerName)
+        const redirectUrl = `/payment-redirect?amount=${data.totalAmount.toFixed(2)}&payer=${encodeURIComponent(payerName)}&token=${shareToken}&url=${encodeURIComponent(data.paypalUrl)}`
+        console.log('Payment redirect URL:', redirectUrl)
         window.open(redirectUrl, '_blank', 'noopener,noreferrer')
 
         // Reset form after opening payment page
         setSelectedItems({})
         setCustomQuantityMode({})
         setCustomQuantityInput({})
-        setTipPercent(0)
+        setTipPercent(10)
         setCustomTip('')
         setLoading(false)
         // The SelectionSummary will automatically update via Supabase realtime
@@ -734,27 +741,82 @@ export default function SplitForm({
     }
   }
 
+  // Welcome Screen for guests (before showing items)
+  if (!isOwner && !nameConfirmed) {
+    return (
+      <div className="space-y-4 sm:space-y-5 md:space-y-6 max-w-md mx-auto">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-600 p-6 sm:p-8 space-y-6">
+          {/* Welcome Header */}
+          <div className="text-center space-y-3">
+            <div className="text-5xl">🍽️</div>
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">
+              Rechnung teilen
+            </h2>
+            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400">
+              <span className="font-semibold text-green-600 dark:text-green-400">{payerName}</span> lädt dich ein, die Rechnung zu teilen
+            </p>
+          </div>
+
+          {/* Name Input */}
+          <div className="space-y-3">
+            <label
+              htmlFor="friendName"
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+            >
+              Bitte gib deinen Namen ein:
+            </label>
+            <input
+              type="text"
+              id="friendName"
+              value={friendName}
+              onChange={(e) => setFriendName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && friendName.trim()) {
+                  setNameConfirmed(true)
+                }
+              }}
+              placeholder="Max Mustermann"
+              autoFocus
+              required
+              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:focus:ring-green-400 focus:border-transparent text-base dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-400"
+            />
+          </div>
+
+          {/* Error Message */}
+          {error && (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
+              {error}
+            </div>
+          )}
+
+          {/* Continue Button */}
+          <button
+            type="button"
+            onClick={() => {
+              if (!friendName.trim()) {
+                setError('Bitte gib deinen Namen ein')
+                return
+              }
+              setError('')
+              setNameConfirmed(true)
+            }}
+            disabled={!friendName.trim()}
+            className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 dark:bg-green-500 dark:hover:bg-green-600 dark:disabled:bg-gray-600 text-white font-semibold py-3.5 px-6 rounded-lg transition-colors text-base flex items-center justify-center gap-2"
+          >
+            Weiter →
+          </button>
+
+          {/* Info Text */}
+          <p className="text-xs text-center text-gray-500 dark:text-gray-400">
+            Dein Name wird gespeichert, damit du ihn beim nächsten Mal nicht erneut eingeben musst.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4 sm:space-y-5 md:space-y-6 pb-32">
-      {!isOwner && (
-        <div>
-          <label
-            htmlFor="friendName"
-            className="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
-          >
-            Dein Name
-          </label>
-          <input
-            type="text"
-            id="friendName"
-            value={friendName}
-            onChange={(e) => setFriendName(e.target.value)}
-            placeholder="Max Mustermann"
-            required
-            className="w-full px-3 py-2.5 sm:px-4 sm:py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:focus:ring-green-400 focus:border-transparent text-sm sm:text-base dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-400"
-          />
-        </div>
-      )}
 
       <div>
         <label className="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 sm:mb-3">
@@ -946,46 +1008,66 @@ export default function SplitForm({
 
                     {/* Selection Badges (Live + Paid) */}
                     {(() => {
-                      // paidSelectionsForItem already defined above
-                      const hasBadges = selectedItems[item.id] > 0 || othersSelecting.length > 0 || paidSelectionsForItem.length > 0
+                      // Build all badges array
+                      const allBadges: Array<{ type: 'own' | 'live' | 'paid', data: any }> = []
 
-                      if (!hasBadges) return null
+                      // Add own selection badge
+                      if (selectedItems[item.id] > 0) {
+                        allBadges.push({ type: 'own', data: { quantity: selectedItems[item.id] } })
+                      }
+
+                      // Add other guests' live selections
+                      othersSelecting.forEach(user => {
+                        allBadges.push({ type: 'live', data: user })
+                      })
+
+                      // Add paid selections
+                      paidSelectionsForDisplay.forEach(sel => {
+                        allBadges.push({ type: 'paid', data: sel })
+                      })
+
+                      if (allBadges.length === 0) return null
+
+                      const MAX_VISIBLE = 2
+                      const showMore = allBadges.length > 3
+                      const visibleBadges = showMore ? allBadges.slice(0, MAX_VISIBLE) : allBadges
+                      const remainingCount = allBadges.length - MAX_VISIBLE
 
                       return (
                         <div className={`absolute top-2 ${isOwner ? 'right-10' : 'right-2'} flex flex-col gap-1 items-end max-w-[50%]`}>
-                          {/* Own live selection badge (green with pulse) */}
-                          {selectedItems[item.id] > 0 && (
-                            <div className="bg-green-500 dark:bg-green-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-                              <span className="font-medium">{friendName || 'Ich'}</span>
-                              <span className="opacity-90">({formatQuantity(selectedItems[item.id])}×)</span>
+                          {visibleBadges.map((badge, idx) => {
+                            if (badge.type === 'own') {
+                              return (
+                                <div key={`own-${idx}`} className="bg-green-500 dark:bg-green-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                                  <span className="font-medium">{friendName || 'Ich'}</span>
+                                  <span className="opacity-90">({formatQuantity(badge.data.quantity)}×)</span>
+                                </div>
+                              )
+                            } else if (badge.type === 'live') {
+                              return (
+                                <div key={`live-${idx}`} className="bg-blue-500 dark:bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                                  <span className="font-medium">{badge.data.guestName}</span>
+                                  <span className="opacity-90">({formatQuantity(badge.data.quantity)}×)</span>
+                                </div>
+                              )
+                            } else {
+                              return (
+                                <div key={`paid-${idx}`} className="bg-emerald-700 dark:bg-emerald-800 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1" title="Bezahlt">
+                                  <span className="text-[10px]">✓</span>
+                                  <span className="font-medium">{badge.data.friendName}</span>
+                                  <span className="opacity-90">({formatQuantity(badge.data.quantity)}×)</span>
+                                </div>
+                              )
+                            }
+                          })}
+
+                          {showMore && (
+                            <div className="bg-gray-500 dark:bg-gray-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
+                              <span className="font-medium">+{remainingCount} weitere</span>
                             </div>
                           )}
-
-                          {/* Other guests' live selection badges (blue with pulse) */}
-                          {othersSelecting.map((user, idx) => (
-                            <div
-                              key={`live-${idx}`}
-                              className="bg-blue-500 dark:bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1"
-                            >
-                              <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-                              <span className="font-medium">{user.guestName}</span>
-                              <span className="opacity-90">({formatQuantity(user.quantity)}×)</span>
-                            </div>
-                          ))}
-
-                          {/* Paid selections badges (darker green, no pulse) */}
-                          {paidSelectionsForDisplay.map((sel, idx) => (
-                            <div
-                              key={`paid-${idx}`}
-                              className="bg-emerald-700 dark:bg-emerald-800 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1"
-                              title="Bezahlt"
-                            >
-                              <span className="text-[10px]">✓</span>
-                              <span className="font-medium">{sel.friendName}</span>
-                              <span className="opacity-90">({formatQuantity(sel.quantity)}×)</span>
-                            </div>
-                          ))}
                         </div>
                       )
                     })()}
