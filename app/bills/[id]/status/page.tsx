@@ -9,6 +9,7 @@ import BillAutoSave from '@/components/BillAutoSave'
 import CopyButton from '@/components/CopyButton'
 import PaymentOverview from '@/components/PaymentOverview'
 import QRCode from '@/components/QRCode'
+import EditablePayerName from '@/components/EditablePayerName'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -91,9 +92,14 @@ export default async function BillStatusPage({
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-gray-50 mb-1 md:mb-2">
               Deine Rechnung
             </h1>
-            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-300">
-              {bill.restaurantName && `${bill.restaurantName}`}
-            </p>
+            <div className="flex flex-col items-center gap-1">
+              <EditablePayerName billId={bill.id} initialName={bill.payerName} />
+              {bill.restaurantName && (
+                <p className="text-sm sm:text-base text-gray-600 dark:text-gray-300">
+                  {bill.restaurantName}
+                </p>
+              )}
+            </div>
           </div>
 
           {/* Share Link */}

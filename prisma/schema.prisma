@@ -15,7 +15,7 @@ model Bill {
 
   // Zahler Info
   payerName     String
-  paypalHandle  String // z.B. "maxmustermann" für paypal.me/maxmustermann
+  paypalHandle  String? // z.B. "maxmustermann" für paypal.me/maxmustermann (optional)
 
   // Rechnung
   imageUrl       String

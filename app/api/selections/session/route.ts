@@ -32,12 +32,13 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Fetch selections for this session
+    // Fetch paid selections for this session (status=PAID only)
     const { data: selections, error } = await supabaseAdmin
       .from('Selection')
       .select('*')
       .eq('billId', billId)
       .eq('sessionId', sessionId)
+      .eq('status', 'PAID')
       .order('createdAt', { ascending: false })
 
     if (error) {

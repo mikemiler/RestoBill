@@ -9,9 +9,9 @@ export async function POST(request: NextRequest) {
     const { payerName, paypalHandle } = body
 
     // Validation
-    if (!payerName || !paypalHandle) {
+    if (!payerName) {
       return NextResponse.json(
-        { error: 'Bitte fülle alle Felder aus' },
+        { error: 'Bitte gib deinen Namen ein' },
         { status: 400 }
       )
     }
@@ -25,13 +25,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate paypalHandle format (alphanumeric, underscore, hyphen)
-    const sanitizedHandle = paypalHandle.trim()
-    if (!/^[A-Za-z0-9_-]+$/.test(sanitizedHandle) || sanitizedHandle.length > 50) {
-      return NextResponse.json(
-        { error: 'Ungültiger PayPal Username' },
-        { status: 400 }
-      )
+    // Validate paypalHandle format (alphanumeric, underscore, hyphen) - optional field
+    let sanitizedHandle: string | null = null
+    if (paypalHandle && paypalHandle.trim()) {
+      sanitizedHandle = paypalHandle.trim()
+      if (!/^[A-Za-z0-9_-]+$/.test(sanitizedHandle) || sanitizedHandle.length > 50) {
+        return NextResponse.json(
+          { error: 'Ungültiger PayPal Username' },
+          { status: 400 }
+        )
+      }
     }
 
     // Create bill in database using Supabase

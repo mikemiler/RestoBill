@@ -25,23 +25,29 @@ export default function CreateBillPage() {
     setLoading(true)
     setError('')
 
-    if (!payerName.trim() || !paypalHandle.trim()) {
-      setError('Bitte fülle alle Felder aus')
+    if (!payerName.trim()) {
+      setError('Bitte gib deinen Namen ein')
       setLoading(false)
       return
     }
 
-    // Validate PayPal handle format
-    const handleRegex = /^[A-Za-z0-9_-]+$/
-    if (!handleRegex.test(paypalHandle)) {
-      setError('PayPal Username darf nur Buchstaben, Zahlen, _ und - enthalten')
-      setLoading(false)
-      return
+    // Validate PayPal handle format (only if provided)
+    if (paypalHandle.trim()) {
+      const handleRegex = /^[A-Za-z0-9_-]+$/
+      if (!handleRegex.test(paypalHandle)) {
+        setError('PayPal Username darf nur Buchstaben, Zahlen, _ und - enthalten')
+        setLoading(false)
+        return
+      }
     }
 
     // Save to localStorage
     localStorage.setItem('payerName', payerName.trim())
-    localStorage.setItem('paypalHandle', paypalHandle.trim())
+    if (paypalHandle.trim()) {
+      localStorage.setItem('paypalHandle', paypalHandle.trim())
+    } else {
+      localStorage.removeItem('paypalHandle')
+    }
 
     try {
       const response = await fetch('/api/bills/create', {
@@ -51,7 +57,7 @@ export default function CreateBillPage() {
         },
         body: JSON.stringify({
           payerName: payerName.trim(),
-          paypalHandle: paypalHandle.trim(),
+          paypalHandle: paypalHandle.trim() || null,
         }),
       })
 
@@ -122,7 +128,7 @@ export default function CreateBillPage() {
                 htmlFor="paypalHandle"
                 className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
               >
-                PayPal Username
+                PayPal Username <span className="text-gray-500 dark:text-gray-400 font-normal">(optional)</span>
               </label>
               <div className="flex items-stretch">
                 <span className="px-2 sm:px-3 py-3 bg-gray-100 dark:bg-gray-600 border border-r-0 border-gray-300 dark:border-gray-500 rounded-l-lg text-gray-600 dark:text-gray-200 text-xs sm:text-sm flex items-center whitespace-nowrap">
@@ -135,36 +141,41 @@ export default function CreateBillPage() {
                   value={paypalHandle}
                   onChange={(e) => setPaypalHandle(e.target.value)}
                   placeholder="username"
-                  required
                   pattern="[A-Za-z0-9_-]+"
                   title="Nur Buchstaben, Zahlen, _ und - erlaubt"
                   className="flex-1 min-w-0 px-3 sm:px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-r-lg focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-400 text-sm sm:text-base"
                 />
               </div>
-              {paypalHandle.trim() && (
-                <div className="mt-3 space-y-2">
-                  <div className="flex items-center justify-between bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-green-700 dark:text-green-400 font-medium mb-1">
-                        Zahlungen gehen an:
-                      </p>
-                      <p className="text-sm font-semibold text-green-800 dark:text-green-300 break-all">
-                        paypal.me/{paypalHandle.trim()}
-                      </p>
+              <div className="mt-3">
+                {paypalHandle.trim() ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs text-green-700 dark:text-green-400 font-medium mb-1">
+                          Zahlungen gehen an:
+                        </p>
+                        <p className="text-sm font-semibold text-green-800 dark:text-green-300 break-all">
+                          paypal.me/{paypalHandle.trim()}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleTestPayPalLink}
+                        className="ml-2 flex-shrink-0 px-3 py-1.5 bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 text-white text-xs font-medium rounded-lg transition-colors"
+                      >
+                        Testen
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleTestPayPalLink}
-                      className="ml-2 flex-shrink-0 px-3 py-1.5 bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 text-white text-xs font-medium rounded-lg transition-colors"
-                    >
-                      Testen
-                    </button>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Klicke auf "Testen", um zu überprüfen, ob der PayPal-Account existiert
+                    </p>
                   </div>
+                ) : (
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Klicke auf "Testen", um zu überprüfen, ob der PayPal-Account existiert
+                    Wenn du PayPal-Zahlungen empfangen möchtest, gib deinen PayPal-Username ein. Gäste können dann per PayPal bezahlen. Ansonsten ist nur Barzahlung verfügbar.
                   </p>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
             {error && (

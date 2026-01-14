@@ -29,7 +29,7 @@ interface SplitFormContainerProps {
   billId: string
   shareToken: string
   payerName: string
-  paypalHandle: string
+  paypalHandle: string | null
   items: BillItem[]
   itemRemainingQuantities: Record<string, number>
   totalAmount: number
@@ -168,17 +168,21 @@ export default function SplitFormContainer({
     )
   }
 
+  // Determine which selections to show in summary
+  // Owner sees ALL selections, guests see only their own
+  const selectionsToShow = isOwner ? allSelections : mySelections
+
   return (
     <>
-      {mySelections.length > 0 && (
+      {selectionsToShow.length > 0 && (
         <SelectionSummary
-          selections={mySelections}
+          selections={selectionsToShow}
           items={items}
         />
       )}
       <div>
         <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-gray-800 dark:text-gray-100">
-          {mySelections.length > 0 ? 'Weitere Position auswählen' : 'Deine Auswahl'}
+          {selectionsToShow.length > 0 ? 'Weitere Position auswählen' : 'Deine Auswahl'}
         </h2>
         <SplitForm
           billId={billId}

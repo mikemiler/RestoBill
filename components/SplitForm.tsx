@@ -49,7 +49,7 @@ interface SplitFormProps {
   billId: string
   shareToken: string
   payerName: string
-  paypalHandle: string
+  paypalHandle: string | null
   items: BillItem[]
   itemRemainingQuantities: Record<string, number>
   totalAmount: number
@@ -716,7 +716,7 @@ export default function SplitForm({
         }
         // Open payment redirect page in new tab to keep the browser open
         // This helps ensure PayPal opens in browser instead of the PayPal app
-        const redirectUrl = `/payment-redirect?url=${encodeURIComponent(data.paypalUrl)}&amount=${data.totalAmount.toFixed(2)}`
+        const redirectUrl = `/payment-redirect?url=${encodeURIComponent(data.paypalUrl)}&amount=${data.totalAmount.toFixed(2)}&payer=${encodeURIComponent(payerName)}`
         window.open(redirectUrl, '_blank', 'noopener,noreferrer')
 
         // Reset form after opening payment page
@@ -952,7 +952,7 @@ export default function SplitForm({
                       if (!hasBadges) return null
 
                       return (
-                        <div className={`absolute top-2 ${isOwner ? 'right-10' : 'right-2'} flex flex-wrap gap-1 justify-end max-w-[50%]`}>
+                        <div className={`absolute top-2 ${isOwner ? 'right-10' : 'right-2'} flex flex-col gap-1 items-end max-w-[50%]`}>
                           {/* Own live selection badge (green with pulse) */}
                           {selectedItems[item.id] > 0 && (
                             <div className="bg-green-500 dark:bg-green-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
@@ -979,7 +979,7 @@ export default function SplitForm({
                             <div
                               key={`paid-${idx}`}
                               className="bg-emerald-700 dark:bg-emerald-800 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1"
-                              title="Bereits bezahlt"
+                              title="Bezahlt"
                             >
                               <span className="text-[10px]">✓</span>
                               <span className="font-medium">{sel.friendName}</span>
@@ -1001,18 +1001,13 @@ export default function SplitForm({
                           </h3>
                           {isFullyPaid && (
                             <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-xs font-medium rounded">
-                              Bereits bezahlt
+                              Bezahlt
                             </span>
                           )}
                         </div>
                         <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
                           {item.quantity}x à {formatEUR(item.pricePerUnit)} ={' '}
                           {formatEUR(item.totalPrice)}
-                          {!isFullyPaid && remainingQty < item.quantity && (
-                            <span className="ml-2 text-orange-600 dark:text-orange-400 font-medium">
-                              (noch {remainingQty}x verfügbar)
-                            </span>
-                          )}
                         </p>
                       </div>
                     </div>
@@ -1353,20 +1348,22 @@ export default function SplitForm({
         </button>
       ) : (
         <div className="space-y-3">
-          <button
-            type="button"
-            onClick={() => handleSubmit('PAYPAL')}
-            disabled={loading || total === 0}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 dark:bg-blue-500 dark:hover:bg-blue-600 dark:disabled:bg-gray-600 text-white font-semibold py-3 sm:py-4 px-4 sm:px-6 rounded-lg transition-colors text-base sm:text-lg flex items-center justify-center gap-2"
-          >
-            {loading ? (
-              'Weiterleitung...'
-            ) : (
-              <>
-                💳 Mit PayPal bezahlen {total > 0 && `• ${formatEUR(total)}`}
-              </>
-            )}
-          </button>
+          {paypalHandle && (
+            <button
+              type="button"
+              onClick={() => handleSubmit('PAYPAL')}
+              disabled={loading || total === 0}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 dark:bg-blue-500 dark:hover:bg-blue-600 dark:disabled:bg-gray-600 text-white font-semibold py-3 sm:py-4 px-4 sm:px-6 rounded-lg transition-colors text-base sm:text-lg flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                'Weiterleitung...'
+              ) : (
+                <>
+                  💳 Mit PayPal bezahlen {total > 0 && `• ${formatEUR(total)}`}
+                </>
+              )}
+            </button>
+          )}
 
           <button
             type="button"

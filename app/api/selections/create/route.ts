@@ -191,6 +191,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate PayPal.me URL for PayPal payment
+    if (!bill.paypalHandle) {
+      return NextResponse.json(
+        { error: 'PayPal-Zahlungen sind für diese Rechnung nicht verfügbar' },
+        { status: 400 }
+      )
+    }
+
     const paypalUrl = generatePayPalUrl(bill.paypalHandle, totalAmount)
 
     return NextResponse.json({

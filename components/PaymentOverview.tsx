@@ -17,17 +17,6 @@ interface Selection {
   paid: boolean
 }
 
-interface LiveSelection {
-  id: string
-  billId: string
-  sessionId: string
-  friendName: string
-  itemQuantities: Record<string, number>
-  status: 'SELECTING' | 'PAID'
-  createdAt: string
-  expiresAt: string
-}
-
 interface PaymentOverviewProps {
   billId: string
   totalBillAmount: number
@@ -42,9 +31,8 @@ export default function PaymentOverview({
   items,
 }: PaymentOverviewProps) {
   const [selections, setSelections] = useState<Selection[]>(initialSelections)
-  const [activeSelections, setActiveSelections] = useState<LiveSelection[]>([])
 
-  // Fetch selections from API
+  // Fetch paid selections from API (status=PAID only)
   const fetchSelections = async () => {
     try {
       const response = await fetch(`/api/bills/${billId}/selections`)
@@ -55,41 +43,22 @@ export default function PaymentOverview({
     }
   }
 
-  // Fetch live selections (unified Selection with status='SELECTING')
-  const fetchActiveSelections = async () => {
-    try {
-      const response = await fetch(`/api/bills/${billId}/live-selections`)
-      const data: LiveSelection[] = await response.json()
-
-      // Filter out expired selections and empty selections (no items selected)
-      const now = new Date()
-      const activeData = data.filter(sel => {
-        const hasItems = Object.keys(sel.itemQuantities || {}).length > 0
-        const notExpired = new Date(sel.expiresAt) > now
-        return hasItems && notExpired
-      })
-
-      setActiveSelections(activeData)
-    } catch (error) {
-      console.error('Error fetching live selections for payment overview:', error)
-    }
-  }
-
-  // Realtime subscription for Selection and ActiveSelection changes
+  // Realtime subscription for paid Selection changes only
   const { isConnected, connectionStatus } = useRealtimeSubscription(billId, {
     // Initial data fetch on mount and after reconnection
     onInitialFetch: async () => {
-      await Promise.all([
-        fetchSelections(),
-        fetchActiveSelections()
-      ])
+      await fetchSelections()
     },
 
-    // Selection table changes (final payments)
-    onSelectionChange: () => fetchSelections(),
+    // Selection table changes - refresh paid selections
+    onSelectionChange: async () => {
+      await fetchSelections()
+    },
 
-    // ActiveSelection table changes (live tracking)
-    onActiveSelectionChange: () => fetchActiveSelections(),
+    // Also handle via onActiveSelectionChange for backwards compatibility
+    onActiveSelectionChange: async () => {
+      await fetchSelections()
+    },
 
     // Enable debug logging (optional - set to false in production)
     debug: process.env.NODE_ENV === 'development'
@@ -110,23 +79,7 @@ export default function PaymentOverview({
     return itemsTotal + selection.tipAmount
   }
 
-  // Calculate total from live selections (unified Selection with status='SELECTING')
-  const calculateActiveSelectionsTotal = (): number => {
-    return activeSelections.reduce((total, sel) => {
-      const quantities = sel.itemQuantities as Record<string, number>
-      if (!quantities) return total
-
-      return total + Object.entries(quantities).reduce((sum, [itemId, qty]) => {
-        const item = items.find(i => i.id === itemId)
-        return item ? sum + (item.pricePerUnit * qty) : sum
-      }, 0)
-    }, 0)
-  }
-
-  // Total from live selections (ActiveSelection)
-  const liveSelectedTotal = calculateActiveSelectionsTotal()
-
-  // Total from paid selections (Selection after bezahlen button)
+  // Total from paid selections (status=PAID only)
   const paidTotal = selections.reduce(
     (sum, sel) => sum + calculateSelectionTotal(sel),
     0
@@ -138,10 +91,9 @@ export default function PaymentOverview({
   // Total tips from paid selections
   const totalTips = selections.reduce((sum, sel) => sum + sel.tipAmount, 0)
 
-  // Progress percentage (based on paid + live selections)
-  const totalCovered = paidTotal + liveSelectedTotal
+  // Progress percentage (based on paid selections only)
   const progressPercent = totalBillAmount > 0
-    ? Math.min(100, (totalCovered / totalBillAmount) * 100)
+    ? Math.min(100, (paidTotal / totalBillAmount) * 100)
     : 0
 
   return (
@@ -150,68 +102,47 @@ export default function PaymentOverview({
         💰 Zahlungsübersicht
       </h2>
 
-      {/* Main Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4">
-        {/* Live Selected (ActiveSelection) */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg p-3 sm:p-4 shadow-sm">
-          <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-1 flex items-center gap-1">
-            Ausgewählt
-            <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" title="Live"></span>
-          </p>
-          <p className="text-xl sm:text-2xl font-bold text-blue-600 dark:text-blue-400">
-            {formatEUR(liveSelectedTotal)}
-          </p>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            Live Auswahl
-          </p>
+      {/* Payment Stats */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg p-4 sm:p-5 shadow-sm mb-4">
+        {/* Gesamtbetrag */}
+        <div className="flex justify-between items-center mb-3">
+          <span className="text-sm text-gray-600 dark:text-gray-400">Gesamtbetrag:</span>
+          <span className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+            {formatEUR(totalBillAmount)}
+          </span>
         </div>
 
-        {/* Payment Overview - Combined */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg p-3 sm:p-4 shadow-sm">
-          <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-2">
-            Zahlungsstand
-          </p>
-
-          {/* Gesamtbetrag */}
-          <div className="flex justify-between items-center mb-1.5">
-            <span className="text-xs text-gray-600 dark:text-gray-400">Gesamtbetrag:</span>
-            <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-              {formatEUR(totalBillAmount)}
-            </span>
-          </div>
-
-          {/* Bezahlt */}
-          <div className="flex justify-between items-center mb-1.5">
-            <span className="text-xs text-gray-600 dark:text-gray-400">
-              Bezahlt ({selections.length} {selections.length === 1 ? 'Gast' : 'Gäste'}):
-            </span>
-            <span className="text-sm font-semibold text-green-600 dark:text-green-400">
-              {formatEUR(paidTotal)}
-            </span>
-          </div>
-
-          {/* Noch offen */}
-          <div className="flex justify-between items-center pt-2 mb-2 border-t border-gray-200 dark:border-gray-700">
-            <span className="text-xs font-medium text-gray-700 dark:text-gray-300">Noch offen:</span>
-            <span className={`text-base font-bold ${
-              remaining <= 0
-                ? 'text-green-600 dark:text-green-400'
-                : 'text-orange-600 dark:text-orange-400'
-            }`}>
-              {formatEUR(Math.max(0, remaining))}
-            </span>
-          </div>
-
-          {/* Trinkgeld */}
-          {totalTips > 0 && (
-            <div className="flex justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-700">
-              <span className="text-xs text-gray-600 dark:text-gray-400">+ Trinkgeld:</span>
-              <span className="text-sm font-semibold text-purple-600 dark:text-purple-400">
-                {formatEUR(totalTips)}
-              </span>
-            </div>
-          )}
+        {/* Bezahlt */}
+        <div className="flex justify-between items-center mb-3">
+          <span className="text-sm text-gray-600 dark:text-gray-400">
+            Bezahlt ({selections.length} {selections.length === 1 ? 'Gast' : 'Gäste'}):
+          </span>
+          <span className="text-lg font-semibold text-green-600 dark:text-green-400">
+            {formatEUR(paidTotal)}
+          </span>
         </div>
+
+        {/* Noch offen */}
+        <div className="flex justify-between items-center pt-3 mb-3 border-t border-gray-200 dark:border-gray-700">
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Noch offen:</span>
+          <span className={`text-xl font-bold ${
+            remaining <= 0
+              ? 'text-green-600 dark:text-green-400'
+              : 'text-orange-600 dark:text-orange-400'
+          }`}>
+            {formatEUR(Math.max(0, remaining))}
+          </span>
+        </div>
+
+        {/* Trinkgeld */}
+        {totalTips > 0 && (
+          <div className="flex justify-between items-center pt-3 border-t border-gray-200 dark:border-gray-700">
+            <span className="text-sm text-gray-600 dark:text-gray-400">+ Trinkgeld:</span>
+            <span className="text-base font-semibold text-purple-600 dark:text-purple-400">
+              {formatEUR(totalTips)}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Progress Bar */}

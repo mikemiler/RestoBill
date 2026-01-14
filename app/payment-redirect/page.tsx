@@ -10,6 +10,7 @@ function PaymentRedirectContent() {
 
   const paypalUrl = searchParams.get('url') || ''
   const amount = searchParams.get('amount') || ''
+  const payerName = searchParams.get('payer') || 'Rechnungsersteller'
 
   useEffect(() => {
     // Validate PayPal URL
@@ -48,6 +49,19 @@ function PaymentRedirectContent() {
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
           PayPal Zahlung
         </h1>
+
+        {/* Payment Recipient Info - Prominent */}
+        <div className="bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-300 dark:border-blue-700 rounded-lg p-4 mb-6">
+          <p className="text-sm text-blue-800 dark:text-blue-200 mb-2 font-semibold">
+            💳 Zahlung an:
+          </p>
+          <p className="text-xl font-bold text-blue-900 dark:text-blue-100">
+            {payerName}
+          </p>
+          <p className="text-xs text-blue-700 dark:text-blue-300 mt-2">
+            Diese Person hat die Rechnung erstellt und empfängt deine Zahlung.
+          </p>
+        </div>
 
         {/* Warning Box */}
         <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 mb-6">
