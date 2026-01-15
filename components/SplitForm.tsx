@@ -83,6 +83,11 @@ export default function SplitForm({
   const [remainingQuantities, setRemainingQuantities] = useState<Record<string, number>>(itemRemainingQuantities)
   const [selections, setSelections] = useState<DatabaseSelection[]>(allSelections)
 
+  // Sync selections state when allSelections prop changes (from parent updates)
+  useEffect(() => {
+    setSelections(allSelections)
+  }, [allSelections])
+
   // Item management states (Owner only)
   const [openMenuItemId, setOpenMenuItemId] = useState<string | null>(null)
   const [editingItemId, setEditingItemId] = useState<string | null>(null)

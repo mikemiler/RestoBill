@@ -4,14 +4,31 @@ import { supabaseAdmin } from '@/lib/supabase'
 /**
  * Debug endpoint to show ALL selections for a bill (PAID + SELECTING)
  * Usage: GET /api/debug-selections?billId=xxx
+ *    OR: GET /api/debug-selections?shareToken=xxx
  */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const billId = searchParams.get('billId')
+    let billId = searchParams.get('billId')
+    const shareToken = searchParams.get('shareToken')
+
+    // If shareToken provided, look up billId
+    if (shareToken && !billId) {
+      const { data: bill, error: billError } = await supabaseAdmin
+        .from('Bill')
+        .select('id')
+        .eq('shareToken', shareToken)
+        .single()
+
+      if (billError || !bill) {
+        return NextResponse.json({ error: 'Bill not found with shareToken' }, { status: 404 })
+      }
+
+      billId = bill.id
+    }
 
     if (!billId) {
-      return NextResponse.json({ error: 'billId required' }, { status: 400 })
+      return NextResponse.json({ error: 'billId or shareToken required' }, { status: 400 })
     }
 
     // Get ALL selections (both PAID and SELECTING) for debugging
