@@ -651,6 +651,20 @@ export default function SplitForm({
     }
   }
 
+  // Cyclic row click handler: 0 → 1 → 2 → 3 → ... → max → 0
+  function handleRowClick(itemId: string) {
+    const remainingQty = remainingQuantities[itemId] ?? 0
+    if (remainingQty === 0) return // Can't select if nothing available
+
+    const currentQty = selectedItems[itemId] || 0
+
+    // Calculate next quantity (cycle through whole numbers only)
+    const maxQty = Math.floor(remainingQty)
+    const nextQty = currentQty >= maxQty ? 0 : currentQty + 1
+
+    handleItemQuantityChange(itemId, nextQty)
+  }
+
   function handleTipChange(percent: number) {
     setTipPercent(percent)
     if (percent !== -1) {
@@ -887,18 +901,26 @@ export default function SplitForm({
                     ? 'border-red-500 dark:border-red-600 bg-red-50 dark:bg-red-900/20'
                     : isFullyMarked
                     ? 'border-green-500 dark:border-green-600 bg-green-50 dark:bg-green-900/20'
+                    : customQuantityMode[item.id] || isEditingThis
+                    ? 'border-gray-200 dark:border-gray-600 dark:bg-gray-700/50'
                     : 'border-gray-200 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500 dark:bg-gray-700/50 cursor-pointer'
                 }`}
                 onClick={(e) => {
-                  // Don't auto-select if clicking on interactive elements (buttons, inputs)
+                  // Don't trigger if clicking on interactive elements (buttons, inputs)
                   const target = e.target as HTMLElement
                   if (target.tagName === 'BUTTON' || target.tagName === 'INPUT' || target.closest('button') || target.closest('input')) {
                     return
                   }
-                  // Auto-select as 1x when clicking on unselected item
-                  if ((!selectedItems[item.id] || selectedItems[item.id] === 0) && !isFullyPaid && remainingQty >= 1) {
-                    handleItemQuantityChange(item.id, 1)
+                  // Don't trigger in custom quantity mode or when editing
+                  if (customQuantityMode[item.id] || isEditingThis) {
+                    return
                   }
+                  // Don't trigger if fully paid
+                  if (isFullyPaid) {
+                    return
+                  }
+                  // Cycle through quantities: 0 → 1 → 2 → ... → max → 0
+                  handleRowClick(item.id)
                 }}
               >
                 {isEditingThis && editForm ? (
