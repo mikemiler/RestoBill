@@ -354,6 +354,32 @@ export function useRealtimeSubscription(
     }
   }, [billId]) // Re-subscribe if billId changes
 
+  // Handle page visibility changes (mobile tab switching, screen off/on)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        log('Page became visible - checking connection...')
+
+        // If we think we're connected but page was hidden, force reconnect
+        // This handles cases where mobile browsers silently close WebSocket
+        if (connectionStatus === 'CONNECTED' || connectionStatus === 'CONNECTING') {
+          log('Forcing reconnect after page visibility change')
+          reconnect()
+        }
+      } else {
+        log('Page became hidden')
+      }
+    }
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange)
+
+      return () => {
+        document.removeEventListener('visibilitychange', handleVisibilityChange)
+      }
+    }
+  }, [connectionStatus])
+
   return {
     isConnected: connectionStatus === 'CONNECTED',
     connectionStatus,
