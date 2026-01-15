@@ -118,20 +118,27 @@ export default function SplitForm({
       setFriendName(payerName)
       setNameConfirmed(true) // Owner skips welcome screen
     } else {
-      const savedFriendName = localStorage.getItem('friendName')
+      // Try bill-specific name first, then global fallback
+      const billSpecificName = localStorage.getItem(`friendName_${billId}`)
+      const globalName = localStorage.getItem('friendName')
+      const savedFriendName = billSpecificName || globalName
+
       if (savedFriendName) {
         setFriendName(savedFriendName)
         setNameConfirmed(true) // Returning guest skips welcome screen
       }
     }
-  }, [isOwner, payerName])
+  }, [isOwner, payerName, billId])
 
-  // Save friendName to localStorage whenever it changes
+  // Save friendName to localStorage whenever it changes (per-bill and global fallback)
   useEffect(() => {
     if (friendName.trim()) {
+      // Save per-bill (prevents name collision between bills)
+      localStorage.setItem(`friendName_${billId}`, friendName.trim())
+      // Also save globally (for autocomplete in new bills)
       localStorage.setItem('friendName', friendName.trim())
     }
-  }, [friendName])
+  }, [friendName, billId])
 
   // Close dropdown menu when clicking outside
   useEffect(() => {
@@ -569,7 +576,9 @@ export default function SplitForm({
 
     // Update live selection
     const currentSessionId = sessionId || getOrCreateSessionId()
-    const currentFriendName = friendName || localStorage.getItem('friendName') || 'Gast'
+    // Get name: Use confirmed name, or fallback to bill-specific localStorage, or 'Gast'
+    const billSpecificNameKey = `friendName_${billId}`
+    const currentFriendName = friendName || localStorage.getItem(billSpecificNameKey) || localStorage.getItem('friendName') || 'Gast'
     if (currentSessionId) {
       try {
         await fetch('/api/live-selections/update', {
@@ -617,7 +626,9 @@ export default function SplitForm({
 
     // Update live selection
     const currentSessionId = sessionId || getOrCreateSessionId()
-    const currentFriendName = friendName || localStorage.getItem('friendName') || 'Gast'
+    // Get name: Use confirmed name, or fallback to bill-specific localStorage, or 'Gast'
+    const billSpecificNameKey = `friendName_${billId}`
+    const currentFriendName = friendName || localStorage.getItem(billSpecificNameKey) || localStorage.getItem('friendName') || 'Gast'
     if (currentSessionId) {
       try {
         await fetch('/api/live-selections/update', {
@@ -817,6 +828,28 @@ export default function SplitForm({
 
   return (
     <div className="space-y-4 sm:space-y-5 md:space-y-6 pb-32">
+
+      {/* Guest Name Display/Edit (only for guests, not owner) */}
+      {!isOwner && nameConfirmed && (
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3 mb-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600 dark:text-gray-400">Dein Name:</span>
+              <span className="font-semibold text-gray-900 dark:text-gray-100">{friendName}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setNameConfirmed(false)
+                setFriendName('')
+              }}
+              className="text-xs text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 underline"
+            >
+              Name ändern
+            </button>
+          </div>
+        </div>
+      )}
 
       <div>
         <label className="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 sm:mb-3">

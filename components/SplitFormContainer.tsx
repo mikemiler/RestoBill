@@ -34,6 +34,7 @@ interface SplitFormContainerProps {
   itemRemainingQuantities: Record<string, number>
   totalAmount: number
   isOwner?: boolean
+  initialSelections?: DatabaseSelection[]  // Server-rendered initial selections
 }
 
 export default function SplitFormContainer({
@@ -45,12 +46,13 @@ export default function SplitFormContainer({
   itemRemainingQuantities: initialRemainingQuantities,
   totalAmount,
   isOwner = false,
+  initialSelections = [],
 }: SplitFormContainerProps) {
-  const [allSelections, setAllSelections] = useState<DatabaseSelection[]>([])
+  const [allSelections, setAllSelections] = useState<DatabaseSelection[]>(initialSelections)
   const [mySelections, setMySelections] = useState<DatabaseSelection[]>([])
   const [items, setItems] = useState<BillItem[]>(initialItems)
   const [itemRemainingQuantities, setItemRemainingQuantities] = useState<Record<string, number>>(initialRemainingQuantities)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)  // Start with false if we have initial data
   const [sessionId, setSessionId] = useState<string>('')
 
   // Initialize sessionId on mount

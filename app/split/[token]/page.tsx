@@ -19,10 +19,18 @@ export default async function SplitBillPage({
     notFound()
   }
 
-  // Fetch all selections for this bill to calculate remaining quantities
-  const { data: selections } = await supabaseAdmin
+  // Fetch all PAID selections for this bill
+  const { data: allSelections } = await supabaseAdmin
     .from('Selection')
-    .select('itemQuantities')
+    .select('id, billId, friendName, itemQuantities, tipAmount, paid, paymentMethod, createdAt, status')
+    .eq('billId', bill.id)
+    .eq('status', 'PAID')  // Only PAID selections (live selections fetched client-side)
+    .order('createdAt', { ascending: false })
+
+  // Also fetch all selections (PAID + SELECTING) for remaining quantity calculation
+  const { data: allSelectionsForCalc } = await supabaseAdmin
+    .from('Selection')
+    .select('itemQuantities, status')
     .eq('billId', bill.id)
 
   // Calculate remaining quantities for each item
@@ -31,7 +39,7 @@ export default async function SplitBillPage({
   bill.BillItem?.forEach((item: any) => {
     let totalClaimed = 0
 
-    selections?.forEach((selection) => {
+    allSelectionsForCalc?.forEach((selection) => {
       const itemQuantities = selection.itemQuantities as Record<string, number> | null
       if (itemQuantities && itemQuantities[item.id]) {
         totalClaimed += itemQuantities[item.id]
@@ -89,6 +97,7 @@ export default async function SplitBillPage({
             items={sortedItems}
             itemRemainingQuantities={itemRemainingQuantities}
             totalAmount={totalBillAmount}
+            initialSelections={allSelections || []}
           />
         </div>
       </div>
