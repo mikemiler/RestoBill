@@ -186,8 +186,7 @@ export function useRealtimeSubscription(
       const channel = supabase.channel(`bill:${billId}`)
 
       // Subscribe to Selection table changes (unified table for both SELECTING and PAID)
-      // Since we now use ONE table instead of ActiveSelection + Selection,
-      // we trigger BOTH callbacks on any Selection change
+      // Inspect payload to determine which callbacks to fire based on status
       if (onSelectionChange || onActiveSelectionChange) {
         channel.on(
           'postgres_changes',
@@ -198,20 +197,64 @@ export function useRealtimeSubscription(
             filter: `billId=eq.${billId}`
           },
           async (payload) => {
+            // Extract status from payload
+            const newRecord = payload.new as any
+            const oldRecord = payload.old as any
+            const newStatus = newRecord?.status
+            const oldStatus = oldRecord?.status
+
             log('Selection changed (unified table)', {
               eventType: payload.eventType,
               table: payload.table,
+              oldStatus,
+              newStatus,
               hasOld: !!payload.old,
               hasNew: !!payload.new
             })
 
-            // Call both callbacks since Selection now handles both SELECTING and PAID statuses
             try {
-              if (onSelectionChange) {
-                await onSelectionChange()
+              // Special case: SELECTING → PAID transition
+              // Only fire onSelectionChange (Container fetches new PAID selection)
+              // Do NOT fire onActiveSelectionChange (SplitForm doesn't need to refetch SELECTING
+              // because the selection is no longer SELECTING - it will get the PAID version via props)
+              if (oldStatus === 'SELECTING' && newStatus === 'PAID') {
+                log('Status transition SELECTING → PAID detected')
+
+                // Only update PAID list (Container handles this)
+                // SplitForm will get the update via props from Container
+                if (onSelectionChange) {
+                  log('Firing onSelectionChange (add to PAID)')
+                  await onSelectionChange()
+                }
+
+                // Do NOT fire onActiveSelectionChange to avoid race condition
+                // The selection is no longer in SELECTING list, so no need to refetch it
+                log('Skipping onActiveSelectionChange to prevent race condition')
+
+                return // Done
               }
-              if (onActiveSelectionChange) {
-                await onActiveSelectionChange()
+
+              // Regular updates: fire appropriate callback based on status
+
+              // PAID status update (INSERT, UPDATE, or DELETE of PAID selection)
+              if (newStatus === 'PAID' || (payload.eventType === 'DELETE' && oldStatus === 'PAID')) {
+                if (onSelectionChange) {
+                  log('Firing onSelectionChange (PAID update)', { eventType: payload.eventType })
+                  await onSelectionChange()
+                }
+              }
+
+              // SELECTING status update (INSERT, UPDATE, or DELETE of SELECTING selection)
+              // Note: SELECTING → PAID transition is handled above, so this only catches
+              // pure SELECTING updates (e.g., INSERT SELECTING, UPDATE SELECTING, DELETE SELECTING)
+              if (newStatus === 'SELECTING' || (payload.eventType === 'DELETE' && oldStatus === 'SELECTING')) {
+                // Skip if this is a transition to PAID (already handled above)
+                if (!(oldStatus === 'SELECTING' && newStatus === 'PAID')) {
+                  if (onActiveSelectionChange) {
+                    log('Firing onActiveSelectionChange (SELECTING update)', { eventType: payload.eventType })
+                    await onActiveSelectionChange()
+                  }
+                }
               }
             } catch (error) {
               logError('Error in Selection change handlers:', error)

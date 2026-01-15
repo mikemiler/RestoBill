@@ -19,11 +19,13 @@ export default async function SplitBillPage({
     notFound()
   }
 
-  // Fetch all selections for this bill to calculate remaining quantities
+  // Fetch only PAID selections for this bill to calculate remaining quantities
+  // SELECTING selections are handled separately by live selection tracking
   const { data: selections } = await supabaseAdmin
     .from('Selection')
     .select('itemQuantities')
     .eq('billId', bill.id)
+    .eq('status', 'PAID')  // Only count final paid selections
 
   // Calculate remaining quantities for each item
   const itemRemainingQuantities: Record<string, number> = {}

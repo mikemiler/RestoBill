@@ -107,6 +107,23 @@ export default function SplitForm({
     setSessionId(sid)
   }, [])
 
+  // Sync allSelections prop with selections state
+  // This is the SINGLE SOURCE OF TRUTH for PAID selections
+  // SplitFormContainer fetches PAID selections via Realtime and passes them as props
+  // This avoids duplicate API calls and race conditions
+  useEffect(() => {
+    console.log('[SplitForm] Syncing allSelections prop to state (PAID selections):', {
+      propLength: allSelections.length,
+      stateLength: selections.length,
+      propData: allSelections.map(s => ({
+        id: s.id,
+        friendName: s.friendName,
+        itemCount: Object.keys(s.itemQuantities || {}).length
+      }))
+    })
+    setSelections(allSelections)
+  }, [allSelections])
+
   // Load friendName from localStorage on mount (or set to payerName if owner)
   useEffect(() => {
     if (isOwner) {
@@ -176,16 +193,9 @@ export default function SplitForm({
     hasRestoredSelections.current = true
   }, [friendName, billId, sessionId])
 
-  // Fetch paid selections (for status bar calculations)
-  const fetchSelections = async () => {
-    try {
-      const response = await fetch(`/api/bills/${billId}/selections`)
-      const data: DatabaseSelection[] = await response.json()
-      setSelections(data)
-    } catch (error) {
-      console.error('Error fetching selections:', error)
-    }
-  }
+  // NOTE: PAID selections are fetched by SplitFormContainer and passed as props (allSelections)
+  // This avoids duplicate state management and race conditions
+  // We only sync the props to local state via useEffect below
 
   // Fetch live selections (unified Selection with status='SELECTING')
   const fetchLiveSelections = async () => {
@@ -219,41 +229,29 @@ export default function SplitForm({
     }
   }
 
-  // Realtime subscription for live selections and payments
+  // Realtime subscription for live selections (SELECTING status only)
+  // PAID selections are handled by SplitFormContainer's subscription
   const { isConnected } = useRealtimeSubscription(billId, {
     // Initial data fetch on mount and after reconnection
     onInitialFetch: async () => {
-      await Promise.all([
-        fetchSelections(),
-        fetchLiveSelections(),
-      ])
-      // calculateRemainingQuantities() will be called by useEffect below
+      console.log('[SplitForm] Initial fetch: loading live selections (SELECTING status)')
+      // PAID selections come from props (SplitFormContainer fetches them)
+      // We only need to fetch SELECTING selections here
+      await fetchLiveSelections()
+      // calculateRemainingQuantities() will be called by useEffect when selections state updates
     },
 
-    // Selection table changes - fetch BOTH SELECTING and PAID
-    // This ensures live selections are updated when users select/deselect items
-    onSelectionChange: async () => {
-      await Promise.all([
-        fetchSelections(),      // PAID selections
-        fetchLiveSelections()   // SELECTING selections
-      ])
-    },
+    // NO onSelectionChange - Container handles PAID updates!
+    // This prevents race conditions where both components fetch simultaneously
 
-    // Also handle via onActiveSelectionChange for backwards compatibility
+    // onActiveSelectionChange: For SELECTING status updates only
+    // The hook now intelligently routes SELECTING updates here and PAID updates to Container
     onActiveSelectionChange: async () => {
-      await Promise.all([
-        fetchSelections(),
-        fetchLiveSelections()
-      ])
+      console.log('[SplitForm] Active selection change: updating live selections (SELECTING status)')
+      await fetchLiveSelections()
     },
 
-    // Item changes broadcast from owner
-    onItemChange: async () => {
-      await Promise.all([
-        fetchSelections(),
-        fetchLiveSelections()
-      ])
-    },
+    // Item changes are handled by SplitFormContainer - no action needed here
 
     // Enable debug logging in development
     debug: process.env.NODE_ENV === 'development'
@@ -262,6 +260,10 @@ export default function SplitForm({
   // Auto-recalculate remaining quantities when selections or liveSelections change
   // This prevents race conditions by using the actual state values
   useEffect(() => {
+    console.log('[SplitForm] Recalculating remaining quantities due to state change:', {
+      selectionsCount: selections.length,
+      liveSelectionsCount: liveSelections.length
+    })
     calculateRemainingQuantities()
   }, [selections, liveSelections])
 
@@ -338,16 +340,24 @@ export default function SplitForm({
       // Filter out current user's own live selection (but keep their PAID selections)
       const otherLiveSelections = liveSelections.filter(sel => sel.sessionId !== currentSessionId)
 
-      // Combine PAID selections (including own) and OTHER users' live selections
-      const allSelections = [...selections, ...otherLiveSelections]
+      // IMPORTANT: Filter out live selections that have already been converted to PAID
+      // This prevents double-counting when a selection transitions from SELECTING → PAID
+      // The same Selection ID exists in both lists during the transition period
+      const paidSelectionIds = new Set(selections.map(s => s.id))
+      const validLiveSelections = otherLiveSelections.filter(sel => !paidSelectionIds.has(sel.id))
+
+      // Combine PAID selections (including own) and OTHER users' live selections (excluding converted ones)
+      const allSelections = [...selections, ...validLiveSelections]
 
       // Calculate claimed quantities per item from ALL selections (excluding own live)
       const claimed: Record<string, number> = {}
       allSelections.forEach((selection: any) => {
         const itemQuantities = selection.itemQuantities as Record<string, number> | null
-        if (itemQuantities) {
+        if (itemQuantities && typeof itemQuantities === 'object') {
           Object.entries(itemQuantities).forEach(([itemId, quantity]) => {
-            claimed[itemId] = (claimed[itemId] || 0) + quantity
+            // Safe access: ensure quantity is a valid number
+            const qty = typeof quantity === 'number' ? quantity : 0
+            claimed[itemId] = (claimed[itemId] || 0) + qty
           })
         }
       })
@@ -357,6 +367,17 @@ export default function SplitForm({
       items.forEach(item => {
         const claimedQty = claimed[item.id] || 0
         remaining[item.id] = Math.max(0, item.quantity - claimedQty)
+      })
+
+      console.log('[SplitForm] Calculated remaining quantities:', {
+        paidSelectionsCount: selections.length,
+        liveSelectionsCount: liveSelections.length,
+        otherLiveSelectionsCount: otherLiveSelections.length,
+        validLiveSelectionsCount: validLiveSelections.length,
+        filteredOutCount: otherLiveSelections.length - validLiveSelections.length,
+        totalSelectionsUsed: allSelections.length,
+        claimed,
+        remaining
       })
 
       setRemainingQuantities(remaining)
@@ -685,6 +706,14 @@ export default function SplitForm({
       return
     }
 
+    console.log('[SplitForm] Submitting selection:', {
+      friendName: friendName.trim(),
+      itemQuantities: selectedItems,
+      tipAmount,
+      paymentMethod,
+      sessionId: sessionId || getOrCreateSessionId()
+    })
+
     setLoading(true)
 
     try {
@@ -707,8 +736,11 @@ export default function SplitForm({
       const data = await response.json()
 
       if (!response.ok) {
+        console.error('[SplitForm] Selection creation failed:', data.error)
         throw new Error(data.error || 'Fehler beim Erstellen der Auswahl')
       }
+
+      console.log('[SplitForm] Selection created successfully:', data)
 
       // Cleanup live selections before redirecting
       // (Selection is now saved in DB via API, no localStorage needed)
@@ -839,15 +871,18 @@ export default function SplitForm({
         <div className="space-y-2">
           {items.map((item) => {
             // Calculate total PAID quantity for this item (ignore SELECTING)
+            // Use safe access to avoid undefined errors with empty itemQuantities
             const paidSelectionsForItem = selections
               .filter(sel => {
                 const quantities = sel.itemQuantities as Record<string, number>
-                return quantities && quantities[item.id] > 0
+                const qty = quantities?.[item.id] ?? 0
+                return qty > 0
               })
 
             const totalPaidForItem = paidSelectionsForItem.reduce((sum, sel) => {
               const quantities = sel.itemQuantities as Record<string, number>
-              return sum + quantities[item.id]
+              const qty = quantities?.[item.id] ?? 0 // Safe access with nullish coalescing
+              return sum + qty
             }, 0)
 
             const isFullyPaid = totalPaidForItem >= item.quantity
@@ -872,10 +907,15 @@ export default function SplitForm({
 
             // Map paid selections for badge display
             const paidSelectionsForDisplay = paidSelectionsForItem
-              .map(sel => ({
-                friendName: sel.friendName,
-                quantity: (sel.itemQuantities as Record<string, number>)[item.id]
-              }))
+              .map(sel => {
+                const quantities = sel.itemQuantities as Record<string, number>
+                const qty = quantities?.[item.id] ?? 0 // Safe access
+                return {
+                  friendName: sel.friendName,
+                  quantity: qty
+                }
+              })
+              .filter(sel => sel.quantity > 0) // Only show if quantity > 0
 
             // Calculate total selections for this item (PAID + SELECTING)
             const ownQuantity = selectedItems[item.id] || 0

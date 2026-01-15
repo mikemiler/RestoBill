@@ -73,15 +73,26 @@ export default function SplitFormContainer({
     }
   }
 
-  // Fetch all selections from API (all guests)
+  // Fetch all PAID selections from API (all guests)
+  // This is the single source of truth for PAID selections
   const fetchSelections = async () => {
     try {
+      console.log('[SplitFormContainer] Fetching PAID selections...')
       const response = await fetch(`/api/bills/${billId}/selections`)
       const data: DatabaseSelection[] = await response.json()
+      console.log('[SplitFormContainer] PAID selections fetched:', {
+        count: data.length,
+        selections: data.map(s => ({
+          id: s.id,
+          friendName: s.friendName,
+          itemCount: Object.keys(s.itemQuantities || {}).length,
+          itemQuantities: s.itemQuantities
+        }))
+      })
       setAllSelections(data)
       setLoading(false)
     } catch (error) {
-      console.error('Error fetching selections:', error)
+      console.error('[SplitFormContainer] Error fetching PAID selections:', error)
       setLoading(false)
     }
   }
@@ -111,15 +122,23 @@ export default function SplitFormContainer({
   }, [sessionId, billId])
 
   // Recalculate remaining quantities when items or selections change
+  // Uses safe access to handle empty or malformed itemQuantities
   useEffect(() => {
+    console.log('[SplitFormContainer] Recalculating remaining quantities:', {
+      itemCount: items.length,
+      selectionCount: allSelections.length
+    })
+
     const claimed: Record<string, number> = {}
 
-    // Calculate claimed quantities from selections
+    // Calculate claimed quantities from PAID selections only
     allSelections.forEach((selection) => {
       const itemQuantities = selection.itemQuantities as Record<string, number> | null
-      if (itemQuantities) {
+      if (itemQuantities && typeof itemQuantities === 'object') {
         Object.entries(itemQuantities).forEach(([itemId, quantity]) => {
-          claimed[itemId] = (claimed[itemId] || 0) + quantity
+          // Safe access: ensure quantity is a valid number
+          const qty = typeof quantity === 'number' ? quantity : 0
+          claimed[itemId] = (claimed[itemId] || 0) + qty
         })
       }
     })
@@ -131,26 +150,36 @@ export default function SplitFormContainer({
       remaining[item.id] = Math.max(0, item.quantity - claimedQty)
     })
 
+    console.log('[SplitFormContainer] Remaining quantities calculated:', {
+      claimed,
+      remaining
+    })
+
     setItemRemainingQuantities(remaining)
   }, [items, allSelections])
 
   // Realtime subscription for Selection changes and BillItem broadcasts
+  // This is the PRIMARY subscription for PAID selections (status='PAID')
   const { isConnected } = useRealtimeSubscription(billId, {
     // Initial data fetch on mount and after reconnection
     onInitialFetch: async () => {
+      console.log('[SplitFormContainer] Initial fetch triggered')
       await fetchSelections()
       await fetchMySelections()
       // Don't fetch items initially - use props instead
     },
 
     // Selection table changes (final payments)
+    // This triggers when a new payment is created or updated (SELECTING → PAID)
     onSelectionChange: () => {
+      console.log('[SplitFormContainer] Selection change detected - refetching PAID selections')
       fetchSelections()
       fetchMySelections()
     },
 
     // Item changes broadcast from owner
     onItemChange: () => {
+      console.log('[SplitFormContainer] Item change detected - refetching items')
       // Refetch items when broadcast is received
       fetchItems()
     },

@@ -138,6 +138,7 @@ export async function POST(request: NextRequest) {
 
     if (existingSelection) {
       // Update existing live selection to PAID
+      // PAID selections never expire (set to 100 years from now)
       const { data: updated, error: updateError } = await supabaseAdmin
         .from('Selection')
         .update({
@@ -147,7 +148,7 @@ export async function POST(request: NextRequest) {
           tipAmount: tip,
           paymentMethod: paymentMethod || 'PAYPAL',
           paid: false, // Will be manually confirmed by owner
-          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          expiresAt: new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000).toISOString(), // 100 years - effectively never expires
           updatedAt: new Date().toISOString(),
         })
         .eq('id', existingSelection.id)
@@ -162,6 +163,7 @@ export async function POST(request: NextRequest) {
     } else {
       // No live selection exists - create new Selection directly with status=PAID
       // (fallback for guests who pay without live tracking)
+      // PAID selections never expire (set to 100 years from now)
       const selectionId = crypto.randomUUID()
       const now = new Date().toISOString()
       const { data: created, error: insertError } = await supabaseAdmin
@@ -176,7 +178,7 @@ export async function POST(request: NextRequest) {
           tipAmount: tip,
           paymentMethod: paymentMethod || 'PAYPAL',
           paid: false,
-          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          expiresAt: new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000).toISOString(), // 100 years - effectively never expires
           createdAt: now,
           updatedAt: now,
         })
