@@ -91,18 +91,6 @@ export default async function SplitBillPage({
             totalAmount={totalBillAmount}
           />
         </div>
-
-        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 sm:p-4 mb-40">
-          <h3 className="font-semibold text-blue-900 dark:text-blue-300 mb-2 text-sm sm:text-base">
-            ℹ️ So funktioniert&apos;s
-          </h3>
-          <ol className="text-xs sm:text-sm text-blue-800 dark:text-blue-300 space-y-1">
-            <li>1. Gib deinen Namen ein</li>
-            <li>2. Wähle deine Positionen aus (du kannst auch halbe Portionen wählen)</li>
-            <li>3. Füge optional Trinkgeld hinzu</li>
-            <li>4. Klicke auf &quot;Jetzt bezahlen&quot; - du wirst zu PayPal weitergeleitet</li>
-          </ol>
-        </div>
       </div>
     </div>
   )

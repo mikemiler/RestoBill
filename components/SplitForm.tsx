@@ -1424,9 +1424,16 @@ export default function SplitForm({
           <span className="text-gray-900 dark:text-gray-100">Gesamt:</span>
           <span className="text-green-600 dark:text-green-400">{formatEUR(total)}</span>
         </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400 text-center pt-1">
-          Zahlung an {payerName}
-        </p>
+      </div>
+
+      {/* Info Box - Payment Explanation */}
+      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 sm:p-4">
+        <div className="flex items-start gap-2">
+          <span className="text-blue-600 dark:text-blue-400 text-lg">ℹ️</span>
+          <p className="text-xs sm:text-sm text-blue-800 dark:text-blue-300 flex-1">
+            <span className="font-semibold">{payerName}</span> bezahlt die Gesamtrechnung und du bezahlst deinen Anteil direkt an <span className="font-semibold">{payerName}</span>
+          </p>
+        </div>
       </div>
 
       {error && (
