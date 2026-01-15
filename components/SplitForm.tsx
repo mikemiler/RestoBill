@@ -181,16 +181,8 @@ export default function SplitForm({
     hasRestoredSelections.current = true
   }, [friendName, billId, sessionId])
 
-  // Fetch paid selections (for status bar calculations)
-  const fetchSelections = async () => {
-    try {
-      const response = await fetch(`/api/bills/${billId}/selections`)
-      const data: DatabaseSelection[] = await response.json()
-      setSelections(data)
-    } catch (error) {
-      console.error('Error fetching selections:', error)
-    }
-  }
+  // Note: fetchSelections removed - now handled by parent SplitFormContainer
+  // The parent fetches and passes allSelections as prop, which is synced via useEffect
 
   // Fetch live selections (unified Selection with status='SELECTING')
   const fetchLiveSelections = async () => {
@@ -224,40 +216,29 @@ export default function SplitForm({
     }
   }
 
-  // Realtime subscription for live selections and payments
+  // Realtime subscription for LIVE selections only (SELECTING status)
+  // PAID selections are fetched by parent SplitFormContainer
   const { isConnected } = useRealtimeSubscription(billId, {
     // Initial data fetch on mount and after reconnection
     onInitialFetch: async () => {
-      await Promise.all([
-        fetchSelections(),
-        fetchLiveSelections(),
-      ])
-      // calculateRemainingQuantities() will be called by useEffect below
+      await fetchLiveSelections()
+      // Note: PAID selections come from parent prop (allSelections)
     },
 
-    // Selection table changes - fetch BOTH SELECTING and PAID
-    // This ensures live selections are updated when users select/deselect items
+    // Selection table changes - fetch only SELECTING
+    // PAID selections are handled by parent
     onSelectionChange: async () => {
-      await Promise.all([
-        fetchSelections(),      // PAID selections
-        fetchLiveSelections()   // SELECTING selections
-      ])
+      await fetchLiveSelections()
     },
 
     // Also handle via onActiveSelectionChange for backwards compatibility
     onActiveSelectionChange: async () => {
-      await Promise.all([
-        fetchSelections(),
-        fetchLiveSelections()
-      ])
+      await fetchLiveSelections()
     },
 
     // Item changes broadcast from owner
     onItemChange: async () => {
-      await Promise.all([
-        fetchSelections(),
-        fetchLiveSelections()
-      ])
+      await fetchLiveSelections()
     },
 
     // Enable debug logging in development
