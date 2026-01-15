@@ -77,16 +77,25 @@ export async function POST(request: NextRequest) {
     const selectedItemIds: string[] = []
 
     for (const [itemId, quantity] of Object.entries(itemQuantities)) {
-      // Validate quantity
-      if (typeof quantity !== 'number' || quantity < 0 || quantity > 10) {
+      // Find the item first
+      const item = bill.BillItem.find((i: any) => i.id === itemId)
+
+      if (!item) {
         return NextResponse.json(
-          { error: 'Ungültige Menge' },
+          { error: 'Position nicht gefunden' },
           { status: 400 }
         )
       }
 
-      const item = bill.BillItem.find((i: any) => i.id === itemId)
-      if (item && quantity > 0) {
+      // Validate quantity (check against item's actual quantity)
+      if (typeof quantity !== 'number' || quantity < 0 || quantity > item.quantity) {
+        return NextResponse.json(
+          { error: `Ungültige Menge für ${item.name} (max. ${item.quantity} verfügbar)` },
+          { status: 400 }
+        )
+      }
+
+      if (quantity > 0) {
         totalAmount += item.pricePerUnit * quantity
         selectedItemIds.push(itemId)
       }

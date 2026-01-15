@@ -616,8 +616,8 @@ export default function SplitForm({
     let finalQuantity = 0
 
     if (!isNaN(numValue) && numValue > 0) {
-      // Limit to remaining quantity
-      const clampedValue = Math.min(numValue, remainingQty)
+      // Limit to remaining quantity and round to 2 decimal places
+      const clampedValue = parseFloat(Math.min(numValue, remainingQty).toFixed(2))
       setSelectedItems((prev) => ({ ...prev, [itemId]: clampedValue }))
       finalQuantity = clampedValue
     } else if (value === '') {
@@ -1193,7 +1193,8 @@ export default function SplitForm({
                               { label: '1/10', value: 1/10 },
                             ].map((fraction) => {
                               // Use fraction value directly (1/4 of 1 portion, not of total quantity)
-                              const actualValue = Math.min(fraction.value, remainingQty)
+                              // Round to 2 decimal places
+                              const actualValue = parseFloat(Math.min(fraction.value, remainingQty).toFixed(2))
                               return (
                                 <button
                                   key={fraction.label}
@@ -1226,12 +1227,12 @@ export default function SplitForm({
                             <input
                               type="number"
                               min="2"
-                              max="20"
                               placeholder="Anzahl Personen"
                               onChange={(e) => {
                                 const persons = parseInt(e.target.value)
                                 if (!isNaN(persons) && persons > 1) {
-                                  const value = Math.min(item.quantity / persons, remainingQty)
+                                  // Round to 2 decimal places
+                                  const value = parseFloat(Math.min(item.quantity / persons, remainingQty).toFixed(2))
                                   setCustomQuantityInput((prev) => ({
                                     ...prev,
                                     [item.id]: value.toString()

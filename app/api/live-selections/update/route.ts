@@ -24,10 +24,32 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate quantity
-    if (quantity < 0 || quantity > 10) {
+    // Validate quantity (basic range check first)
+    if (quantity < 0) {
       return NextResponse.json(
         { error: 'Ungültige Menge' },
+        { status: 400 }
+      )
+    }
+
+    // Get the item to validate against its actual quantity
+    const { data: item, error: itemError } = await supabaseAdmin
+      .from('BillItem')
+      .select('quantity, name')
+      .eq('id', itemId)
+      .single()
+
+    if (itemError || !item) {
+      return NextResponse.json(
+        { error: 'Position nicht gefunden' },
+        { status: 404 }
+      )
+    }
+
+    // Validate quantity against item's actual quantity
+    if (quantity > item.quantity) {
+      return NextResponse.json(
+        { error: `Ungültige Menge für ${item.name} (max. ${item.quantity} verfügbar)` },
         { status: 400 }
       )
     }
