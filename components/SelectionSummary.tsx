@@ -16,18 +16,66 @@ interface Selection {
   tipAmount: number
   paymentMethod: 'PAYPAL' | 'CASH'
   createdAt: string
+  status?: 'SELECTING' | 'PAID'
+  paid?: boolean
 }
 
 interface SelectionSummaryProps {
   selections: Selection[]
   items: BillItem[]
+  isOwner?: boolean
 }
 
 export default function SelectionSummary({
   selections,
   items,
+  isOwner = false,
 }: SelectionSummaryProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const [loadingSelectionId, setLoadingSelectionId] = useState<string | null>(null)
+
+  // Handler to mark selection as paid (SELECTING → PAID)
+  const handleMarkAsPaid = async (selectionId: string) => {
+    setLoadingSelectionId(selectionId)
+    try {
+      const response = await fetch(`/api/selections/${selectionId}/mark-paid`, {
+        method: 'POST',
+      })
+
+      if (!response.ok) {
+        throw new Error('Fehler beim Markieren als bezahlt')
+      }
+
+      // The selection will be updated via realtime subscription
+      // No manual refresh needed
+    } catch (error) {
+      console.error('Error marking selection as paid:', error)
+      alert('Fehler beim Markieren als bezahlt')
+    } finally {
+      setLoadingSelectionId(null)
+    }
+  }
+
+  // Handler to unmark selection as paid (PAID → SELECTING)
+  const handleUnmarkAsPaid = async (selectionId: string) => {
+    setLoadingSelectionId(selectionId)
+    try {
+      const response = await fetch(`/api/selections/${selectionId}/mark-paid`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        throw new Error('Fehler beim Zurücksetzen')
+      }
+
+      // The selection will be updated via realtime subscription
+    } catch (error) {
+      console.error('Error unmarking selection as paid:', error)
+      alert('Fehler beim Zurücksetzen')
+    } finally {
+      setLoadingSelectionId(null)
+    }
+  }
 
   if (selections.length === 0) {
     return null
@@ -114,20 +162,40 @@ export default function SelectionSummary({
               total: number
             }[]
 
+          // Determine if this selection is paid or selecting
+          const isPaid = selection.status === 'PAID' || selection.paid === true
+          const isSelecting = selection.status === 'SELECTING' || !isPaid
+
           return (
             <div
               key={selection.id}
-              className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-blue-200 dark:border-blue-700"
+              className={`bg-white dark:bg-gray-800 rounded-lg p-3 border ${
+                isPaid
+                  ? 'border-green-200 dark:border-green-700'
+                  : 'border-blue-200 dark:border-blue-700'
+              }`}
             >
               <div className="flex items-start justify-between mb-2">
                 <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span className="text-sm font-semibold text-blue-900 dark:text-blue-200">
                       {selection.friendName}
                     </span>
                     <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 text-xs font-medium rounded">
                       {selection.paymentMethod === 'CASH' ? '💵 Bar' : '💳 PayPal'}
                     </span>
+                    {/* Status Badge */}
+                    {isPaid ? (
+                      <span className="px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 text-xs font-medium rounded flex items-center gap-1">
+                        <span>✓</span>
+                        <span>Bezahlt</span>
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 text-xs font-medium rounded flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
+                        <span>Ausgewählt</span>
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-gray-600 dark:text-gray-400">
                     {new Date(selection.createdAt).toLocaleString('de-DE', {
@@ -164,6 +232,29 @@ export default function SelectionSummary({
                     <span>inkl. Trinkgeld</span>
                     <span>{formatEUR(selection.tipAmount)}</span>
                   </div>
+                </div>
+              )}
+
+              {/* Owner Controls - Mark as Paid Button */}
+              {isOwner && (
+                <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                  {isSelecting ? (
+                    <button
+                      onClick={() => handleMarkAsPaid(selection.id)}
+                      disabled={loadingSelectionId === selection.id}
+                      className="w-full px-3 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 dark:bg-green-500 dark:hover:bg-green-600 dark:disabled:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+                    >
+                      {loadingSelectionId === selection.id ? 'Bestätigen...' : '✓ Zahlung bestätigen'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleUnmarkAsPaid(selection.id)}
+                      disabled={loadingSelectionId === selection.id}
+                      className="w-full px-3 py-2 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 dark:bg-gray-600 dark:hover:bg-gray-500 dark:disabled:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg text-sm font-medium transition-colors"
+                    >
+                      {loadingSelectionId === selection.id ? 'Zurücksetzen...' : '↻ Zahlung zurücksetzen'}
+                    </button>
+                  )}
                 </div>
               )}
             </div>

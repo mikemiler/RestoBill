@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { formatEUR } from '@/lib/utils'
 import { getOrCreateSessionId } from '@/lib/sessionStorage'
-import { useRealtimeSubscription } from '@/lib/hooks'
+import { useRealtimeSubscription, useDebounce } from '@/lib/hooks'
 
 // Browser-only Supabase client
 const supabase = typeof window !== 'undefined'
@@ -42,6 +42,7 @@ interface DatabaseSelection {
   tipAmount: number
   paid: boolean
   paymentMethod: 'PAYPAL' | 'CASH'
+  status: 'SELECTING' | 'PAID'
   createdAt: string
 }
 
@@ -97,6 +98,7 @@ export default function SplitForm({
     quantity: 1,
     pricePerUnit: 0
   })
+  const [isItemsExpanded, setIsItemsExpanded] = useState(true) // Collapsible for items list
 
   // Track if we've restored selections yet
   const hasRestoredSelections = useRef(false)
@@ -231,6 +233,7 @@ export default function SplitForm({
 
   // Realtime subscription for live selections (SELECTING status only)
   // PAID selections are handled by SplitFormContainer's subscription
+  // CRITICAL: Use unique channel suffix to avoid conflicts with StatusPageClient's subscription
   const { isConnected } = useRealtimeSubscription(billId, {
     // Initial data fetch on mount and after reconnection
     onInitialFetch: async () => {
@@ -252,6 +255,9 @@ export default function SplitForm({
     },
 
     // Item changes are handled by SplitFormContainer - no action needed here
+
+    // Unique channel suffix to avoid conflicts with other subscriptions
+    channelSuffix: 'form',
 
     // Enable debug logging in development
     debug: process.env.NODE_ENV === 'development'
@@ -285,18 +291,21 @@ export default function SplitForm({
 
   const total = subtotal + tipAmount
 
-  // Calculate total paid amount from all selections
-  const totalPaidAmount = selections.reduce((sum, selection) => {
-    // Calculate selection subtotal from item quantities
-    const selectionSubtotal = Object.entries(selection.itemQuantities).reduce((itemSum, [itemId, quantity]) => {
-      const item = items.find(i => i.id === itemId)
-      if (item) {
-        return itemSum + (item.pricePerUnit * quantity)
-      }
-      return itemSum
+  // Calculate total confirmed amount (paid=true only)
+  // Note: All selections have status=SELECTING now
+  const totalPaidAmount = selections
+    .filter(sel => sel.paid === true)
+    .reduce((sum, selection) => {
+      // Calculate selection subtotal from item quantities
+      const selectionSubtotal = Object.entries(selection.itemQuantities).reduce((itemSum, [itemId, quantity]) => {
+        const item = items.find(i => i.id === itemId)
+        if (item) {
+          return itemSum + (item.pricePerUnit * quantity)
+        }
+        return itemSum
+      }, 0)
+      return sum + selectionSubtotal + selection.tipAmount
     }, 0)
-    return sum + selectionSubtotal + selection.tipAmount
-  }, 0)
 
   // Calculate own active selection from local state (for instant feedback)
   const ownActiveAmount = items.reduce((sum, item) => {
@@ -386,24 +395,6 @@ export default function SplitForm({
     }
   }
 
-  // Cleanup live selections for current user
-  const cleanupLiveSelections = async () => {
-    const currentSessionId = sessionId || getOrCreateSessionId()
-    if (!currentSessionId) return
-
-    try {
-      await fetch('/api/live-selections/cleanup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          billId,
-          sessionId: currentSessionId
-        })
-      })
-    } catch (error) {
-      console.error('Error cleaning up live selections:', error)
-    }
-  }
 
   // Item management functions (Owner only)
   function startEditItem(item: BillItem) {
@@ -580,14 +571,17 @@ export default function SplitForm({
   }
 
   async function handleItemQuantityChange(itemId: string, quantity: number) {
-    setSelectedItems((prev) => {
-      if (quantity === 0) {
-        const newItems = { ...prev }
-        delete newItems[itemId]
-        return newItems
-      }
-      return { ...prev, [itemId]: quantity }
-    })
+    // Calculate new selectedItems state
+    let newSelectedItems: Record<string, number>
+    if (quantity === 0) {
+      const { [itemId]: _, ...rest } = selectedItems
+      newSelectedItems = rest
+    } else {
+      newSelectedItems = { ...selectedItems, [itemId]: quantity }
+    }
+
+    setSelectedItems(newSelectedItems)
+
     // Disable custom mode when selecting a preset quantity
     if (customQuantityMode[itemId]) {
       setCustomQuantityMode((prev) => {
@@ -602,7 +596,18 @@ export default function SplitForm({
       })
     }
 
-    // Update live selection
+    // Calculate subtotal with NEW selectedItems
+    const newSubtotal = items.reduce((sum, item) => {
+      const qty = newSelectedItems[item.id] || 0
+      return sum + item.pricePerUnit * qty
+    }, 0)
+
+    // Calculate tip amount (including default 10%)
+    const calculatedTipAmount = tipPercent === -1
+      ? parseFloat(customTip) || 0
+      : (newSubtotal * tipPercent) / 100
+
+    // Update live selection WITH tipAmount
     const currentSessionId = sessionId || getOrCreateSessionId()
     const currentFriendName = friendName || localStorage.getItem('friendName') || 'Gast'
     if (currentSessionId) {
@@ -615,7 +620,8 @@ export default function SplitForm({
             itemId,
             sessionId: currentSessionId,
             guestName: currentFriendName.trim(),
-            quantity
+            quantity,
+            tipAmount: calculatedTipAmount // CRITICAL: Include tip amount (default 10%)
           })
         })
       } catch (error) {
@@ -635,22 +641,35 @@ export default function SplitForm({
     const remainingQty = remainingQuantities[itemId]
 
     let finalQuantity = 0
+    let newSelectedItems: Record<string, number>
 
     if (!isNaN(numValue) && numValue > 0) {
       // Limit to remaining quantity and round to 2 decimal places
       const clampedValue = parseFloat(Math.min(numValue, remainingQty).toFixed(2))
-      setSelectedItems((prev) => ({ ...prev, [itemId]: clampedValue }))
+      newSelectedItems = { ...selectedItems, [itemId]: clampedValue }
+      setSelectedItems(newSelectedItems)
       finalQuantity = clampedValue
     } else if (value === '') {
-      setSelectedItems((prev) => {
-        const newItems = { ...prev }
-        delete newItems[itemId]
-        return newItems
-      })
+      const { [itemId]: _, ...rest } = selectedItems
+      newSelectedItems = rest
+      setSelectedItems(newSelectedItems)
       finalQuantity = 0
+    } else {
+      newSelectedItems = selectedItems
     }
 
-    // Update live selection
+    // Calculate subtotal with NEW selectedItems
+    const newSubtotal = items.reduce((sum, item) => {
+      const qty = newSelectedItems[item.id] || 0
+      return sum + item.pricePerUnit * qty
+    }, 0)
+
+    // Calculate tip amount (including default 10%)
+    const calculatedTipAmount = tipPercent === -1
+      ? parseFloat(customTip) || 0
+      : (newSubtotal * tipPercent) / 100
+
+    // Update live selection WITH tipAmount
     const currentSessionId = sessionId || getOrCreateSessionId()
     const currentFriendName = friendName || localStorage.getItem('friendName') || 'Gast'
     if (currentSessionId) {
@@ -663,7 +682,8 @@ export default function SplitForm({
             itemId,
             sessionId: currentSessionId,
             guestName: currentFriendName.trim(),
-            quantity: finalQuantity
+            quantity: finalQuantity,
+            tipAmount: calculatedTipAmount // CRITICAL: Include tip amount (default 10%)
           })
         })
       } catch (error) {
@@ -691,101 +711,41 @@ export default function SplitForm({
     if (percent !== -1) {
       setCustomTip('')
     }
+
+    // Calculate new tip amount and update live selection (debounced)
+    const newTipAmount = percent === -1
+      ? parseFloat(customTip) || 0
+      : (subtotal * percent) / 100
+    debouncedTipUpdate(newTipAmount)
   }
 
-  async function handleSubmit(paymentMethod: 'PAYPAL' | 'CASH') {
-    setError('')
+  // Update live selection tip (debounced to prevent API spam)
+  const updateLiveSelectionTip = async (tipAmount: number) => {
+    const currentSessionId = sessionId || getOrCreateSessionId()
+    const currentFriendName = friendName || localStorage.getItem('friendName') || 'Gast'
 
-    if (!friendName.trim()) {
-      setError('Bitte gib deinen Namen ein')
-      return
-    }
-
-    if (Object.keys(selectedItems).length === 0) {
-      setError('Bitte wähle mindestens eine Position aus')
-      return
-    }
-
-    console.log('[SplitForm] Submitting selection:', {
-      friendName: friendName.trim(),
-      itemQuantities: selectedItems,
-      tipAmount,
-      paymentMethod,
-      sessionId: sessionId || getOrCreateSessionId()
-    })
-
-    setLoading(true)
+    if (!currentSessionId) return
 
     try {
-      const response = await fetch('/api/selections/create', {
+      // Use dedicated tip-update endpoint (doesn't affect item quantities)
+      await fetch('/api/live-selections/update-tip', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           billId,
-          shareToken,
-          sessionId: sessionId || getOrCreateSessionId(),
-          friendName: friendName.trim(),
-          itemQuantities: selectedItems,
-          tipAmount,
-          paymentMethod,
-        }),
+          sessionId: currentSessionId,
+          guestName: currentFriendName.trim(),
+          tipAmount: tipAmount
+        })
       })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        console.error('[SplitForm] Selection creation failed:', data.error)
-        throw new Error(data.error || 'Fehler beim Erstellen der Auswahl')
-      }
-
-      console.log('[SplitForm] Selection created successfully:', data)
-
-      // Cleanup live selections before redirecting
-      // (Selection is now saved in DB via API, no localStorage needed)
-      await cleanupLiveSelections()
-
-      if (isOwner) {
-        // Owner confirmed selection - reset form and show success
-        setSelectedItems({})
-        setCustomQuantityMode({})
-        setCustomQuantityInput({})
-        setTipPercent(10)
-        setCustomTip('')
-        setLoading(false)
-        // The SelectionSummary will automatically update via Supabase realtime
-      } else if (paymentMethod === 'CASH') {
-        // Redirect to confirmation page for cash payment
-        router.push(`/split/${shareToken}/cash-confirmed?selectionId=${data.selectionId}&total=${data.totalAmount}`)
-      } else {
-        // Validate PayPal URL before redirect
-        if (!data.paypalUrl || !(data.paypalUrl.startsWith('https://paypal.me/') || data.paypalUrl.startsWith('https://www.paypal.me/'))) {
-          throw new Error('Ungültige PayPal URL')
-        }
-        // Open payment redirect page in new tab to keep the browser open
-        // This helps ensure PayPal opens in browser instead of the PayPal app
-        console.log('DEBUG - shareToken value:', shareToken)
-        console.log('DEBUG - shareToken type:', typeof shareToken)
-        console.log('DEBUG - payerName:', payerName)
-        const redirectUrl = `/payment-redirect?amount=${data.totalAmount.toFixed(2)}&payer=${encodeURIComponent(payerName)}&token=${shareToken}&url=${encodeURIComponent(data.paypalUrl)}`
-        console.log('Payment redirect URL:', redirectUrl)
-        window.open(redirectUrl, '_blank', 'noopener,noreferrer')
-
-        // Reset form after opening payment page
-        setSelectedItems({})
-        setCustomQuantityMode({})
-        setCustomQuantityInput({})
-        setTipPercent(10)
-        setCustomTip('')
-        setLoading(false)
-        // The SelectionSummary will automatically update via Supabase realtime
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ein Fehler ist aufgetreten')
-      setLoading(false)
+    } catch (error) {
+      console.error('Error updating live tip:', error)
     }
   }
+
+  // Debounced version (waits 500ms after last change)
+  const debouncedTipUpdate = useDebounce(updateLiveSelectionTip, 500)
+
 
   // Welcome Screen for guests (before showing items)
   if (!isOwner && !nameConfirmed) {
@@ -870,22 +830,8 @@ export default function SplitForm({
         </label>
         <div className="space-y-2">
           {items.map((item) => {
-            // Calculate total PAID quantity for this item (ignore SELECTING)
-            // Use safe access to avoid undefined errors with empty itemQuantities
-            const paidSelectionsForItem = selections
-              .filter(sel => {
-                const quantities = sel.itemQuantities as Record<string, number>
-                const qty = quantities?.[item.id] ?? 0
-                return qty > 0
-              })
-
-            const totalPaidForItem = paidSelectionsForItem.reduce((sum, sel) => {
-              const quantities = sel.itemQuantities as Record<string, number>
-              const qty = quantities?.[item.id] ?? 0 // Safe access with nullish coalescing
-              return sum + qty
-            }, 0)
-
-            const isFullyPaid = totalPaidForItem >= item.quantity
+            // Note: "Bereits bezahlt" badge removed - payer marks selections as paid via paid flag
+            // Status never changes to PAID - it always stays SELECTING
             const remainingQty = remainingQuantities[item.id] ?? item.quantity
             const quantityOptions = getQuantityOptions(remainingQty)
 
@@ -905,25 +851,13 @@ export default function SplitForm({
                 quantity: (sel.itemQuantities as Record<string, number>)[item.id]
               }))
 
-            // Map paid selections for badge display
-            const paidSelectionsForDisplay = paidSelectionsForItem
-              .map(sel => {
-                const quantities = sel.itemQuantities as Record<string, number>
-                const qty = quantities?.[item.id] ?? 0 // Safe access
-                return {
-                  friendName: sel.friendName,
-                  quantity: qty
-                }
-              })
-              .filter(sel => sel.quantity > 0) // Only show if quantity > 0
-
-            // Calculate total selections for this item (PAID + SELECTING)
+            // Calculate total selections for this item (only SELECTING now)
             const ownQuantity = selectedItems[item.id] || 0
             const othersTotal = othersSelecting.reduce((sum, u) => sum + u.quantity, 0)
             const totalLiveSelected = ownQuantity + othersTotal
 
-            // Total claimed = PAID + all SELECTING (including own)
-            const totalClaimed = totalPaidForItem + totalLiveSelected
+            // Total claimed = all SELECTING (including own)
+            const totalClaimed = totalLiveSelected
 
             // Overselected if total claimed exceeds item quantity
             const isOverselected = totalClaimed > item.quantity
@@ -935,9 +869,7 @@ export default function SplitForm({
               <div
                 key={item.id}
                 className={`border rounded-lg p-2.5 sm:p-3 transition-colors relative ${
-                  isFullyPaid
-                    ? 'border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 opacity-60'
-                    : isOverselected
+                  isOverselected
                     ? 'border-red-500 dark:border-red-600 bg-red-50 dark:bg-red-900/20'
                     : isFullyMarked
                     ? 'border-green-500 dark:border-green-600 bg-green-50 dark:bg-green-900/20'
@@ -953,10 +885,6 @@ export default function SplitForm({
                   }
                   // Don't trigger in custom quantity mode or when editing
                   if (customQuantityMode[item.id] || isEditingThis) {
-                    return
-                  }
-                  // Don't trigger if fully paid
-                  if (isFullyPaid) {
                     return
                   }
                   // Cycle through quantities: 0 → 1 → 2 → ... → max → 0
@@ -1083,10 +1011,7 @@ export default function SplitForm({
                         allBadges.push({ type: 'live', data: user })
                       })
 
-                      // Add paid selections
-                      paidSelectionsForDisplay.forEach(sel => {
-                        allBadges.push({ type: 'paid', data: sel })
-                      })
+                      // Note: Paid selections badges removed - no longer showing "Bereits bezahlt"
 
                       if (allBadges.length === 0) return null
 
@@ -1114,15 +1039,9 @@ export default function SplitForm({
                                   <span className="opacity-90">({formatQuantity(badge.data.quantity)}×)</span>
                                 </div>
                               )
-                            } else {
-                              return (
-                                <div key={`paid-${idx}`} className="bg-emerald-700 dark:bg-emerald-800 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1" title="Bezahlt">
-                                  <span className="text-[10px]">✓</span>
-                                  <span className="font-medium">{badge.data.friendName}</span>
-                                  <span className="opacity-90">({formatQuantity(badge.data.quantity)}×)</span>
-                                </div>
-                              )
                             }
+                            // Note: 'paid' badge type removed - no longer showing "Bereits bezahlt"
+                            return null
                           })}
 
                           {showMore && (
@@ -1143,11 +1062,6 @@ export default function SplitForm({
                           <h3 className="font-medium text-gray-900 dark:text-gray-100 text-sm sm:text-base">
                             {item.name}
                           </h3>
-                          {isFullyPaid && (
-                            <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-xs font-medium rounded">
-                              Bezahlt
-                            </span>
-                          )}
                         </div>
                         <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
                           {item.quantity}x à {formatEUR(item.pricePerUnit)} ={' '}
@@ -1175,7 +1089,7 @@ export default function SplitForm({
                   </div>
                 )}
 
-                {!isFullyPaid && !isEditingThis && (
+                {!isEditingThis && (
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 w-full sm:w-auto">
@@ -1319,6 +1233,7 @@ export default function SplitForm({
               </div>
             )
           })}
+        </div>
 
           {/* Add New Item (Owner only) */}
           {isOwner && (
@@ -1400,7 +1315,6 @@ export default function SplitForm({
               </button>
             )
           )}
-        </div>
       </div>
 
       {/* Tip Calculator */}
@@ -1441,7 +1355,12 @@ export default function SplitForm({
             step="0.01"
             min="0"
             value={customTip}
-            onChange={(e) => setCustomTip(e.target.value)}
+            onChange={(e) => {
+              setCustomTip(e.target.value)
+              // Update live selection with custom tip (debounced)
+              const newTipAmount = parseFloat(e.target.value) || 0
+              debouncedTipUpdate(newTipAmount)
+            }}
             placeholder="0.00"
             className="w-full px-3 sm:px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:focus:ring-green-400 focus:border-transparent text-sm sm:text-base dark:bg-gray-700 dark:text-gray-100"
           />
@@ -1466,71 +1385,49 @@ export default function SplitForm({
         </div>
       </div>
 
-      {/* Info Box - Payment Explanation */}
-      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 sm:p-4">
-        <div className="flex items-start gap-2">
-          <span className="text-blue-600 dark:text-blue-400 text-lg">ℹ️</span>
-          <p className="text-xs sm:text-sm text-blue-800 dark:text-blue-300 flex-1">
-            <span className="font-semibold">{payerName}</span> bezahlt die Gesamtrechnung und du bezahlst deinen Anteil direkt an <span className="font-semibold">{payerName}</span>
-          </p>
+      {/* Payment Info Box */}
+      {!isOwner && (
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 sm:p-4 space-y-3">
+          <div className="flex items-start gap-2">
+            <span className="text-blue-600 dark:text-blue-400 text-lg">ℹ️</span>
+            <div className="flex-1 space-y-2">
+              <p className="text-xs sm:text-sm text-blue-800 dark:text-blue-300">
+                <span className="font-semibold">{payerName}</span> bezahlt die Gesamtrechnung. Bezahle deinen Anteil ({formatEUR(total)}) direkt an <span className="font-semibold">{payerName}</span>:
+              </p>
+
+              {/* PayPal Link (optional) */}
+              {paypalHandle && total > 0 && (
+                <div className="flex items-center gap-2 bg-white dark:bg-gray-700 rounded-lg p-2">
+                  <span className="text-sm">💳</span>
+                  <a
+                    href={`https://paypal.me/${paypalHandle}/${total.toFixed(2)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    Per PayPal bezahlen
+                  </a>
+                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </div>
+              )}
+
+              {/* Cash Payment Info */}
+              <div className="flex items-center gap-2 bg-white dark:bg-gray-700 rounded-lg p-2">
+                <span className="text-sm">💵</span>
+                <span className="flex-1 text-sm text-gray-700 dark:text-gray-300">
+                  Oder bar bezahlen
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       {error && (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-3 py-2.5 sm:px-4 sm:py-3 rounded-lg text-xs sm:text-sm">
           {error}
-        </div>
-      )}
-
-      {/* Payment Buttons */}
-      {isOwner ? (
-        <button
-          type="button"
-          onClick={() => handleSubmit('CASH')}
-          disabled={loading || total === 0}
-          className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 dark:bg-purple-500 dark:hover:bg-purple-600 dark:disabled:bg-gray-600 text-white font-semibold py-3 sm:py-4 px-4 sm:px-6 rounded-lg transition-colors text-base sm:text-lg flex items-center justify-center gap-2"
-        >
-          {loading ? (
-            'Wird gespeichert...'
-          ) : (
-            <>
-              ✓ Auswahl bestätigen {total > 0 && `• ${formatEUR(total)}`}
-            </>
-          )}
-        </button>
-      ) : (
-        <div className="space-y-3">
-          {paypalHandle && (
-            <button
-              type="button"
-              onClick={() => handleSubmit('PAYPAL')}
-              disabled={loading || total === 0}
-              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 dark:bg-blue-500 dark:hover:bg-blue-600 dark:disabled:bg-gray-600 text-white font-semibold py-3 sm:py-4 px-4 sm:px-6 rounded-lg transition-colors text-base sm:text-lg flex items-center justify-center gap-2"
-            >
-              {loading ? (
-                'Weiterleitung...'
-              ) : (
-                <>
-                  💳 Mit PayPal bezahlen {total > 0 && `• ${formatEUR(total)}`}
-                </>
-              )}
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={() => handleSubmit('CASH')}
-            disabled={loading || total === 0}
-            className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 dark:bg-green-500 dark:hover:bg-green-600 dark:disabled:bg-gray-600 text-white font-semibold py-3 sm:py-4 px-4 sm:px-6 rounded-lg transition-colors text-base sm:text-lg flex items-center justify-center gap-2"
-          >
-            {loading ? (
-              'Weiterleitung...'
-            ) : (
-              <>
-                💵 Bar bezahlen {total > 0 && `• ${formatEUR(total)}`}
-              </>
-            )}
-          </button>
         </div>
       )}
 

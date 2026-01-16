@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
-import ThemeToggle from "@/components/ThemeToggle";
 
 export const metadata: Metadata = {
   title: "Kill The Bill - Rechnung einfach teilen",
@@ -21,7 +20,6 @@ export default function RootLayout({
     <html lang="de" suppressHydrationWarning>
       <body className="antialiased">
         <ThemeProvider>
-          <ThemeToggle />
           {children}
         </ThemeProvider>
       </body>

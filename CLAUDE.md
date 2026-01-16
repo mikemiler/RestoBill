@@ -66,16 +66,17 @@ npx ts-node test-supabase-connection.ts  # Verify Supabase connection
    - Belongs to one Bill
    - Relations: `selections[]`, `activeSelections[]`
 
-3. **Selection** - Unified table for both live tracking (SELECTING) and final payments (PAID)
+3. **Selection** - Unified table for guest selections (status always SELECTING)
    - Contains: `friendName`, `itemQuantities` (JSON), `tipAmount`, `paid`, `paymentMethod`, `sessionId`, `status`
    - `itemQuantities` format: `{"itemId": multiplier}` (e.g., `{"uuid": 0.5}` for half portion)
-   - `status`: SELECTING (live tracking) or PAID (final payment) - enum
+   - `status`: **ALWAYS** 'SELECTING' (never changes to PAID)
+   - `paid`: Boolean flag - false=submitted, true=confirmed by payer
    - `paymentMethod`: PAYPAL or CASH (enum)
    - `sessionId`: Browser session identifier (UUID, required)
    - Belongs to one Bill, references multiple BillItems
-   - **Live selections:** status=SELECTING, expires after 30 days (allows multi-day bill splitting)
-   - **Final payments:** status=PAID, no expiration
-   - **Unique constraint:** Partial index on (billId, sessionId) WHERE status='SELECTING' (only one live selection per session)
+   - **All selections:** status=SELECTING, expires after 30 days (allows multi-day bill splitting)
+   - **Payment confirmation:** Uses `paid` flag (true/false), NOT status change
+   - **Unique constraint:** Partial index on (billId, sessionId) WHERE status='SELECTING' (only one selection per session)
 
 **Payment Methods Enum:**
 - `PAYPAL` - Payment via PayPal.me link
@@ -83,9 +84,10 @@ npx ts-node test-supabase-connection.ts  # Verify Supabase connection
 
 **Important:**
 - Items can only be edited/deleted if no selections exist yet
-- Live selections (status=SELECTING) persist in database until payment is submitted
+- All selections (status=SELECTING) persist in database for 30 days
 - Sessions are tracked per browser using unique sessionId (stored in localStorage)
-- Multiple payments per guest are supported (unique constraint only applies to SELECTING status)
+- Multiple payments per guest NOT supported (unique constraint per session)
+- Payment confirmation uses `paid` flag, NOT status change
 
 ### Application Flow
 
@@ -99,20 +101,21 @@ npx ts-node test-supabase-connection.ts  # Verify Supabase connection
 
 **Friend Flow (PayPal):**
 1. Open share link → Server-rendered page with bill data
-2. View previous selections (if any) from database (via sessionId)
+2. View previous selection (if any) from database (via sessionId)
 3. Enter name → Session tracked via unique sessionId (browser-specific)
 4. Select items with quantities (0, 0.5, 1, 2, custom fractions)
-   - Live selections tracked in ActiveSelection table (visible to payer in real-time)
+   - Live selections tracked in Selection table (status=SELECTING, visible to payer in real-time)
 5. Add tip (0%, 7%, 10%, 15%, or custom)
 6. Choose payment method: PayPal or Cash
-7. Submit → `POST /api/selections/create` → Selection saved to database
+7. Submit → `POST /api/selections/create` → Selection saved (status=SELECTING, paid=false)
 8. **PayPal:** Redirect to `/payment-redirect` page → Auto-redirect to PayPal.me (stays in browser)
-9. Can return and make additional selections (multiple payments per guest supported)
+9. Payer manually confirms payment via `/api/selections/[id]/mark-paid` (sets paid=true)
 
 **Friend Flow (Cash):**
-1-7. Same as PayPal flow
+1-7. Same as PayPal flow (status remains SELECTING, paid=false)
 8. **Cash:** Redirect to `/split/[token]/cash-confirmed` → Confirmation page with payment instructions
-9. Guest pays cash directly to payer (no online payment needed)
+9. Guest pays cash directly to payer
+10. Payer manually confirms payment (sets paid=true)
 
 ### API Routes Structure
 
@@ -122,23 +125,25 @@ All routes follow RESTful patterns:
 - `POST /api/bills/create` - Create bill with payer info
 - `POST /api/bills/[id]/upload` - Upload & analyze image
 - `GET /api/bills/[id]/items` - Get all items for a bill
-- `GET /api/bills/[id]/selections` - Get all selections for a bill
-- `GET /api/bills/[id]/live-selections` - Get active (live) selections for a bill
+- `GET /api/bills/[id]/selections` - Get all selections for a bill (all have status=SELECTING)
+- `GET /api/bills/[id]/live-selections` - DEPRECATED (use /selections instead)
 
 **Bill Items:**
 - `POST /api/bill-items/create` - Add item manually
 - `PUT /api/bill-items/[id]` - Edit item (only if no selections)
 - `DELETE /api/bill-items/[id]` - Delete item (only if no selections)
 
-**Selections (Final Payments):**
-- `POST /api/selections/create` - Friend creates selection (PayPal or Cash)
-- `POST /api/selections/[id]/mark-paid` - Mark as paid (manual confirmation by payer)
+**Selections:**
+- `POST /api/selections/create` - Guest submits payment (status=SELECTING, paid=false)
+- `POST /api/selections/[id]/mark-paid` - Payer confirms payment (sets paid=true, status remains SELECTING)
+- `DELETE /api/selections/[id]/mark-paid` - Payer unconfirms payment (sets paid=false)
 - `GET /api/selections/owner` - Owner-specific selection data
-- `GET /api/selections/session` - Get selections for a specific browser session (sessionId)
+- `GET /api/selections/session` - Get selection for a specific browser session (sessionId)
 
 **Live Selections (Real-time Tracking):**
-- `POST /api/live-selections/update` - Update/create active selection (real-time tracking)
-- `POST /api/live-selections/cleanup` - Clean up expired active selections
+- `POST /api/live-selections/update` - Update/create selection during item selection (before submit)
+- `POST /api/live-selections/update-tip` - Update tip amount only
+- `POST /api/live-selections/cleanup` - Clean up expired selections (30+ days old)
 
 **Security:** All public routes validate `shareToken` before proceeding.
 
@@ -196,7 +201,7 @@ All routes follow RESTful patterns:
 - `SplitFormContainer` - Container managing guest selections and form display (uses useRealtimeSubscription)
 - `SplitForm` - Item selection with quantity buttons, live selection tracking (uses useRealtimeSubscription)
 - `SelectionSummary` - Display all previous selections from database via sessionId (multiple payments)
-- `PaymentOverview` - Real-time payment dashboard with live selections (uses useRealtimeSubscription)
+- `GuestSelectionsList` - Accordion-based guest list with collapsible details, payment confirmation buttons (payer only)
 - `BillItemsEditor` - Add/edit/delete items (payer only)
 - `SelectionCard` - Display individual selection on status page
 - `ShareLink` - Share link with copy button and WhatsApp integration
@@ -205,7 +210,8 @@ All routes follow RESTful patterns:
 - `BillsList` - List of bill history
 - `BillAutoSave` - Auto-save functionality for bill drafts
 - `CopyButton`, `RefreshButton` - Interactive controls
-- `ThemeProvider`, `ThemeToggle` - Dark mode support
+- `ThemeProvider` - Enforces dark mode globally
+- `StatusPageClient` - Status dashboard container (removed PaymentOverview, uses GuestSelectionsList)
 
 **Pattern:** Minimize client components. Use server components for static/data-heavy pages.
 
@@ -243,9 +249,9 @@ All routes follow RESTful patterns:
 - **Database:** Prisma schema constraints
 
 ### 7. Dark Mode
-- Uses Next.js theme provider with localStorage persistence
-- Tailwind `dark:` classes throughout
-- Toggle in header
+- Application is dark mode only (no light mode support)
+- ThemeProvider enforces dark mode globally on mount
+- Tailwind `dark:` classes used throughout for styling
 
 ### 8. Image Handling
 - Upload: FormData → Supabase Storage → Public URL
@@ -268,23 +274,64 @@ All routes follow RESTful patterns:
 - **Session tracking:** Guest selections are filtered by sessionId (unique per browser)
 
 ### 11. Payment Status Terminology
-**Important:** The app uses consistent terminology for payment states:
-- **"Bezahlt"** = Guest has paid (via PayPal or Cash)
-- **"Zahlung bestätigt"** = Owner has confirmed receipt of payment
-- UI components: Button says "Zahlung bestätigen", confirmed status shows "✓ Zahlung bestätigt"
-- Status dashboard cards: "Bezahlt" (total collected) vs "Zahlung bestätigt" (confirmed by owner)
-- Item status labels: "Noch nicht bezahlt", "Bezahlt, nicht bestätigt", "Zahlung bestätigt"
+**CRITICAL:** Status field is NO LONGER used for payment tracking. Use `paid` flag only.
 
-### 12. PayPal Mobile Redirect Strategy
-**Problem:** PayPal.me links opened on mobile often trigger the PayPal app, which may not properly prefill the amount.
+**New Terminology (2024):**
+- **status**: ALWAYS 'SELECTING' (never changes)
+- **paid flag**: false=ausgewählt (guest is selecting), true=bestätigt (payer confirmed)
+- **NO "Bereits bezahlt" badge** - Position-level payment display removed
+- **NO payment buttons** - Guests see PayPal link (optional) and pay externally
 
-**Solution:** Intermediary redirect page (`/payment-redirect`)
-- Guest submits selection → Redirects to our `/payment-redirect` page (not a universal link)
-- Our page opens in browser → Shows countdown + amount
-- JavaScript redirect to PayPal → Stays in browser (more reliable amount prefilling)
-- URL format: `https://paypal.me/username/25.50` (NO currency code for mobile compatibility)
+**Two Selection States (all with status=SELECTING):**
 
-**Important:** PayPal.me links WITH currency codes (e.g., `/25.50EUR`) work in browsers but fail in mobile app (known bug since March 2024). Always omit currency code.
+1. **Ausgewählt** - Guest is actively choosing items
+   - `paid=false`
+   - Created/updated via `/api/live-selections/update`
+   - Shown in real-time to payer (guest selection badges, live updates)
+   - Shown in PaymentOverview as "Ausgewählt" (blue)
+   - Guest can use optional PayPal link or pay cash directly
+
+2. **Bestätigt** - Payer manually confirmed payment received
+   - `paid=true`
+   - Updated via `/api/selections/[id]/mark-paid`
+   - Shown in PaymentOverview as "Bestätigt" (green)
+
+**UI Labels:**
+- GuestSelectionsList Badge (Live): "🔵 Auswählt gerade" (blue with pulse animation) - guest is actively selecting
+- GuestSelectionsList Badge (Owner): "⏳ Eingereicht" (yellow) → "✓ Zahlung bestätigt" (green)
+- GuestSelectionsList Badge (Guest): "⏳ Eingereicht" (always yellow, no confirmation visible to guests)
+- Payment Method Badge: "💵 Bar" or "💳 PayPal" (shown when paymentMethod is set)
+- Button text (Owner only): "✓ Zahlung bestätigen" / "↻ Zahlung zurücksetzen"
+- NO item-level "Bereits bezahlt" badges anymore
+- NO payment buttons for guests - only PayPal link (optional) + cash payment info
+- NO date/time display in guest list (removed for cleaner UI)
+
+**GuestSelectionsList Accordion UI:**
+- Compact collapsed view showing: Name, status badges, payment method, total amount, chevron icon
+- Clickable header expands/collapses details (smooth rotation animation on chevron)
+- Expanded view shows: Individual items with quantities, tip amount (if any), payment buttons (owner only)
+- Default state: All collapsed for better overview
+- Hover effect on header for better UX
+
+**Data Fetching:**
+- StatusPageClient fetches ALL selections via `/api/bills/[id]/selections` (all have status=SELECTING)
+- Client-side filtering by `paid` flag and `paymentMethod`:
+  - `paymentMethod=null` → Live selection (guest still choosing)
+  - `paymentMethod set, paid=false` → Submitted/Eingereicht (yellow)
+  - `paymentMethod set, paid=true` → Confirmed/Zahlung bestätigt (green)
+- **NOT** using separate APIs - single source of truth (StatusPageClient → GuestSelectionsList)
+
+### 12. PayPal Payment (Optional)
+**Purpose:** Provide guests with easy PayPal link to pay payer directly
+
+**Implementation:**
+- If `paypalHandle` configured → Show PayPal.me link in SplitForm
+- Link format: `https://paypal.me/{paypalHandle}/{amount}`
+- Guest clicks link → Opens PayPal in new tab → Pays externally
+- **NO tracking of payment** - payer manually confirms after receiving money
+- Alternative: Guest pays cash directly to payer
+
+**Important:** PayPal.me links WITHOUT currency codes work best on mobile (known PayPal app bug with EUR suffix)
 
 ### 13. Error Handling
 - Consistent format: `{ error: "German message" }`
@@ -295,40 +342,71 @@ All routes follow RESTful patterns:
 - Each browser gets unique sessionId (UUID v4) stored in localStorage
 - Generated via `getOrCreateSessionId()` from `lib/sessionStorage.ts`
 - Used for:
-  - Selection unique constraint (prevents duplicate SELECTING per browser)
-  - Tracking multiple payments per guest (PAID selections per session)
-  - Restoring live selections when guest returns
+  - Selection unique constraint (prevents duplicate selections per browser)
+  - Restoring selection when guest returns
+  - Identifying which guest made which selection
 - Persists across page reloads but unique per browser
 - Required field in Selection model (not optional)
+- **One selection per session** - guests cannot make multiple payments (unique constraint)
 
 ### 15. Live Selections (Unified Real-time Tracking)
-**Purpose:** Show payer which items guests are currently selecting BEFORE payment submission
+**Purpose:** Track guest selections in real-time from item selection through payment confirmation
 
-**Architecture:** Uses unified Selection table with `status` field instead of separate ActiveSelection table
+**Architecture:** Uses unified Selection table - ALL selections have `status='SELECTING'`
 
-**How it works:**
-- Guest enters name and selects items → `POST /api/live-selections/update` called in real-time
-- Creates/updates Selection entry with `status='SELECTING'` (unique per billId + sessionId)
-- Payer sees live updates in PaymentOverview component on status page
+**Two Selection States (identified by paid flag only):**
+
+1. **Ausgewählt** (`paid=false`)
+   - Guest is actively choosing items
+   - Created/updated via `POST /api/live-selections/update`
+   - Shown in real-time with selection badges on items
+   - Shown in PaymentOverview as "Ausgewählt" (blue)
+   - Guest can use optional PayPal link or pay cash directly
+
+2. **Bestätigt** (`paid=true`)
+   - Payer manually confirmed payment received
+   - Updated via `POST /api/selections/[id]/mark-paid`
+   - Shown in PaymentOverview as "Bestätigt" (green)
+
+**Data flow:**
+1. **Guest enters name and selects items:**
+   - `POST /api/live-selections/update` on every quantity change
+   - **CRITICAL:** Each update includes current `tipAmount` (calculated from current tip percentage)
+   - This ensures default 10% tip is always reflected in DB, even if guest hasn't explicitly changed it
+   - Creates/updates Selection (status=SELECTING, paid=false)
+   - Real-time updates via Supabase WebSocket
+   - Guest sees optional PayPal link (if configured) to pay externally
+
+2. **Guest pays (externally - NOT tracked):**
+   - Guest clicks PayPal link → Opens PayPal.me in new tab → Pays payer
+   - OR guest pays cash directly to payer
+   - **NO database update** - payment happens outside system
+
+3. **Payer receives money and manually confirms:**
+   - `POST /api/selections/[id]/mark-paid`
+   - Updates Selection row (status=SELECTING, **paid=true**)
+   - Only paid flag changes!
+
+**PaymentOverview Display:**
+- Fetches ALL selections via `/api/bills/[id]/selections`
+- Client-side filtering by `paid` flag only:
+  - `paid=false` → "Ausgewählt" (blue)
+  - `paid=true` → "Bestätigt" (green)
+- Updates in real-time via WebSocket when selections change
+
+**Important:**
 - Uses **Supabase Realtime ONLY** (WebSocket-based) - no polling!
 - Automatic reconnection with exponential backoff if connection drops
 - Entries are **persistent** (expire after 30 days) to allow multi-day bill splitting
 - **Not deleted when guest leaves page** - allows guests to return and continue
-- When guest submits payment → Status changes to 'PAID' (not deleted!)
-
-**Data flow:**
-1. SplitForm tracks quantity changes → Updates Selection (status=SELECTING) via API
-2. PaymentOverview subscribes to Selection table changes via WebSocket
-3. Instant updates (< 100ms latency) when changes occur
-4. Displays "Ausgewählt" total with live indicator (blue pulse dot)
-5. Guest can leave and return - selections are restored from Selection table (via sessionId + status=SELECTING)
-6. When guest submits payment → UPDATE Selection SET status='PAID' (converts to final payment)
+- All selections share same table row (unique per billId + sessionId)
+- **NO payment tracking** - guests pay externally (PayPal or cash)
 
 **Persistence:**
-- Live selections (status=SELECTING) expire after 30 days
-- Guests can close browser and return days later - their selections persist in DB
+- All selections (status=SELECTING) expire after 30 days
+- Guests can close browser and return days later - their selection persists in DB
 - All data stored in unified Selection table (single source of truth)
-- Cleanup happens via UPDATE (status change), not DELETE
+- Cleanup happens via DELETE (after 30 days), NOT status change
 
 **Empty Selection Handling:**
 - When guest deselects ALL items, the Selection is UPDATED with `itemQuantities = {}`, NOT deleted
@@ -350,26 +428,7 @@ All routes follow RESTful patterns:
 - Multi-day bill splitting supported
 - Simplified architecture (one table instead of two)
 
-### 16. Cash Payment Flow
-**Why:** Not everyone has PayPal - cash option provides flexibility
-
-**Flow:**
-1. Guest selects items, adds tip, chooses "Barzahlung" option
-2. Submits → `POST /api/selections/create` with `paymentMethod: CASH`
-3. Redirects to `/split/[token]/cash-confirmed` (NOT payment-redirect)
-4. Confirmation page shows:
-   - Payment method: 💵 Barzahlung
-   - Amount to pay in cash
-   - Instructions to pay payer directly
-5. Selection saved as `paid: false` initially
-6. Payer manually confirms payment via "Zahlung bestätigen" button on status page
-
-**Important:**
-- No external redirect (unlike PayPal flow)
-- Manual confirmation required by payer
-- paymentMethod field distinguishes CASH from PAYPAL in Selection model
-
-### 17. Share Link Features
+### 16. Share Link Features
 **Purpose:** Make sharing bills with friends as easy as possible
 
 **ShareLink Component Features:**
@@ -401,13 +460,14 @@ All routes follow RESTful patterns:
 **Location:** `lib/hooks/useRealtimeSubscription.ts`
 
 **Features:**
-- ✅ Single unified channel per bill (`bill:${billId}`) - no duplicate subscriptions
+- ✅ Unique channel per component via `channelSuffix` parameter (prevents channel conflicts)
 - ✅ Singleton Supabase client with `persistSession: false` (prevents multiple GoTrueClient instances)
 - ✅ React Strict Mode compatible (ignores CLOSED status during active subscription)
 - ✅ Connection status tracking (CONNECTING, CONNECTED, DISCONNECTED, RECONNECTING)
 - ✅ Automatic reconnection with exponential backoff (1s, 2s, 4s... max 30s)
 - ✅ Initial data fetch on mount and after reconnection
-- ✅ Subscriptions for Selection, ActiveSelection, and broadcast events
+- ✅ **NEW ARCHITECTURE:** Subscriptions for unified Selection table (all have status='SELECTING')
+- ✅ Fires BOTH callbacks (`onSelectionChange` + `onActiveSelectionChange`) on ANY Selection change
 - ✅ Error handling and optional debug logging
 - ✅ Automatic cleanup on unmount
 
@@ -429,17 +489,30 @@ const { isConnected, connectionStatus } = useRealtimeSubscription(billId, {
   onConnectionStatusChange: (status) => console.log(status),
   onError: (error) => console.error(error),
 
+  // CRITICAL: Unique channel suffix to avoid conflicts
+  // When multiple components subscribe to same bill, each needs unique suffix
+  channelSuffix: 'status',  // Creates channel "bill:${billId}:status"
+
   // Enable debug logging (development only)
   debug: process.env.NODE_ENV === 'development'
 })
 ```
 
 **Components using this hook:**
-- `PaymentOverview.tsx` - Subscribes to Selection changes (both SELECTING and PAID)
-- `SplitForm.tsx` - Subscribes to Selection changes and item-changed broadcasts
-- `SplitFormContainer.tsx` - Subscribes to Selection changes and item-changed broadcasts
+- `StatusPageClient.tsx` - Subscribes to Selection changes with channelSuffix='status'
+- `SplitForm.tsx` - Subscribes to Selection changes and item-changed broadcasts with channelSuffix='form'
+- `SplitFormContainer.tsx` - Subscribes to Selection changes and item-changed broadcasts with channelSuffix='container'
 
-**Important:** All callbacks (`onSelectionChange`, `onActiveSelectionChange`) now fetch BOTH SELECTING and PAID selections to ensure realtime updates work for both selection and deselection
+**CRITICAL - Channel Suffix Usage:**
+When multiple components in the same page subscribe to the same bill, each MUST use a unique `channelSuffix`. Without unique suffixes, Supabase Realtime will only deliver events to ONE subscription (the last one created), causing realtime updates to fail for other components.
+
+**Important (NEW ARCHITECTURE):**
+- **ALL Selections have `status='SELECTING'`** - status never changes to 'PAID'
+- **`paid` flag** differentiates: `false` = eingereicht (submitted), `true` = bestätigt (confirmed by payer)
+- **Only ONE callback fires per event** - `onSelectionChange` takes precedence, `onActiveSelectionChange` is fallback
+- **Debounced fetchSelections** (100ms) prevents race conditions from rapid updates
+- Components filter client-side by `paid` flag and `paymentMethod` for display
+- Live selections have `paymentMethod=null` (guest still choosing)
 
 **Connection Status:**
 - `CONNECTING` - Initial connection attempt
@@ -460,9 +533,13 @@ const { isConnected, connectionStatus } = useRealtimeSubscription(billId, {
 - `isSubscribingRef` flag prevents concurrent subscriptions (React Strict Mode fix)
 - CLOSED status ignored during active subscription to prevent reconnection loops
 - Initial data fetch happens both on mount and after successful reconnection
-- All realtime subscriptions use same channel name: `bill:${billId}`
-- PostgreSQL filter applied: `filter: 'billId=eq.${billId}'` for efficiency
-- Event payload includes `eventType` (INSERT/UPDATE/DELETE) for debugging
+- Channel names use format: `bill:${billId}:${channelSuffix}` (e.g., "bill:uuid:status")
+- **CRITICAL:** `channelSuffix` is REQUIRED when multiple components subscribe to same bill
+- PostgreSQL filter removed - client-side filtering instead to avoid schema mismatch errors
+- Event payload includes `eventType` (INSERT/UPDATE/DELETE) and `paid`/`paymentMethod` for debugging
+- Fires BOTH `onSelectionChange` AND `onActiveSelectionChange` callbacks simultaneously (if both defined)
+- Components using this hook typically use 100ms debounced fetchSelections to prevent race conditions
+- Comprehensive debug logging available via `debug: true` option (use in development only)
 
 ### 19. Critical Supabase RLS Policies for Realtime
 **IMPORTANT:** Realtime broadcasts require proper RLS policies on the `anon` role. Missing policies will silently block events!
@@ -504,20 +581,169 @@ ON "Selection" FOR INSERT TO anon, authenticated WITH CHECK (true);
 **Common Bug:** If deselection only works after selecting a different item, the UPDATE policy is missing!
 
 ### 20. Selection Status Badge Logic
-**Important:** The app distinguishes between "fully paid" and "fully allocated" for item status display.
+**CRITICAL UPDATE (2024):** "Bereits bezahlt" badge completely removed. No position-level payment display.
 
-**Badge Types:**
-1. **Green with pulse** - Own live selection (status=SELECTING, current user)
-2. **Blue with pulse** - Others' live selection (status=SELECTING, other users)
-3. **Dark green with ✓** - Paid selection (status=PAID)
-4. **Red "Bereits bezahlt"** - Item fully paid (all portions have status=PAID)
+**Current Badge Types (SplitForm.tsx):**
+1. **Green with pulse** - Own selection (current user selecting items)
+2. **Blue with pulse** - Others' selections (other guests selecting items)
+3. ~~**"Bereits bezahlt" badge**~~ - REMOVED (no longer displayed)
 
 **Key Variables in SplitForm.tsx:**
-- `isFullyPaid` - All portions have status=PAID → Shows "Bereits bezahlt" badge, grays out item
-- `isFullyMarked` - All portions allocated (PAID + SELECTING) → Shows green checkmark ✓
+- `isFullyMarked` - All portions allocated (all SELECTING) → Shows green checkmark ✓
 - `isOverselected` - More than available quantity selected → Shows red warning
+- ~~`isFullyPaid`~~ - REMOVED (no longer used)
 
-**Critical Fix (2024):** Changed from `isFullyClaimed` (included SELECTING) to `isFullyPaid` (only PAID). This ensures "Bereits bezahlt" badge only shows when items are actually paid, not just selected.
+**Guest List Badges (GuestSelectionsList.tsx):**
+- 🔵 **"Auswählt gerade"** (blue with pulse) - Live selection, guest still choosing (paymentMethod=null)
+- 🟡 **"Eingereicht"** - Guest submitted, awaiting payer confirmation (paymentMethod set, paid=false)
+- 🟢 **"Zahlung bestätigt"** - Payer confirmed payment received (paid=true)
+- 💵 **"Bar"** or 💳 **"PayPal"** - Payment method badge (only for submitted selections)
+- Confirmation status only visible to payer - guests only see "Eingereicht"
+- No date/time display (removed for cleaner UI)
+
+**Accordion UI (GuestSelectionsList.tsx):**
+- Entire header is clickable button with hover effect
+- Chevron icon rotates 180° on expand (smooth transition)
+- Collapsed view: Name, badges, total amount, chevron
+- Expanded view: Individual items, tip (if any), payment buttons (owner only)
+- Default state: All collapsed for better overview
+
+**Why removed:** Simpler UX - payer manages payment confirmation via guest list accordion, not item list.
+
+### 20. Debugging & Development Tools
+**Purpose:** Comprehensive logging for debugging realtime issues and data flow
+
+**Console Logging Strategy:**
+- All logs use structured format with timestamps and component identifiers
+- Logs are wrapped in START/END blocks for easy parsing
+- Enabled by default in development, minimal in production
+
+**Components with Comprehensive Logging:**
+
+1. **useRealtimeSubscription.ts** - Realtime event tracking
+   - Full payload logging (OLD/NEW records, eventType, billId)
+   - Change detection (paid, paymentMethod, itemQuantities, friendName)
+   - Callback execution tracking (start/completion/error)
+   - Connection status changes
+   - Enable via `debug: process.env.NODE_ENV === 'development'`
+
+2. **StatusPageClient.tsx** - Status page data flow
+   - Selection fetching (raw data, filtered data, counts)
+   - State updates (when selections change)
+   - Realtime connection status
+
+3. **GuestSelectionsList.tsx** - Guest list rendering
+   - Props received logging
+   - useMemo recalculation tracking
+   - Filtering logic (unpaid/paid splits)
+   - Final sorted selections
+
+4. **PaymentOverview.tsx** - Payment overview logic (if used)
+   - Props received logging
+   - Filtering submitted selections
+   - useMemo recalculation
+
+**Log Format Examples:**
+```typescript
+// Realtime event
+⚡ [Realtime 2024-01-15T10:30:00.000Z] ===== SELECTION CHANGE EVENT =====
+[Realtime] 📦 FULL PAYLOAD: { eventType: 'UPDATE', billId: '...', ... }
+[Realtime] 📝 OLD RECORD: { id: '12345678', paid: false, ... }
+[Realtime] 🆕 NEW RECORD: { id: '12345678', paid: true, ... }
+[Realtime] ===== SELECTION CHANGE EVENT END (SUCCESS) =====
+
+// Component data flow
+🔍 [StatusPageClient 2024-01-15T10:30:00.000Z] ===== FETCHING SELECTIONS START =====
+[StatusPageClient] 📥 RAW DATA from API: { count: 3, rawData: [...] }
+[StatusPageClient] ✅ FILTERED SELECTIONS: { valid: 2, liveSelections: 1, ... }
+[StatusPageClient] ===== FETCHING SELECTIONS END =====
+```
+
+**Debugging Workflow:**
+1. Open browser console
+2. Filter by component name (e.g., "[Realtime]" or "[StatusPageClient]")
+3. Look for START/END blocks to understand data flow
+4. Check for ⚠️ warnings or ❌ errors
+5. Verify callback execution (🔥 Firing, ✅ completed)
+
+**Common Issues Debuggable via Logs:**
+- Channel conflicts (callbacks NOT defined despite subscription)
+- Missing realtime events (check OLD/NEW records)
+- State not updating (check setSelections calls)
+- Race conditions (rapid consecutive updates)
+
+### 21. Status Always SELECTING - Simplified Architecture (2024)
+**BREAKING CHANGE:** The `status` field no longer changes to 'PAID'. All selections remain 'SELECTING'.
+
+**Before (Old System):**
+```
+Guest selects items → status='SELECTING'
+Guest submits payment → status='PAID'
+Payer confirms → paid=true (status remains PAID)
+```
+
+**After (New System - Current):**
+```
+Guest selects items → status='SELECTING', paid=false
+Guest pays externally (PayPal or cash) → NO DATABASE UPDATE
+Payer confirms → status='SELECTING', paid=true (ONLY paid flag changes)
+```
+
+**Why This Change:**
+1. **Simpler Logic** - Only one status value to handle
+2. **Clearer Semantics** - `paid` flag indicates payer confirmation only
+3. **Better UX** - Guests don't see payer-internal confirmation status
+4. **No "Bereits bezahlt" Confusion** - Position-level payment badges removed
+5. **Single Source of Truth** - All selections in one unified table
+6. **No Payment Tracking** - Guest payment is external, we only track payer confirmation
+7. **No Payment Buttons** - Guests use PayPal link (optional) or pay cash directly
+
+**Two Selection States (All with status=SELECTING):**
+
+1. **Ausgewählt** - Guest is actively choosing items
+   - `status='SELECTING', paid=false`
+   - Created/updated via `/api/live-selections/update`
+   - Visible in real-time to payer (selection badges on items)
+   - Shown in PaymentOverview as "Ausgewählt" (blue)
+
+2. **Bestätigt** - Payer manually confirmed payment received
+   - `status='SELECTING', paid=true`
+   - Updated via `/api/selections/[id]/mark-paid`
+   - Shows as "Bestätigt" (green) in PaymentOverview
+
+**PaymentOverview Logic:**
+- Fetches ALL selections: `GET /api/bills/[id]/selections` (all have status=SELECTING)
+- Client-side filtering by `paid` flag only:
+  ```typescript
+  const ausgewählt = allSelections.filter(s => s.paid === false)  // Blue
+  const bestätigt = allSelections.filter(s => s.paid === true)     // Green
+  ```
+- Real-time updates via WebSocket when selections change
+
+**Live-Selections API:**
+- `/api/bills/[id]/live-selections` - Returns ALL SELECTING selections
+- Filters: `status='SELECTING'` and not expired
+- Used by SplitForm for real-time selection tracking
+- PaymentOverview uses main selections API with client-side filtering instead
+
+**Migration Impact:**
+- **Database:** No migration needed (status field still exists for backward compatibility)
+- **API:** `/api/selections/create` route REMOVED (no longer needed)
+- **API:** `/api/selections/[id]/mark-paid` only changes `paid` flag (not status)
+- **Components:** All check `paid` flag instead of status for payment confirmation
+- **Legacy Data:** Old PAID selections still work (treated as SELECTING with paid=true)
+
+**Key Files Changed:**
+- `app/api/selections/create/route.ts` - REMOVED (no payment buttons)
+- `app/api/selections/[id]/mark-paid/route.ts` - Updated (only changes paid flag)
+- `app/api/bills/[id]/selections/route.ts` - Returns all SELECTING (no filtering)
+- `components/PaymentOverview.tsx` - Client-side filtering by paid flag only
+- `components/GuestSelectionsList.tsx` - Updated (uses paid flag for badges)
+- `components/SplitForm.tsx` - Updated (removed payment buttons, added PayPal link)
+
+**Documentation:**
+- See `STATUS-ALWAYS-SELECTING.md` for complete technical details
+- See `PAID-VS-STATUS-LOGIC.md` for comparison with old system
 
 ## Environment Variables
 
@@ -579,9 +805,9 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 8. Test with multiple browser windows to verify real-time sync
 
 **Important:**
-- Live selections (status=SELECTING) expire after 30 days (set in `expiresAt` field)
-- Cleanup happens via status change to PAID (not deletion)
-- Partial unique constraint: `(billId, sessionId) WHERE status='SELECTING'` prevents duplicate live selections
+- All selections (status=SELECTING) expire after 30 days (set in `expiresAt` field)
+- Cleanup happens via DELETE (after expiration), NOT status change
+- Unique constraint: `(billId, sessionId) WHERE status='SELECTING'` prevents duplicate selections per browser
 - Uses **Realtime ONLY** (no polling) - WebSocket must be enabled in Supabase
 - All realtime logic is centralized in `useRealtimeSubscription` hook
 - Automatic reconnection with exponential backoff if connection drops
@@ -591,7 +817,7 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 1. Add new callback to `RealtimeEventHandlers` interface in hook
 2. Add corresponding `.on()` subscription in hook's `subscribe()` function
 3. Use the new callback in components via hook options
-4. Ensure callbacks fetch BOTH SELECTING and PAID data for consistency
+4. All callbacks fetch selections with status=SELECTING (filter by `paid` flag for display)
 
 ## Security Considerations
 
@@ -756,8 +982,7 @@ components/
 ├── BillAutoSave.tsx                   # Auto-save functionality
 ├── CopyButton.tsx                     # Copy to clipboard button
 ├── RefreshButton.tsx                  # Refresh data button
-├── ThemeProvider.tsx                  # Dark mode provider
-└── ThemeToggle.tsx                    # Dark mode toggle
+└── ThemeProvider.tsx                  # Enforces dark mode globally
 
 lib/
 ├── hooks/

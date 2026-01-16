@@ -1,8 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useEffect } from 'react'
 import { formatEUR } from '@/lib/utils'
-import { useRealtimeSubscription } from '@/lib/hooks'
 
 interface BillItem {
   id: string
@@ -15,54 +14,75 @@ interface Selection {
   itemQuantities: Record<string, number>
   tipAmount: number
   paid: boolean
+  paymentMethod: 'PAYPAL' | 'CASH' | null
+  status?: 'SELECTING' | 'PAID'
 }
 
 interface PaymentOverviewProps {
-  billId: string
   totalBillAmount: number
-  selections: Selection[]
+  selections: Selection[]  // Now passed as props!
   items: BillItem[]
 }
 
 export default function PaymentOverview({
-  billId,
   totalBillAmount,
-  selections: initialSelections,
+  selections,
   items,
 }: PaymentOverviewProps) {
-  const [selections, setSelections] = useState<Selection[]>(initialSelections)
+  // Log when props change
+  useEffect(() => {
+    const timestamp = new Date().toISOString()
+    console.log(`\n💰 [PaymentOverview ${timestamp}] ===== PROPS RECEIVED =====`)
+    console.log('[PaymentOverview] Received props:', {
+      totalBillAmount,
+      selectionsCount: selections.length,
+      itemsCount: items.length,
+      selections: selections.map(s => ({
+        id: s.id.substring(0, 8),
+        friendName: s.friendName,
+        itemCount: Object.keys(s.itemQuantities || {}).length,
+        tipAmount: s.tipAmount,
+        paymentMethod: s.paymentMethod,
+        paid: s.paid
+      }))
+    })
+    console.log('[PaymentOverview] ===== PROPS RECEIVED END =====\n')
+  }, [selections, items, totalBillAmount])
 
-  // Fetch paid selections from API (status=PAID only)
-  const fetchSelections = async () => {
-    try {
-      const response = await fetch(`/api/bills/${billId}/selections`)
-      const data = await response.json()
-      setSelections(data)
-    } catch (error) {
-      console.error('Error fetching selections for payment overview:', error)
-    }
-  }
+  // Filter selections: only show submitted ones (with paymentMethod)
+  // Live selections (paymentMethod=null) are excluded from payment overview
+  const submittedSelections = useMemo(() => {
+    console.log('\n💰 [PaymentOverview] ===== useMemo: FILTERING SUBMITTED SELECTIONS =====')
+    const filtered = selections.filter((s: Selection) =>
+      s.paymentMethod !== null  // Exclude live selections (still choosing)
+    )
+    console.log('[PaymentOverview] Filtered result:', {
+      input: selections.length,
+      output: filtered.length,
+      filtered: filtered.map(s => ({
+        id: s.id.substring(0, 8),
+        friendName: s.friendName,
+        paymentMethod: s.paymentMethod,
+        paid: s.paid
+      }))
+    })
+    console.log('[PaymentOverview] ===== useMemo END =====\n')
+    return filtered
+  }, [selections])
 
-  // Realtime subscription for paid Selection changes only
-  const { isConnected, connectionStatus } = useRealtimeSubscription(billId, {
-    // Initial data fetch on mount and after reconnection
-    onInitialFetch: async () => {
-      await fetchSelections()
-    },
+  // Split by paid flag
+  const selectingSelections = useMemo(() =>
+    submittedSelections.filter((s: Selection) => s.paid === false),
+    [submittedSelections]
+  )
 
-    // Selection table changes - refresh paid selections
-    onSelectionChange: async () => {
-      await fetchSelections()
-    },
+  const paidSelections = useMemo(() =>
+    submittedSelections.filter((s: Selection) => s.paid === true),
+    [submittedSelections]
+  )
 
-    // Also handle via onActiveSelectionChange for backwards compatibility
-    onActiveSelectionChange: async () => {
-      await fetchSelections()
-    },
-
-    // Enable debug logging (optional - set to false in production)
-    debug: process.env.NODE_ENV === 'development'
-  })
+  // Combine both for calculations
+  const allSelections = [...selectingSelections, ...paidSelections]
 
   // Calculate total amount from all selections (items + tip)
   const calculateSelectionTotal = (selection: Selection): number => {
@@ -79,22 +99,33 @@ export default function PaymentOverview({
     return itemsTotal + selection.tipAmount
   }
 
-  // Total from paid selections (status=PAID only)
-  const paidTotal = selections.reduce(
+  // Calculate totals separately
+  const selectingTotal = selectingSelections.reduce(
     (sum, sel) => sum + calculateSelectionTotal(sel),
     0
   )
 
-  // Remaining amount
-  const remaining = totalBillAmount - paidTotal
+  const paidTotal = paidSelections.reduce(
+    (sum, sel) => sum + calculateSelectionTotal(sel),
+    0
+  )
 
-  // Total tips from paid selections
-  const totalTips = selections.reduce((sum, sel) => sum + sel.tipAmount, 0)
+  // Remaining amount (total - paid - selecting)
+  const remaining = totalBillAmount - paidTotal - selectingTotal
 
-  // Progress percentage (based on paid selections only)
-  const progressPercent = totalBillAmount > 0
-    ? Math.min(100, (paidTotal / totalBillAmount) * 100)
+  // Total tips from all selections
+  const totalTips = allSelections.reduce((sum, sel) => sum + sel.tipAmount, 0)
+
+  // Progress percentage (based on paid + selecting)
+  const paidPercent = totalBillAmount > 0
+    ? (paidTotal / totalBillAmount) * 100
     : 0
+
+  const selectingPercent = totalBillAmount > 0
+    ? (selectingTotal / totalBillAmount) * 100
+    : 0
+
+  const totalPercent = Math.min(100, paidPercent + selectingPercent)
 
   return (
     <div className="bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-lg p-4 sm:p-5 md:p-6 border border-purple-200 dark:border-purple-800">
@@ -112,15 +143,35 @@ export default function PaymentOverview({
           </span>
         </div>
 
-        {/* Bezahlt */}
-        <div className="flex justify-between items-center mb-3">
-          <span className="text-sm text-gray-600 dark:text-gray-400">
-            Bezahlt ({selections.length} {selections.length === 1 ? 'Gast' : 'Gäste'}):
-          </span>
-          <span className="text-lg font-semibold text-green-600 dark:text-green-400">
-            {formatEUR(paidTotal)}
-          </span>
-        </div>
+        {/* Eingereicht (paid=false, paymentMethod set) */}
+        {selectingSelections.length > 0 && (
+          <div className="flex justify-between items-center mb-3">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 bg-yellow-500 rounded-full" />
+              <span className="text-sm text-gray-600 dark:text-gray-400">
+                Eingereicht ({selectingSelections.length} {selectingSelections.length === 1 ? 'Gast' : 'Gäste'}):
+              </span>
+            </div>
+            <span className="text-lg font-semibold text-yellow-600 dark:text-yellow-400">
+              {formatEUR(selectingTotal)}
+            </span>
+          </div>
+        )}
+
+        {/* Bestätigt (paid=true) */}
+        {paidSelections.length > 0 && (
+          <div className="flex justify-between items-center mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-green-600 dark:text-green-400">✓</span>
+              <span className="text-sm text-gray-600 dark:text-gray-400">
+                Bestätigt ({paidSelections.length} {paidSelections.length === 1 ? 'Gast' : 'Gäste'}):
+              </span>
+            </div>
+            <span className="text-lg font-semibold text-green-600 dark:text-green-400">
+              {formatEUR(paidTotal)}
+            </span>
+          </div>
+        )}
 
         {/* Noch offen */}
         <div className="flex justify-between items-center pt-3 mb-3 border-t border-gray-200 dark:border-gray-700">
@@ -149,12 +200,21 @@ export default function PaymentOverview({
       <div className="mb-3">
         <div className="flex justify-between text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-2">
           <span>Fortschritt</span>
-          <span>{Math.round(progressPercent)}%</span>
+          <span>{Math.round(totalPercent)}%</span>
         </div>
-        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
+        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden relative">
+          {/* PAID section (green) */}
           <div
-            className="bg-gradient-to-r from-purple-500 to-blue-500 h-full transition-all duration-500 ease-out"
-            style={{ width: `${progressPercent}%` }}
+            className="bg-green-500 dark:bg-green-600 h-full transition-all duration-500 ease-out absolute left-0"
+            style={{ width: `${paidPercent}%` }}
+          />
+          {/* SUBMITTED section (yellow) */}
+          <div
+            className="bg-yellow-500 dark:bg-yellow-600 h-full transition-all duration-500 ease-out absolute"
+            style={{
+              left: `${paidPercent}%`,
+              width: `${selectingPercent}%`
+            }}
           />
         </div>
       </div>

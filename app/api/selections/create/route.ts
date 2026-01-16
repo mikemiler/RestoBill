@@ -1,68 +1,53 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { generatePayPalUrl, sanitizeInput } from '@/lib/utils'
+import { sanitizeInput } from '@/lib/utils'
 
+/**
+ * Create a selection when guest submits payment
+ * NOTE: Status remains SELECTING - only payer can mark as paid via mark-paid endpoint
+ */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { billId, shareToken, sessionId, friendName, itemQuantities, tipAmount, paymentMethod } = body
+    const {
+      billId,
+      shareToken,
+      sessionId,
+      friendName,
+      itemQuantities,
+      tipAmount,
+      paymentMethod,
+    } = body
 
     // Validation
-    if (!billId || !shareToken || !friendName || !itemQuantities) {
+    if (!billId || !shareToken || !sessionId || !friendName || !itemQuantities || !paymentMethod) {
       return NextResponse.json(
         { error: 'Fehlende Pflichtfelder' },
         { status: 400 }
       )
     }
 
-    // Validate payment method
-    if (paymentMethod && paymentMethod !== 'PAYPAL' && paymentMethod !== 'CASH') {
-      return NextResponse.json(
-        { error: 'Ungültige Zahlungsmethode' },
-        { status: 400 }
-      )
-    }
-
-    // Validate billId and shareToken format (UUID)
-    const uuidRegex = /^[a-f0-9-]{36}$/i
-    if (!uuidRegex.test(billId) || !uuidRegex.test(shareToken)) {
+    // Validate UUID
+    if (!/^[a-f0-9-]{36}$/i.test(billId) || !/^[a-f0-9-]{36}$/i.test(sessionId)) {
       return NextResponse.json(
         { error: 'Ungültige ID Format' },
         { status: 400 }
       )
     }
 
-    // Validate sessionId format if provided (optional but recommended)
-    if (sessionId && !uuidRegex.test(sessionId)) {
+    // Validate share token
+    if (!/^[a-f0-9-]{36}$/i.test(shareToken)) {
       return NextResponse.json(
-        { error: 'Ungültige SessionId Format' },
+        { error: 'Ungültiger Share Token' },
         { status: 400 }
       )
     }
 
-    // Sanitize friendName to prevent XSS
-    const sanitizedName = sanitizeInput(friendName, 100)
-    if (sanitizedName.length === 0) {
-      return NextResponse.json(
-        { error: 'Name ist ungültig' },
-        { status: 400 }
-      )
-    }
-
-    // Validate itemQuantities structure
-    if (typeof itemQuantities !== 'object' || Array.isArray(itemQuantities)) {
-      return NextResponse.json(
-        { error: 'Ungültige Datenstruktur' },
-        { status: 400 }
-      )
-    }
-
-    // Verify share token
+    // Verify bill exists and token matches
     const { data: bill, error: billError } = await supabaseAdmin
       .from('Bill')
-      .select('*, BillItem(*)')
+      .select('id, shareToken')
       .eq('id', billId)
-      .eq('shareToken', shareToken)
       .single()
 
     if (billError || !bill) {
@@ -72,150 +57,130 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Calculate total amount
-    let totalAmount = 0
-    const selectedItemIds: string[] = []
+    if (bill.shareToken !== shareToken) {
+      return NextResponse.json(
+        { error: 'Ungültiger Share Token' },
+        { status: 403 }
+      )
+    }
 
-    for (const [itemId, quantity] of Object.entries(itemQuantities)) {
-      // Find the item first
-      const item = bill.BillItem.find((i: any) => i.id === itemId)
+    // Sanitize friend name
+    const sanitizedName = sanitizeInput(friendName, 100)
+    if (sanitizedName.length === 0) {
+      return NextResponse.json(
+        { error: 'Name ist ungültig' },
+        { status: 400 }
+      )
+    }
 
-      if (!item) {
-        return NextResponse.json(
-          { error: 'Position nicht gefunden' },
-          { status: 400 }
-        )
+    // Validate payment method
+    if (paymentMethod !== 'PAYPAL' && paymentMethod !== 'CASH') {
+      return NextResponse.json(
+        { error: 'Ungültige Zahlungsmethode' },
+        { status: 400 }
+      )
+    }
+
+    // Validate tip amount
+    const validatedTipAmount = typeof tipAmount === 'number' && tipAmount >= 0 && tipAmount < 10000
+      ? tipAmount
+      : 0
+
+    // Validate item quantities
+    if (typeof itemQuantities !== 'object' || Object.keys(itemQuantities).length === 0) {
+      return NextResponse.json(
+        { error: 'Keine Positionen ausgewählt' },
+        { status: 400 }
+      )
+    }
+
+    // Calculate total amount for response
+    let totalAmount = validatedTipAmount
+
+    // Fetch item prices to calculate total
+    const itemIds = Object.keys(itemQuantities)
+    if (itemIds.length > 0) {
+      const { data: items, error: itemsError } = await supabaseAdmin
+        .from('BillItem')
+        .select('id, pricePerUnit')
+        .eq('billId', billId)
+        .in('id', itemIds)
+
+      if (itemsError) {
+        throw itemsError
       }
 
-      // Validate quantity (check against item's actual quantity)
-      if (typeof quantity !== 'number' || quantity < 0 || quantity > item.quantity) {
-        return NextResponse.json(
-          { error: `Ungültige Menge für ${item.name} (max. ${item.quantity} verfügbar)` },
-          { status: 400 }
-        )
-      }
-
-      if (quantity > 0) {
+      items?.forEach((item) => {
+        const quantity = itemQuantities[item.id] || 0
         totalAmount += item.pricePerUnit * quantity
-        selectedItemIds.push(itemId)
-      }
+      })
     }
 
-    // Validate and add tip
-    const tip = typeof tipAmount === 'number' ? tipAmount : 0
-    if (tip < 0 || tip > 10000) {
-      return NextResponse.json(
-        { error: 'Ungültiger Trinkgeldbetrag' },
-        { status: 400 }
-      )
-    }
-    totalAmount += tip
-
-    if (totalAmount <= 0) {
-      return NextResponse.json(
-        { error: 'Gesamtbetrag muss größer als 0 sein' },
-        { status: 400 }
-      )
-    }
-
-    if (totalAmount > 100000) {
-      return NextResponse.json(
-        { error: 'Betrag zu hoch' },
-        { status: 400 }
-      )
-    }
-
-    // Check if Selection with status=SELECTING already exists (from live tracking)
+    // Check if there's already a SELECTING selection for this session
     const { data: existingSelection, error: fetchError } = await supabaseAdmin
       .from('Selection')
       .select('id')
       .eq('billId', billId)
-      .eq('sessionId', sessionId || '')
+      .eq('sessionId', sessionId)
       .eq('status', 'SELECTING')
       .single()
 
-    let selection: any
+    const now = new Date().toISOString()
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+
+    let selectionId: string
 
     if (existingSelection) {
-      // Update existing live selection to PAID
-      // PAID selections never expire (set to 100 years from now)
-      const { data: updated, error: updateError } = await supabaseAdmin
+      // Update existing SELECTING selection (convert to "submitted" but keep status=SELECTING)
+      selectionId = existingSelection.id
+
+      const { error: updateError } = await supabaseAdmin
         .from('Selection')
         .update({
-          friendName: sanitizedName, // Update name if changed
-          itemQuantities: itemQuantities, // Use the submitted quantities (may differ from live tracking)
-          status: 'PAID',
-          tipAmount: tip,
-          paymentMethod: paymentMethod || 'PAYPAL',
-          paid: false, // Will be manually confirmed by owner
-          expiresAt: new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000).toISOString(), // 100 years - effectively never expires
-          updatedAt: new Date().toISOString(),
+          friendName: sanitizedName,
+          itemQuantities,
+          tipAmount: validatedTipAmount,
+          paymentMethod,
+          paid: false, // Not paid until payer confirms
+          expiresAt,
+          updatedAt: now,
         })
-        .eq('id', existingSelection.id)
-        .select()
-        .single()
+        .eq('id', selectionId)
 
       if (updateError) {
         throw updateError
       }
-
-      selection = updated
     } else {
-      // No live selection exists - create new Selection directly with status=PAID
-      // (fallback for guests who pay without live tracking)
-      // PAID selections never expire (set to 100 years from now)
-      const selectionId = crypto.randomUUID()
-      const now = new Date().toISOString()
-      const { data: created, error: insertError } = await supabaseAdmin
+      // Create new selection with status=SELECTING
+      selectionId = crypto.randomUUID()
+
+      const { error: insertError } = await supabaseAdmin
         .from('Selection')
         .insert({
           id: selectionId,
-          billId: billId,
-          sessionId: sessionId || crypto.randomUUID(), // Generate sessionId if missing
+          billId,
+          sessionId,
           friendName: sanitizedName,
-          itemQuantities: itemQuantities,
-          status: 'PAID',
-          tipAmount: tip,
-          paymentMethod: paymentMethod || 'PAYPAL',
+          itemQuantities,
+          tipAmount: validatedTipAmount,
+          paymentMethod,
+          status: 'SELECTING', // Stays SELECTING until payer marks as paid
           paid: false,
-          expiresAt: new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000).toISOString(), // 100 years - effectively never expires
+          expiresAt,
           createdAt: now,
           updatedAt: now,
         })
-        .select()
-        .single()
 
       if (insertError) {
         throw insertError
       }
-
-      selection = created
     }
-
-    // For cash payment, no PayPal URL needed
-    if (paymentMethod === 'CASH') {
-      return NextResponse.json({
-        selectionId: selection.id,
-        totalAmount,
-        paymentMethod: 'CASH',
-      })
-    }
-
-    // Generate PayPal.me URL for PayPal payment
-    if (!bill.paypalHandle) {
-      return NextResponse.json(
-        { error: 'PayPal-Zahlungen sind für diese Rechnung nicht verfügbar' },
-        { status: 400 }
-      )
-    }
-
-    const paypalUrl = generatePayPalUrl(bill.paypalHandle, totalAmount)
 
     return NextResponse.json({
-      selectionId: selection.id,
+      success: true,
+      selectionId,
       totalAmount,
-      paymentMethod: 'PAYPAL',
-      paypalUrl,
+      paymentMethod,
     })
   } catch (error) {
     console.error('Error creating selection:', error)

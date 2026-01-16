@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import SplitForm from './SplitForm'
 import SelectionSummary from './SelectionSummary'
 import { getOrCreateSessionId } from '@/lib/sessionStorage'
-import { useRealtimeSubscription } from '@/lib/hooks'
+import { useRealtimeSubscription, useDebounce } from '@/lib/hooks'
 
 interface DatabaseSelection {
   id: string
@@ -14,6 +14,7 @@ interface DatabaseSelection {
   tipAmount: number
   paid: boolean
   paymentMethod: 'PAYPAL' | 'CASH'
+  status: 'SELECTING' | 'PAID'
   createdAt: string
 }
 
@@ -33,6 +34,7 @@ interface SplitFormContainerProps {
   items: BillItem[]
   itemRemainingQuantities: Record<string, number>
   totalAmount: number
+  allSelectionsFromParent?: DatabaseSelection[] // NEW: Selections passed from parent to avoid duplicate fetching
   isOwner?: boolean
 }
 
@@ -44,14 +46,27 @@ export default function SplitFormContainer({
   items: initialItems,
   itemRemainingQuantities: initialRemainingQuantities,
   totalAmount,
+  allSelectionsFromParent,
   isOwner = false,
 }: SplitFormContainerProps) {
-  const [allSelections, setAllSelections] = useState<DatabaseSelection[]>([])
+  const [allSelections, setAllSelections] = useState<DatabaseSelection[]>(allSelectionsFromParent || [])
   const [mySelections, setMySelections] = useState<DatabaseSelection[]>([])
   const [items, setItems] = useState<BillItem[]>(initialItems)
   const [itemRemainingQuantities, setItemRemainingQuantities] = useState<Record<string, number>>(initialRemainingQuantities)
   const [loading, setLoading] = useState(true)
   const [sessionId, setSessionId] = useState<string>('')
+
+  // If selections are provided from parent, use them instead of fetching
+  const useParentSelections = !!allSelectionsFromParent
+
+  // Update allSelections when parent selections change
+  useEffect(() => {
+    if (useParentSelections && allSelectionsFromParent) {
+      console.log('[SplitFormContainer] Using selections from parent:', allSelectionsFromParent.length)
+      setAllSelections(allSelectionsFromParent)
+      setLoading(false) // Set loading to false when using parent selections
+    }
+  }, [allSelectionsFromParent, useParentSelections])
 
   // Initialize sessionId on mount
   useEffect(() => {
@@ -73,26 +88,37 @@ export default function SplitFormContainer({
     }
   }
 
-  // Fetch all PAID selections from API (all guests)
-  // This is the single source of truth for PAID selections
+  // Fetch selections based on user role
+  // NEW ARCHITECTURE: ALL selections have status='SELECTING'
+  // We filter by 'paymentMethod' and 'paid' flag client-side based on user role
   const fetchSelections = async () => {
     try {
-      console.log('[SplitFormContainer] Fetching PAID selections...')
+      console.log('[SplitFormContainer] Fetching all selections...')
+
       const response = await fetch(`/api/bills/${billId}/selections`)
-      const data: DatabaseSelection[] = await response.json()
-      console.log('[SplitFormContainer] PAID selections fetched:', {
-        count: data.length,
-        selections: data.map(s => ({
-          id: s.id,
-          friendName: s.friendName,
-          itemCount: Object.keys(s.itemQuantities || {}).length,
-          itemQuantities: s.itemQuantities
-        }))
-      })
-      setAllSelections(data)
+      const allData: DatabaseSelection[] = await response.json()
+
+      if (isOwner) {
+        // Owner sees ALL selections (status='SELECTING' regardless of paid flag)
+        // Used for calculating remaining quantities
+        console.log('[SplitFormContainer] Owner selections fetched:', {
+          total: allData.length,
+          liveSelecting: allData.filter(s => !s.paymentMethod).length,
+          submitted: allData.filter(s => s.paymentMethod && !s.paid).length,
+          confirmed: allData.filter(s => s.paymentMethod && s.paid).length
+        })
+        setAllSelections(allData)
+      } else {
+        // Guest only sees submitted selections (paymentMethod !== null) - payment history
+        const submittedOnly = allData.filter(s => s.paymentMethod !== null)
+        console.log('[SplitFormContainer] Guest selections fetched:', {
+          submitted: submittedOnly.length
+        })
+        setAllSelections(submittedOnly)
+      }
       setLoading(false)
     } catch (error) {
-      console.error('[SplitFormContainer] Error fetching PAID selections:', error)
+      console.error('[SplitFormContainer] Error fetching selections:', error)
       setLoading(false)
     }
   }
@@ -121,6 +147,13 @@ export default function SplitFormContainer({
     }
   }, [sessionId, billId])
 
+  // Fetch my selections when parent selections change (to ensure we have the latest)
+  useEffect(() => {
+    if (useParentSelections && sessionId) {
+      fetchMySelections()
+    }
+  }, [allSelectionsFromParent, sessionId, useParentSelections])
+
   // Recalculate remaining quantities when items or selections change
   // Uses safe access to handle empty or malformed itemQuantities
   useEffect(() => {
@@ -131,7 +164,8 @@ export default function SplitFormContainer({
 
     const claimed: Record<string, number> = {}
 
-    // Calculate claimed quantities from PAID selections only
+    // Calculate claimed quantities from ALL selections (status='SELECTING')
+    // This includes both submitted (paid=false) and confirmed (paid=true) selections
     allSelections.forEach((selection) => {
       const itemQuantities = selection.itemQuantities as Record<string, number> | null
       if (itemQuantities && typeof itemQuantities === 'object') {
@@ -158,23 +192,31 @@ export default function SplitFormContainer({
     setItemRemainingQuantities(remaining)
   }, [items, allSelections])
 
+  // Debounced fetch functions to prevent race conditions from rapid updates
+  const debouncedFetchSelections = useDebounce(fetchSelections, 100)
+  const debouncedFetchMySelections = useDebounce(fetchMySelections, 100)
+
   // Realtime subscription for Selection changes and BillItem broadcasts
-  // This is the PRIMARY subscription for PAID selections (status='PAID')
+  // NEW ARCHITECTURE: All selections have status='SELECTING', only 'paid' flag differs
+  // IMPORTANT: Only subscribe if selections are NOT provided from parent (to avoid duplicate subscriptions)
+  // CRITICAL: Use unique channel suffix to avoid conflicts with other subscriptions
   const { isConnected } = useRealtimeSubscription(billId, {
     // Initial data fetch on mount and after reconnection
-    onInitialFetch: async () => {
+    onInitialFetch: useParentSelections ? undefined : async () => {
       console.log('[SplitFormContainer] Initial fetch triggered')
       await fetchSelections()
       await fetchMySelections()
       // Don't fetch items initially - use props instead
     },
 
-    // Selection table changes (final payments)
-    // This triggers when a new payment is created or updated (SELECTING → PAID)
-    onSelectionChange: () => {
-      console.log('[SplitFormContainer] Selection change detected - refetching PAID selections')
-      fetchSelections()
-      fetchMySelections()
+    // Selection table changes (ANY Selection change)
+    // NEW ARCHITECTURE: Fires on ANY INSERT/UPDATE/DELETE (status always 'SELECTING')
+    // Uses debounced version to prevent race conditions from rapid updates
+    // Skip subscription if using parent selections (parent component handles realtime updates)
+    onSelectionChange: useParentSelections ? undefined : () => {
+      console.log('[SplitFormContainer] Selection change detected - refetching all selections')
+      debouncedFetchSelections()
+      debouncedFetchMySelections()
     },
 
     // Item changes broadcast from owner
@@ -183,6 +225,9 @@ export default function SplitFormContainer({
       // Refetch items when broadcast is received
       fetchItems()
     },
+
+    // Unique channel suffix to avoid conflicts with other subscriptions
+    channelSuffix: 'container',
 
     // Enable debug logging in development
     debug: process.env.NODE_ENV === 'development'
@@ -198,15 +243,17 @@ export default function SplitFormContainer({
   }
 
   // Determine which selections to show in summary
-  // Owner sees ALL selections, guests see only their own
-  const selectionsToShow = isOwner ? allSelections : mySelections
+  // Owner: No summary (uses GuestSelectionsList instead)
+  // Guests: Only their own selections
+  const selectionsToShow = isOwner ? [] : mySelections
 
   return (
     <>
-      {selectionsToShow.length > 0 && (
+      {!isOwner && selectionsToShow.length > 0 && (
         <SelectionSummary
           selections={selectionsToShow}
           items={items}
+          isOwner={isOwner}
         />
       )}
       <div>

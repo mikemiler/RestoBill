@@ -5,12 +5,20 @@ import { sanitizeInput } from '@/lib/utils'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { billId, itemId, sessionId, guestName, quantity } = body
+    const { billId, itemId, sessionId, guestName, quantity, tipAmount } = body
 
     // Validation
     if (!billId || !itemId || !sessionId || !guestName || typeof quantity !== 'number') {
       return NextResponse.json(
         { error: 'Fehlende Pflichtfelder' },
+        { status: 400 }
+      )
+    }
+
+    // Validate tipAmount if provided (optional)
+    if (tipAmount !== undefined && (typeof tipAmount !== 'number' || tipAmount < 0 || tipAmount > 10000)) {
+      return NextResponse.json(
+        { error: 'Ungültiger Trinkgeldbetrag' },
         { status: 400 }
       )
     }
@@ -92,14 +100,21 @@ export async function POST(request: NextRequest) {
 
     if (existing) {
       // Update existing Selection (keep row even if empty to preserve tip)
+      const updateData: any = {
+        friendName: sanitizedName, // Update name if changed
+        itemQuantities, // Can be empty {} - preserves tipAmount
+        expiresAt,
+        updatedAt: new Date().toISOString(),
+      }
+
+      // Update tipAmount if provided
+      if (tipAmount !== undefined) {
+        updateData.tipAmount = tipAmount
+      }
+
       const { error: updateError } = await supabaseAdmin
         .from('Selection')
-        .update({
-          friendName: sanitizedName, // Update name if changed
-          itemQuantities, // Can be empty {} - preserves tipAmount
-          expiresAt,
-          updatedAt: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq('id', existing.id)
 
       if (updateError) {
@@ -111,6 +126,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: true })
       }
       // Create new Selection with status=SELECTING
+      // IMPORTANT: paymentMethod is NULL during live selection (not yet submitted)
       const now = new Date().toISOString()
       const { error: insertError } = await supabaseAdmin
         .from('Selection')
@@ -121,8 +137,8 @@ export async function POST(request: NextRequest) {
           friendName: sanitizedName,
           itemQuantities,
           status: 'SELECTING',
-          tipAmount: 0,
-          paymentMethod: 'PAYPAL',
+          tipAmount: tipAmount !== undefined ? tipAmount : 0,
+          paymentMethod: null,  // NULL = guest is still selecting (not yet submitted)
           paid: false,
           expiresAt,
           createdAt: now,

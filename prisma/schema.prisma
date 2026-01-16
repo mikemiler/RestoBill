@@ -80,8 +80,8 @@ model Selection {
   // Trinkgeld (only set when status=PAID)
   tipAmount Float @default(0)
 
-  // Zahlungsmethode (only set when status=PAID)
-  paymentMethod PaymentMethod @default(PAYPAL)
+  // Zahlungsmethode (only set when status=PAID, null during SELECTING)
+  paymentMethod PaymentMethod?
 
   // Payment Status (legacy compatibility)
   paid   Boolean   @default(false)

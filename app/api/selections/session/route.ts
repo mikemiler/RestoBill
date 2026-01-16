@@ -32,13 +32,15 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Fetch paid selections for this session (status=PAID only)
+    // Fetch active selections for this session (status=SELECTING only)
+    // These are the guest's current selections (auto-saved in real-time)
     const { data: selections, error } = await supabaseAdmin
       .from('Selection')
       .select('*')
       .eq('billId', billId)
       .eq('sessionId', sessionId)
-      .eq('status', 'PAID')
+      .eq('status', 'SELECTING')
+      .gte('expiresAt', new Date().toISOString()) // Only non-expired
       .order('createdAt', { ascending: false })
 
     if (error) {

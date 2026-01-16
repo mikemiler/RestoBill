@@ -28,12 +28,14 @@ export type ConnectionStatus =
 
 // Event handlers
 export interface RealtimeEventHandlers {
-  // Selection table changes - final payments (status=PAID)
-  // NOTE: Also triggers for SELECTING status changes since unified table
+  // Selection table changes - ANY changes to Selection table
+  // NEW ARCHITECTURE: All selections have status='SELECTING', only 'paid' flag differs
+  // Fired on INSERT, UPDATE, DELETE of any Selection
   onSelectionChange?: () => void | Promise<void>
 
-  // Selection table changes - live tracking (status=SELECTING)
-  // NOTE: Now uses unified Selection table (no separate ActiveSelection table)
+  // Active selection changes - live tracking updates
+  // NEW ARCHITECTURE: Same as onSelectionChange (both fire on ANY Selection change)
+  // Kept for backward compatibility with existing components
   onActiveSelectionChange?: () => void | Promise<void>
 
   // Item changes (broadcast from owner)
@@ -53,6 +55,10 @@ export interface UseRealtimeSubscriptionOptions extends RealtimeEventHandlers {
 
   // Initial data fetch on mount (recommended)
   onInitialFetch?: () => void | Promise<void>
+
+  // Optional channel suffix to avoid conflicts when multiple components subscribe to same bill
+  // Example: "status" → creates channel "bill:${billId}:status"
+  channelSuffix?: string
 }
 
 // Return type
@@ -103,6 +109,7 @@ export function useRealtimeSubscription(
     onConnectionStatusChange,
     onError,
     onInitialFetch,
+    channelSuffix,
     debug = false
   } = options
 
@@ -179,86 +186,121 @@ export function useRealtimeSubscription(
     cleanup()
 
     updateStatus('CONNECTING')
-    log(`Subscribing to bill:${billId}`)
+
+    // Create unique channel name with optional suffix to avoid conflicts
+    const channelName = channelSuffix ? `bill:${billId}:${channelSuffix}` : `bill:${billId}`
+    log(`Subscribing to ${channelName}`)
 
     try {
       // Create single channel for this bill
-      const channel = supabase.channel(`bill:${billId}`)
+      const channel = supabase.channel(channelName)
 
-      // Subscribe to Selection table changes (unified table for both SELECTING and PAID)
-      // Inspect payload to determine which callbacks to fire based on status
+      // Subscribe to Selection table changes (unified table - ALL selections have status='SELECTING')
+      // NEW ARCHITECTURE: status always 'SELECTING', only 'paid' flag changes (false/true)
       if (onSelectionChange || onActiveSelectionChange) {
         channel.on(
           'postgres_changes',
           {
             event: '*',
             schema: 'public',
-            table: 'Selection',
-            filter: `billId=eq.${billId}`
+            table: 'Selection'
+            // NOTE: Filter removed - client-side filtering instead to avoid schema mismatch errors
           },
           async (payload) => {
-            // Extract status from payload
+            const timestamp = new Date().toISOString()
+            console.log(`\n⚡ [Realtime ${timestamp}] ===== SELECTION CHANGE EVENT =====`)
+
+            // Extract data from payload
             const newRecord = payload.new as any
             const oldRecord = payload.old as any
-            const newStatus = newRecord?.status
-            const oldStatus = oldRecord?.status
 
-            log('Selection changed (unified table)', {
+            // CLIENT-SIDE FILTER: Only process events for this bill
+            const recordBillId = newRecord?.billId || oldRecord?.billId
+            if (recordBillId !== billId) {
+              log('❌ Ignoring Selection change for different bill:', recordBillId, '(expected:', billId, ')')
+              console.log('[Realtime] ===== SELECTION CHANGE EVENT END (IGNORED) =====\n')
+              return
+            }
+
+            const newPaid = newRecord?.paid
+            const oldPaid = oldRecord?.paid
+            const newPaymentMethod = newRecord?.paymentMethod
+            const oldPaymentMethod = oldRecord?.paymentMethod
+            const newItemQuantities = newRecord?.itemQuantities
+            const oldItemQuantities = oldRecord?.itemQuantities
+            const newFriendName = newRecord?.friendName
+            const oldFriendName = oldRecord?.friendName
+
+            console.log('[Realtime] 📦 FULL PAYLOAD:', {
               eventType: payload.eventType,
               table: payload.table,
-              oldStatus,
-              newStatus,
+              schema: payload.schema,
+              billId: recordBillId,
               hasOld: !!payload.old,
-              hasNew: !!payload.new
+              hasNew: !!payload.new,
+              commitTimestamp: payload.commit_timestamp
+            })
+
+            console.log('[Realtime] 📝 OLD RECORD:', oldRecord ? {
+              id: oldRecord.id?.substring(0, 8),
+              friendName: oldFriendName,
+              itemQuantities: oldItemQuantities,
+              itemCount: oldItemQuantities ? Object.keys(oldItemQuantities).length : 0,
+              tipAmount: oldRecord.tipAmount,
+              paid: oldPaid,
+              paymentMethod: oldPaymentMethod,
+              status: oldRecord.status
+            } : null)
+
+            console.log('[Realtime] 🆕 NEW RECORD:', newRecord ? {
+              id: newRecord.id?.substring(0, 8),
+              friendName: newFriendName,
+              itemQuantities: newItemQuantities,
+              itemCount: newItemQuantities ? Object.keys(newItemQuantities).length : 0,
+              tipAmount: newRecord.tipAmount,
+              paid: newPaid,
+              paymentMethod: newPaymentMethod,
+              status: newRecord.status
+            } : null)
+
+            console.log('[Realtime] 🔄 CHANGES DETECTED:', {
+              eventType: payload.eventType,
+              paidChanged: oldPaid !== newPaid,
+              paymentMethodChanged: oldPaymentMethod !== newPaymentMethod,
+              itemQuantitiesChanged: JSON.stringify(oldItemQuantities) !== JSON.stringify(newItemQuantities),
+              friendNameChanged: oldFriendName !== newFriendName
             })
 
             try {
-              // Special case: SELECTING → PAID transition
-              // Only fire onSelectionChange (Container fetches new PAID selection)
-              // Do NOT fire onActiveSelectionChange (SplitForm doesn't need to refetch SELECTING
-              // because the selection is no longer SELECTING - it will get the PAID version via props)
-              if (oldStatus === 'SELECTING' && newStatus === 'PAID') {
-                log('Status transition SELECTING → PAID detected')
+              // NEW ARCHITECTURE: All selections have status='SELECTING'
+              // We differentiate by 'paid' flag and 'paymentMethod':
+              // - paymentMethod=null → Live selection (guest is still choosing)
+              // - paymentMethod set, paid=false → Submitted, awaiting payer confirmation
+              // - paymentMethod set, paid=true → Confirmed by payer
 
-                // Only update PAID list (Container handles this)
-                // SplitForm will get the update via props from Container
-                if (onSelectionChange) {
-                  log('Firing onSelectionChange (add to PAID)')
-                  await onSelectionChange()
-                }
-
-                // Do NOT fire onActiveSelectionChange to avoid race condition
-                // The selection is no longer in SELECTING list, so no need to refetch it
-                log('Skipping onActiveSelectionChange to prevent race condition')
-
-                return // Done
+              // Fire BOTH callbacks if both are defined
+              // This allows StatusPageClient (guest list) AND SplitForm (badges) to update simultaneously
+              if (onSelectionChange) {
+                console.log('[Realtime] 🔥 Firing onSelectionChange callback')
+                await onSelectionChange()
+                console.log('[Realtime] ✅ onSelectionChange callback completed')
+              } else {
+                console.log('[Realtime] ⚠️ onSelectionChange callback NOT defined')
               }
 
-              // Regular updates: fire appropriate callback based on status
-
-              // PAID status update (INSERT, UPDATE, or DELETE of PAID selection)
-              if (newStatus === 'PAID' || (payload.eventType === 'DELETE' && oldStatus === 'PAID')) {
-                if (onSelectionChange) {
-                  log('Firing onSelectionChange (PAID update)', { eventType: payload.eventType })
-                  await onSelectionChange()
-                }
+              if (onActiveSelectionChange) {
+                console.log('[Realtime] 🔥 Firing onActiveSelectionChange callback')
+                await onActiveSelectionChange()
+                console.log('[Realtime] ✅ onActiveSelectionChange callback completed')
+              } else {
+                console.log('[Realtime] ⚠️ onActiveSelectionChange callback NOT defined')
               }
 
-              // SELECTING status update (INSERT, UPDATE, or DELETE of SELECTING selection)
-              // Note: SELECTING → PAID transition is handled above, so this only catches
-              // pure SELECTING updates (e.g., INSERT SELECTING, UPDATE SELECTING, DELETE SELECTING)
-              if (newStatus === 'SELECTING' || (payload.eventType === 'DELETE' && oldStatus === 'SELECTING')) {
-                // Skip if this is a transition to PAID (already handled above)
-                if (!(oldStatus === 'SELECTING' && newStatus === 'PAID')) {
-                  if (onActiveSelectionChange) {
-                    log('Firing onActiveSelectionChange (SELECTING update)', { eventType: payload.eventType })
-                    await onActiveSelectionChange()
-                  }
-                }
-              }
+              console.log('[Realtime] ===== SELECTION CHANGE EVENT END (SUCCESS) =====\n')
             } catch (error) {
-              logError('Error in Selection change handlers:', error)
+              logError('❌ Error in Selection change handlers:', error)
               onError?.(error instanceof Error ? error : new Error(String(error)))
+              console.log('[Realtime] ===== SELECTION CHANGE EVENT END (ERROR) =====\n')
             }
           }
         )
@@ -395,7 +437,7 @@ export function useRealtimeSubscription(
       cleanup()
       updateStatus('DISCONNECTED')
     }
-  }, [billId]) // Re-subscribe if billId changes
+  }, [billId, channelSuffix]) // Re-subscribe if billId or channelSuffix changes
 
   // Handle page visibility changes (mobile tab switching, screen off/on)
   useEffect(() => {

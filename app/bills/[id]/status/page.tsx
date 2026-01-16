@@ -3,13 +3,12 @@ import { notFound } from 'next/navigation'
 import { getBaseUrl } from '@/lib/utils'
 import { headers } from 'next/headers'
 import Image from 'next/image'
-import SplitFormContainer from '@/components/SplitFormContainer'
 import CollapsibleReceipt from '@/components/CollapsibleReceipt'
 import BillAutoSave from '@/components/BillAutoSave'
 import CopyButton from '@/components/CopyButton'
-import PaymentOverview from '@/components/PaymentOverview'
 import QRCode from '@/components/QRCode'
 import EditablePayerName from '@/components/EditablePayerName'
+import StatusPageClient from '@/components/StatusPageClient'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -29,26 +28,14 @@ export default async function BillStatusPage({
     notFound()
   }
 
-  // Fetch all selections for this bill (with all fields for payment overview)
-  const { data: selections } = await supabaseAdmin
-    .from('Selection')
-    .select('id, friendName, itemQuantities, tipAmount, paid')
-    .eq('billId', bill.id)
+  // NOTE: We no longer fetch selections server-side!
+  // SelectionManager (client component) will fetch and manage selections via Realtime
+  // This prevents stale data and race conditions
 
-  // Calculate remaining quantities for each item
+  // Calculate initial remaining quantities (will be recalculated client-side)
   const itemRemainingQuantities: Record<string, number> = {}
-
   bill.BillItem?.forEach((item: any) => {
-    let totalClaimed = 0
-
-    selections?.forEach((selection) => {
-      const itemQuantities = selection.itemQuantities as Record<string, number> | null
-      if (itemQuantities && itemQuantities[item.id]) {
-        totalClaimed += itemQuantities[item.id]
-      }
-    })
-
-    itemRemainingQuantities[item.id] = Math.max(0, item.quantity - totalClaimed)
+    itemRemainingQuantities[item.id] = item.quantity
   })
 
   // Sort items by name
@@ -129,16 +116,6 @@ export default async function BillStatusPage({
             </div>
           </div>
 
-          {/* Payment Overview */}
-          <div className="mb-4 md:mb-6">
-            <PaymentOverview
-              billId={bill.id}
-              totalBillAmount={totalBillAmount}
-              selections={selections || []}
-              items={sortedItems}
-            />
-          </div>
-
           {/* Receipt Image - Collapsible */}
           <div className="mb-4 md:mb-6">
             <CollapsibleReceipt
@@ -147,19 +124,16 @@ export default async function BillStatusPage({
             />
           </div>
 
-          {/* Selection Form */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 p-4 sm:p-5 md:p-6 mb-4 md:mb-8">
-            <SplitFormContainer
-              billId={bill.id}
-              shareToken={bill.shareToken}
-              payerName={bill.payerName}
-              paypalHandle={bill.paypalHandle}
-              items={sortedItems}
-              itemRemainingQuantities={itemRemainingQuantities}
-              totalAmount={totalBillAmount}
-              isOwner={true}
-            />
-          </div>
+          {/* Client Components - Payment Overview, Guest List, Selection Form */}
+          <StatusPageClient
+            billId={bill.id}
+            shareToken={bill.shareToken}
+            payerName={bill.payerName}
+            paypalHandle={bill.paypalHandle}
+            items={sortedItems}
+            itemRemainingQuantities={itemRemainingQuantities}
+            totalBillAmount={totalBillAmount}
+          />
         </div>
       </div>
     </>

@@ -9,3 +9,5 @@ export {
   type UseRealtimeSubscriptionOptions,
   type UseRealtimeSubscriptionReturn
 } from './useRealtimeSubscription'
+
+export { useDebounce } from './useDebounce'
