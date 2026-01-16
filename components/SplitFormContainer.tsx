@@ -82,11 +82,12 @@ export default function SplitFormContainer({
   // Fetch selections based on user role
   // NEW ARCHITECTURE: ALL selections have status='SELECTING'
   // We filter by 'paymentMethod' and 'paid' flag client-side based on user role
+  // WORKAROUND: Use /live-selections endpoint (works on Vercel, /selections returns [] for unknown reason)
   const fetchSelections = async () => {
     try {
       console.log('[SplitFormContainer] Fetching all selections...')
 
-      const response = await fetch(`/api/bills/${billId}/selections`)
+      const response = await fetch(`/api/bills/${billId}/live-selections`)
       const allData: DatabaseSelection[] = await response.json()
 
       if (isOwner) {

@@ -125,8 +125,7 @@ All routes follow RESTful patterns:
 - `POST /api/bills/create` - Create bill with payer info
 - `POST /api/bills/[id]/upload` - Upload & analyze image
 - `GET /api/bills/[id]/items` - Get all items for a bill
-- `GET /api/bills/[id]/selections` - Get all selections for a bill (all have status=SELECTING)
-- `GET /api/bills/[id]/live-selections` - DEPRECATED (use /selections instead)
+- `GET /api/bills/[id]/live-selections` - Get all selections for a bill (status=SELECTING, not expired)
 
 **Bill Items:**
 - `POST /api/bill-items/create` - Add item manually
@@ -141,9 +140,12 @@ All routes follow RESTful patterns:
 - `GET /api/selections/session` - Get selection for a specific browser session (sessionId)
 
 **Live Selections (Real-time Tracking):**
+- `GET /api/bills/[id]/live-selections` - Get all selections for a bill (PRIMARY endpoint, works reliably on Vercel)
 - `POST /api/live-selections/update` - Update/create selection during item selection (before submit)
 - `POST /api/live-selections/update-tip` - Update tip amount only
 - `POST /api/live-selections/cleanup` - Clean up expired selections (30+ days old)
+
+**Note:** The `/api/bills/[id]/selections` endpoint was deprecated due to issues on Vercel. Use `/live-selections` instead.
 
 **Security:** All public routes validate `shareToken` before proceeding.
 
@@ -907,14 +909,35 @@ rm -rf .next && npm run build  # Clear cache and rebuild
    - Singleton Supabase client prevents multiple GoTrueClient warnings
 
 **Debug tips:**
-- Enable debug mode: `debug: process.env.NODE_ENV === 'development'` in hook
+- Enable debug mode: `debug: true` in hook options
 - Check browser console for `[Realtime]` messages with eventType (INSERT/UPDATE/DELETE)
 - Monitor connection status: `connectionStatus` from hook
 - Open PaymentOverview in one window, SplitForm in another (same bill)
 - Watch Network tab for WebSocket connection (wss://)
 - Check Supabase Table Editor for Selection entries (filter by status=SELECTING)
 - Test reconnection: Turn WiFi off/on and watch reconnection attempts
-- Check console for `[SplitForm] Fetching live selections...` messages
+
+### Vercel-Specific Issues
+
+**Problem:** `/api/bills/[id]/selections` endpoint returns `[]` on Vercel but works locally
+
+**Cause:** Unknown - possibly related to Next.js dynamic routing or Vercel's serverless architecture
+
+**Solution:** Use `/api/bills/[id]/live-selections` instead
+- All components now use `/live-selections` endpoint
+- This endpoint works reliably on both local and Vercel environments
+- Returns same data: `Selection` table with `status='SELECTING'` and not expired
+
+**Components affected:**
+- `StatusPageClient` → Uses `/live-selections` ✅
+- `SplitFormContainer` → Uses `/live-selections` ✅
+- `SplitForm` → Uses `/live-selections` ✅
+
+**If you encounter similar issues:**
+1. Check if endpoint works locally vs. Vercel
+2. Compare with `/live-selections` implementation
+3. Ensure all `.eq()` filters match database column names exactly
+4. Check Vercel function logs for errors
 
 **Testing realtime connection:**
 ```typescript

@@ -73,28 +73,17 @@ export interface UseRealtimeSubscriptionReturn {
 let supabaseClient: ReturnType<typeof createClient> | null = null
 
 const getSupabaseClient = () => {
-  if (typeof window === 'undefined') {
-    console.log('⚠️ [Realtime] getSupabaseClient called on server-side, returning null')
-    return null
-  }
+  if (typeof window === 'undefined') return null
 
   // Return existing instance if available
-  if (supabaseClient) {
-    console.log('♻️ [Realtime] Reusing existing Supabase client instance')
-    return supabaseClient
-  }
+  if (supabaseClient) return supabaseClient
 
-  // Log environment variables (for debugging Vercel issues)
+  // Get environment variables
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  console.log('🔧 [Realtime] Creating NEW Supabase client instance')
-  console.log('🔧 [Realtime] Supabase URL:', supabaseUrl ? `✅ ${supabaseUrl}` : '❌ MISSING')
-  console.log('🔧 [Realtime] Anon Key:', anonKey ? `✅ Set (length: ${anonKey.length})` : '❌ MISSING')
-
   if (!supabaseUrl || !anonKey) {
-    console.error('❌ [Realtime] CRITICAL: Supabase credentials missing!')
-    console.error('❌ [Realtime] Check environment variables in Vercel dashboard')
+    console.error('[Realtime] CRITICAL: Supabase credentials missing!')
     return null
   }
 
@@ -105,7 +94,6 @@ const getSupabaseClient = () => {
     }
   })
 
-  console.log('✅ [Realtime] Supabase client created successfully')
   return supabaseClient
 }
 
@@ -127,7 +115,7 @@ export function useRealtimeSubscription(
     onError,
     onInitialFetch,
     channelSuffix,
-    debug = true  // ALWAYS ENABLED for Vercel debugging
+    debug = false  // Enable only for debugging (set to true)
   } = options
 
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('CONNECTING')
