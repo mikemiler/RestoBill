@@ -73,22 +73,39 @@ export interface UseRealtimeSubscriptionReturn {
 let supabaseClient: ReturnType<typeof createClient> | null = null
 
 const getSupabaseClient = () => {
-  if (typeof window === 'undefined') return null
+  if (typeof window === 'undefined') {
+    console.log('⚠️ [Realtime] getSupabaseClient called on server-side, returning null')
+    return null
+  }
 
   // Return existing instance if available
-  if (supabaseClient) return supabaseClient
+  if (supabaseClient) {
+    console.log('♻️ [Realtime] Reusing existing Supabase client instance')
+    return supabaseClient
+  }
+
+  // Log environment variables (for debugging Vercel issues)
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  console.log('🔧 [Realtime] Creating NEW Supabase client instance')
+  console.log('🔧 [Realtime] Supabase URL:', supabaseUrl ? `✅ ${supabaseUrl}` : '❌ MISSING')
+  console.log('🔧 [Realtime] Anon Key:', anonKey ? `✅ Set (length: ${anonKey.length})` : '❌ MISSING')
+
+  if (!supabaseUrl || !anonKey) {
+    console.error('❌ [Realtime] CRITICAL: Supabase credentials missing!')
+    console.error('❌ [Realtime] Check environment variables in Vercel dashboard')
+    return null
+  }
 
   // Create new instance only once
-  supabaseClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      auth: {
-        persistSession: false, // Disable auth session persistence for realtime-only client
-      }
+  supabaseClient = createClient(supabaseUrl, anonKey, {
+    auth: {
+      persistSession: false, // Disable auth session persistence for realtime-only client
     }
-  )
+  })
 
+  console.log('✅ [Realtime] Supabase client created successfully')
   return supabaseClient
 }
 
@@ -110,7 +127,7 @@ export function useRealtimeSubscription(
     onError,
     onInitialFetch,
     channelSuffix,
-    debug = false
+    debug = true  // ALWAYS ENABLED for Vercel debugging
   } = options
 
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('CONNECTING')
@@ -121,11 +138,17 @@ export function useRealtimeSubscription(
   const isSubscribingRef = useRef(false)  // Prevent cleanup during active subscription
 
   const log = (...args: any[]) => {
-    if (debug) console.log('[Realtime]', ...args)
+    if (debug) {
+      const timestamp = new Date().toISOString()
+      console.log(`⚡ [Realtime ${timestamp}]`, ...args)
+    }
   }
 
   const logError = (...args: any[]) => {
-    if (debug) console.error('[Realtime Error]', ...args)
+    if (debug) {
+      const timestamp = new Date().toISOString()
+      console.error(`❌ [Realtime Error ${timestamp}]`, ...args)
+    }
   }
 
   // Update connection status and notify
@@ -175,9 +198,11 @@ export function useRealtimeSubscription(
 
     const supabase = getSupabaseClient()
     if (!supabase) {
-      logError('Supabase client not available')
+      logError('Supabase client not available - cannot subscribe to realtime')
+      logError('This usually means environment variables are missing or window is undefined')
       return
     }
+    log('✅ Supabase client available, proceeding with subscription')
 
     // Mark as subscribing to prevent concurrent subscriptions
     isSubscribingRef.current = true
@@ -207,29 +232,53 @@ export function useRealtimeSubscription(
             // NOTE: Filter removed - client-side filtering instead to avoid schema mismatch errors
           },
           async (payload) => {
+            log('===== SELECTION CHANGE EVENT =====')
+            log('📦 FULL PAYLOAD:', JSON.stringify(payload, null, 2))
+
             // Extract data from payload
             const newRecord = payload.new as any
             const oldRecord = payload.old as any
 
+            log('📝 OLD RECORD:', oldRecord)
+            log('🆕 NEW RECORD:', newRecord)
+            log('🎯 EVENT TYPE:', payload.eventType)
+
             // CLIENT-SIDE FILTER: Only process events for this bill
             const recordBillId = newRecord?.billId || oldRecord?.billId
+            log('🔍 Checking billId:', { recordBillId, expectedBillId: billId, match: recordBillId === billId })
+
             if (recordBillId !== billId) {
-              log('Ignoring Selection change for different bill:', recordBillId)
+              log('⚠️ Ignoring Selection change for different bill:', recordBillId)
               return
             }
+
+            log('✅ Event is for correct bill, processing...')
+            log('📊 Change details:', {
+              friendName: newRecord?.friendName || oldRecord?.friendName,
+              paid: `${oldRecord?.paid} → ${newRecord?.paid}`,
+              paymentMethod: `${oldRecord?.paymentMethod} → ${newRecord?.paymentMethod}`,
+              itemQuantities: newRecord?.itemQuantities || oldRecord?.itemQuantities
+            })
 
             try {
               // Fire BOTH callbacks if both are defined
               // This allows StatusPageClient (guest list) AND SplitForm (badges) to update simultaneously
               if (onSelectionChange) {
+                log('🔥 Firing onSelectionChange callback...')
                 await onSelectionChange()
+                log('✅ onSelectionChange completed')
               }
 
               if (onActiveSelectionChange) {
+                log('🔥 Firing onActiveSelectionChange callback...')
                 await onActiveSelectionChange()
+                log('✅ onActiveSelectionChange completed')
               }
+
+              log('===== SELECTION CHANGE EVENT END (SUCCESS) =====')
             } catch (error) {
               logError('Error in Selection change handlers:', error)
+              log('===== SELECTION CHANGE EVENT END (ERROR) =====')
               onError?.(error instanceof Error ? error : new Error(String(error)))
             }
           }
@@ -255,7 +304,10 @@ export function useRealtimeSubscription(
 
       // Subscribe with status callback
       channel.subscribe(async (status, err) => {
-        log('Subscription status:', status, err)
+        log('📡 Subscription status:', status)
+        if (err) {
+          logError('Subscription error details:', err)
+        }
 
         if (status === 'SUBSCRIBED') {
           // Mark subscribing as complete

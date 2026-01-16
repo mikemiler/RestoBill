@@ -9,6 +9,7 @@ import CopyButton from '@/components/CopyButton'
 import QRCode from '@/components/QRCode'
 import EditablePayerName from '@/components/EditablePayerName'
 import StatusPageClient from '@/components/StatusPageClient'
+import RealtimeDebugInfo from '@/components/RealtimeDebugInfo'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -135,6 +136,9 @@ export default async function BillStatusPage({
             totalBillAmount={totalBillAmount}
           />
         </div>
+
+        {/* Debug Info - Shows environment diagnostics */}
+        <RealtimeDebugInfo />
       </div>
     </>
   )

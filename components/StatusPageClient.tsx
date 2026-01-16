@@ -47,9 +47,27 @@ export default function StatusPageClient({
 
   // Fetch all selections (all have status='SELECTING' in new architecture)
   const fetchSelections = async () => {
+    const timestamp = new Date().toISOString()
+    console.log(`🔍 [StatusPageClient ${timestamp}] ===== FETCHING SELECTIONS START =====`)
+    console.log(`[StatusPageClient] 📍 Fetching from: /api/bills/${billId}/selections`)
+
     try {
       const response = await fetch(`/api/bills/${billId}/selections`)
+      console.log(`[StatusPageClient] 📡 Response status:`, response.status, response.statusText)
+
       const allData = await response.json()
+      console.log(`[StatusPageClient] 📥 RAW DATA from API:`, {
+        count: allData.length,
+        rawData: allData.map((s: Selection) => ({
+          id: s.id,
+          friendName: s.friendName,
+          paid: s.paid,
+          paymentMethod: s.paymentMethod,
+          status: s.status,
+          itemCount: Object.keys(s.itemQuantities || {}).length,
+          tipAmount: s.tipAmount
+        }))
+      })
 
       // Filter out only completely empty selections with no useful data
       // CRITICAL: Submitted selections (with paymentMethod) must ALWAYS be shown!
@@ -70,9 +88,25 @@ export default function StatusPageClient({
         return hasItems || hasTip || hasName
       })
 
+      console.log(`[StatusPageClient] ✅ FILTERED SELECTIONS:`, {
+        valid: validSelections.length,
+        liveSelections: validSelections.filter((s: Selection) => !s.paymentMethod).length,
+        submittedSelections: validSelections.filter((s: Selection) => s.paymentMethod && !s.paid).length,
+        paidSelections: validSelections.filter((s: Selection) => s.paid).length,
+        data: validSelections.map((s: Selection) => ({
+          id: s.id,
+          friendName: s.friendName,
+          paid: s.paid,
+          paymentMethod: s.paymentMethod
+        }))
+      })
+
       setSelections(validSelections)
+      console.log(`[StatusPageClient] ✅ State updated with ${validSelections.length} selections`)
+      console.log(`[StatusPageClient] ===== FETCHING SELECTIONS END =====`)
     } catch (error) {
-      console.error('Error fetching selections:', error)
+      console.error('❌ [StatusPageClient] Error fetching selections:', error)
+      console.log(`[StatusPageClient] ===== FETCHING SELECTIONS END (ERROR) =====`)
     }
   }
 
