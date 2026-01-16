@@ -8,6 +8,11 @@ export async function GET(
   try {
     const { id } = params
 
+    console.log('🔍 [API /selections] ===== REQUEST START =====')
+    console.log('[API /selections] billId:', id)
+    console.log('[API /selections] Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
+    console.log('[API /selections] Database URL:', process.env.DATABASE_URL ? 'Set' : 'MISSING')
+
     // Validate UUID
     if (!/^[a-f0-9-]{36}$/i.test(id)) {
       return NextResponse.json(
@@ -18,13 +23,21 @@ export async function GET(
 
     // Get all selections for this bill (both SELECTING and PAID status)
     // Returns all selections regardless of status or paid flag
+    console.log('[API /selections] Querying Supabase...')
     const { data: selections, error } = await supabaseAdmin
       .from('Selection')
       .select('id, billId, friendName, itemQuantities, tipAmount, paid, paymentMethod, createdAt, status')
       .eq('billId', id)
       .order('createdAt', { ascending: false })
 
+    console.log('[API /selections] Query result:', {
+      success: !error,
+      count: selections?.length || 0,
+      error: error?.message
+    })
+
     if (error) {
+      console.error('[API /selections] Query error:', error)
       throw error
     }
 
@@ -34,7 +47,7 @@ export async function GET(
       itemQuantities: sel.itemQuantities || {}
     }))
 
-    console.log('[API] Selections fetched:', {
+    console.log('[API /selections] ✅ Selections fetched:', {
       billId: id,
       count: sanitizedSelections.length,
       withPaymentMethod: sanitizedSelections.filter(s => s.paymentMethod).length,
@@ -48,8 +61,13 @@ export async function GET(
         tipAmount: s.tipAmount
       }))
     })
+    console.log('[API /selections] ===== REQUEST END =====')
 
-    return NextResponse.json(sanitizedSelections)
+    // Return with debug info in headers for troubleshooting
+    const response = NextResponse.json(sanitizedSelections)
+    response.headers.set('X-Debug-Count', String(sanitizedSelections.length))
+    response.headers.set('X-Debug-BillId', id)
+    return response
   } catch (error) {
     console.error('Error fetching selections:', error)
     return NextResponse.json(
