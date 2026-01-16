@@ -38,8 +38,10 @@ export interface RealtimeEventHandlers {
   // Kept for backward compatibility with existing components
   onActiveSelectionChange?: () => void | Promise<void>
 
-  // Item changes (broadcast from owner)
-  onItemChange?: (payload: { action: 'created' | 'updated' | 'deleted'; itemId?: string }) => void | Promise<void>
+  // BillItem table changes - ANY changes to BillItem table
+  // Fired on INSERT, UPDATE, DELETE of any BillItem
+  // Components should refetch items when this fires
+  onItemChange?: () => void | Promise<void>
 
   // Connection status changes
   onConnectionStatusChange?: (status: ConnectionStatus) => void
@@ -273,17 +275,54 @@ export function useRealtimeSubscription(
         )
       }
 
-      // Subscribe to item change broadcasts
+      // Subscribe to BillItem table changes (Realtime postgres_changes)
+      // Fires on INSERT, UPDATE, DELETE of any BillItem for this bill
       if (onItemChange) {
         channel.on(
-          'broadcast',
-          { event: 'item-changed' },
-          async ({ payload }) => {
-            log('Item changed:', payload)
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'BillItem'
+            // NOTE: Filter removed - client-side filtering by billId instead
+          },
+          async (payload) => {
+            log('===== BILLITEM CHANGE EVENT =====')
+            log('📦 FULL PAYLOAD:', JSON.stringify(payload, null, 2))
+
+            // Extract data from payload
+            const newRecord = payload.new as any
+            const oldRecord = payload.old as any
+
+            log('📝 OLD RECORD:', oldRecord)
+            log('🆕 NEW RECORD:', newRecord)
+            log('🎯 EVENT TYPE:', payload.eventType)
+
+            // CLIENT-SIDE FILTER: Only process events for this bill
+            const recordBillId = newRecord?.billId || oldRecord?.billId
+            log('🔍 Checking billId:', { recordBillId, expectedBillId: billId, match: recordBillId === billId })
+
+            if (recordBillId !== billId) {
+              log('⚠️ Ignoring BillItem change for different bill:', recordBillId)
+              return
+            }
+
+            log('✅ Event is for correct bill, processing...')
+            log('📊 Change details:', {
+              itemName: newRecord?.name || oldRecord?.name,
+              quantity: `${oldRecord?.quantity} → ${newRecord?.quantity}`,
+              pricePerUnit: `${oldRecord?.pricePerUnit} → ${newRecord?.pricePerUnit}`,
+              totalPrice: `${oldRecord?.totalPrice} → ${newRecord?.totalPrice}`
+            })
+
             try {
-              await onItemChange(payload as any)
+              log('🔥 Firing onItemChange callback...')
+              await onItemChange()
+              log('✅ onItemChange completed')
+              log('===== BILLITEM CHANGE EVENT END (SUCCESS) =====')
             } catch (error) {
-              logError('Error in onItemChange:', error)
+              logError('Error in BillItem change handler:', error)
+              log('===== BILLITEM CHANGE EVENT END (ERROR) =====')
               onError?.(error instanceof Error ? error : new Error(String(error)))
             }
           }

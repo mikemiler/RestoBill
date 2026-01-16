@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js'
 import { formatEUR } from '@/lib/utils'
 import { getOrCreateSessionId } from '@/lib/sessionStorage'
 import { useRealtimeSubscription, useDebounce } from '@/lib/hooks'
+import { debugLog, debugError } from '@/lib/debug'
 
 // Browser-only Supabase client
 const supabase = typeof window !== 'undefined'
@@ -96,7 +97,7 @@ export default function SplitForm({
   const [newItemForm, setNewItemForm] = useState({
     name: '',
     quantity: 1,
-    pricePerUnit: 0
+    pricePerUnit: 10
   })
   const [isItemsExpanded, setIsItemsExpanded] = useState(true) // Collapsible for items list
 
@@ -109,12 +110,28 @@ export default function SplitForm({
     setSessionId(sid)
   }, [])
 
+  // DEBUG: Track items prop changes
+  useEffect(() => {
+    debugLog('🔍 [SplitForm DEBUG] ===== ITEMS PROP CHANGED =====')
+    debugLog('[SplitForm DEBUG] Items received from parent:', {
+      itemsCount: items.length,
+      itemsData: items.map(item => ({
+        id: item.id,
+        name: item.name,
+        quantity: item.quantity,
+        pricePerUnit: item.pricePerUnit,
+        totalPrice: item.totalPrice
+      }))
+    })
+    debugLog('🔍 [SplitForm DEBUG] ===== ITEMS PROP CHANGED END =====')
+  }, [items])
+
   // Sync allSelections prop with selections state
   // This is the SINGLE SOURCE OF TRUTH for PAID selections
   // SplitFormContainer fetches PAID selections via Realtime and passes them as props
   // This avoids duplicate API calls and race conditions
   useEffect(() => {
-    console.log('[SplitForm] Syncing allSelections prop to state (PAID selections):', {
+    debugLog('[SplitForm] Syncing allSelections prop to state (PAID selections):', {
       propLength: allSelections.length,
       stateLength: selections.length,
       propData: allSelections.map(s => ({
@@ -185,7 +202,7 @@ export default function SplitForm({
           setSelectedItems(mySelection.itemQuantities)
         }
       } catch (error) {
-        console.error('Error restoring selections from DB:', error)
+        debugError('Error restoring selections from DB:', error)
       }
     }
 
@@ -202,7 +219,7 @@ export default function SplitForm({
   // Fetch live selections (unified Selection with status='SELECTING')
   const fetchLiveSelections = async () => {
     try {
-      console.log('[SplitForm] Fetching live selections...')
+      debugLog('[SplitForm] Fetching live selections...')
       const response = await fetch(`/api/bills/${billId}/live-selections`)
       const data: LiveSelection[] = await response.json()
 
@@ -214,7 +231,7 @@ export default function SplitForm({
         return hasItems && notExpired
       })
 
-      console.log('[SplitForm] Live selections fetched:', {
+      debugLog('[SplitForm] Live selections fetched:', {
         total: data.length,
         active: activeData.length,
         selections: activeData.map(s => ({
@@ -227,7 +244,7 @@ export default function SplitForm({
 
       setLiveSelections(activeData)
     } catch (error) {
-      console.error('Error fetching live selections:', error)
+      debugError('Error fetching live selections:', error)
     }
   }
 
@@ -237,7 +254,7 @@ export default function SplitForm({
   const { isConnected } = useRealtimeSubscription(billId, {
     // Initial data fetch on mount and after reconnection
     onInitialFetch: async () => {
-      console.log('[SplitForm] Initial fetch: loading live selections (SELECTING status)')
+      debugLog('[SplitForm] Initial fetch: loading live selections (SELECTING status)')
       // PAID selections come from props (SplitFormContainer fetches them)
       // We only need to fetch SELECTING selections here
       await fetchLiveSelections()
@@ -250,7 +267,7 @@ export default function SplitForm({
     // onActiveSelectionChange: For SELECTING status updates only
     // The hook now intelligently routes SELECTING updates here and PAID updates to Container
     onActiveSelectionChange: async () => {
-      console.log('[SplitForm] Active selection change: updating live selections (SELECTING status)')
+      debugLog('[SplitForm] Active selection change: updating live selections (SELECTING status)')
       await fetchLiveSelections()
     },
 
@@ -266,12 +283,22 @@ export default function SplitForm({
   // Auto-recalculate remaining quantities when selections or liveSelections change
   // This prevents race conditions by using the actual state values
   useEffect(() => {
-    console.log('[SplitForm] Recalculating remaining quantities due to state change:', {
+    debugLog('🎯 [SplitForm DEBUG] ===== RECALCULATE TRIGGERED =====')
+    debugLog('[SplitForm DEBUG] State values that triggered recalculation:', {
       selectionsCount: selections.length,
-      liveSelectionsCount: liveSelections.length
+      liveSelectionsCount: liveSelections.length,
+      itemsCount: items.length,
+      itemsDetails: items.map(item => ({
+        id: item.id,
+        name: item.name,
+        quantity: item.quantity,
+        pricePerUnit: item.pricePerUnit
+      }))
     })
+    debugLog('[SplitForm DEBUG] Calling calculateRemainingQuantities()...')
     calculateRemainingQuantities()
-  }, [selections, liveSelections])
+    debugLog('🎯 [SplitForm DEBUG] ===== RECALCULATE TRIGGERED END =====')
+  }, [selections, liveSelections, items])
 
   // Note: We no longer cleanup ActiveSelections when leaving the page
   // This allows guests to return later and continue where they left off
@@ -343,6 +370,18 @@ export default function SplitForm({
   // Uses LOCAL states (selections + liveSelections) to avoid race conditions
   // EXCLUDES current user's own live selection to show what's available for them
   const calculateRemainingQuantities = () => {
+    debugLog('⚙️ [SplitForm DEBUG] ===== CALCULATE REMAINING QUANTITIES START =====')
+    debugLog('[SplitForm DEBUG] Input data for calculation:', {
+      itemsCount: items.length,
+      itemsUsedInCalc: items.map(item => ({
+        id: item.id,
+        name: item.name,
+        quantity: item.quantity,
+        pricePerUnit: item.pricePerUnit
+      })),
+      selectionsCount: selections.length,
+      liveSelectionsCount: liveSelections.length
+    })
     try {
       const currentSessionId = sessionId || getOrCreateSessionId()
 
@@ -378,7 +417,7 @@ export default function SplitForm({
         remaining[item.id] = Math.max(0, item.quantity - claimedQty)
       })
 
-      console.log('[SplitForm] Calculated remaining quantities:', {
+      debugLog('[SplitForm] Calculated remaining quantities:', {
         paidSelectionsCount: selections.length,
         liveSelectionsCount: liveSelections.length,
         otherLiveSelectionsCount: otherLiveSelections.length,
@@ -390,8 +429,11 @@ export default function SplitForm({
       })
 
       setRemainingQuantities(remaining)
+      debugLog('[SplitForm DEBUG] ✅ setRemainingQuantities() called with:', remaining)
+      debugLog('⚙️ [SplitForm DEBUG] ===== CALCULATE REMAINING QUANTITIES END =====')
     } catch (error) {
-      console.error('Error calculating remaining quantities:', error)
+      debugError('❌ [SplitForm DEBUG] Error calculating remaining quantities:', error)
+      debugLog('⚙️ [SplitForm DEBUG] ===== CALCULATE REMAINING QUANTITIES END (ERROR) =====')
     }
   }
 
@@ -437,15 +479,6 @@ export default function SplitForm({
 
       setEditingItemId(null)
       setEditForm(null)
-
-      // Broadcast item change to all clients
-      if (supabase) {
-        await supabase.channel(`bill:${billId}`).send({
-          type: 'broadcast',
-          event: 'item-changed',
-          payload: { action: 'updated', itemId }
-        })
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ein Fehler ist aufgetreten')
     } finally {
@@ -471,15 +504,6 @@ export default function SplitForm({
 
       if (!response.ok) {
         throw new Error(data.error || 'Fehler beim Löschen')
-      }
-
-      // Broadcast item change to all clients
-      if (supabase) {
-        await supabase.channel(`bill:${billId}`).send({
-          type: 'broadcast',
-          event: 'item-changed',
-          payload: { action: 'deleted', itemId }
-        })
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ein Fehler ist aufgetreten')
@@ -624,7 +648,7 @@ export default function SplitForm({
           })
         })
       } catch (error) {
-        console.error('Error updating live selection:', error)
+        debugError('Error updating live selection:', error)
       }
     }
   }
@@ -686,7 +710,7 @@ export default function SplitForm({
           })
         })
       } catch (error) {
-        console.error('Error updating live selection:', error)
+        debugError('Error updating live selection:', error)
       }
     }
   }
@@ -738,7 +762,7 @@ export default function SplitForm({
         })
       })
     } catch (error) {
-      console.error('Error updating live tip:', error)
+      debugError('Error updating live tip:', error)
     }
   }
 
@@ -1305,9 +1329,9 @@ export default function SplitForm({
                       <input
                         type="number"
                         step="0.25"
-                        min="0.25"
+                        min="1"
                         value={newItemForm.quantity}
-                        onChange={(e) => setNewItemForm({ ...newItemForm, quantity: parseFloat(e.target.value) || 0 })}
+                        onChange={(e) => setNewItemForm({ ...newItemForm, quantity: parseFloat(e.target.value) || 1 })}
                         className="w-full px-2.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 focus:border-transparent dark:bg-gray-700 dark:text-gray-100"
                       />
                     </div>
@@ -1318,9 +1342,9 @@ export default function SplitForm({
                       <input
                         type="number"
                         step="0.01"
-                        min="0"
+                        min="0.01"
                         value={newItemForm.pricePerUnit}
-                        onChange={(e) => setNewItemForm({ ...newItemForm, pricePerUnit: parseFloat(e.target.value) || 0 })}
+                        onChange={(e) => setNewItemForm({ ...newItemForm, pricePerUnit: parseFloat(e.target.value) || 10 })}
                         className="w-full px-2.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 focus:border-transparent dark:bg-gray-700 dark:text-gray-100"
                       />
                     </div>
@@ -1331,7 +1355,7 @@ export default function SplitForm({
                   <div className="flex gap-2">
                     <button
                       onClick={addNewItem}
-                      disabled={loading || !newItemForm.name.trim()}
+                      disabled={loading || !newItemForm.name.trim() || newItemForm.quantity < 1 || newItemForm.pricePerUnit < 0.01}
                       className="flex-1 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 dark:bg-purple-500 dark:hover:bg-purple-600 dark:disabled:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
                     >
                       {loading ? 'Hinzufügen...' : 'Hinzufügen'}
@@ -1339,7 +1363,7 @@ export default function SplitForm({
                     <button
                       onClick={() => {
                         setAddingNew(false)
-                        setNewItemForm({ name: '', quantity: 1, pricePerUnit: 0 })
+                        setNewItemForm({ name: '', quantity: 1, pricePerUnit: 10 })
                         setError('')
                       }}
                       disabled={loading}

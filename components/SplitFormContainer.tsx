@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import SplitForm from './SplitForm'
 import { useRealtimeSubscription, useDebounce } from '@/lib/hooks'
+import { debugLog, debugError } from '@/lib/debug'
 
 interface DatabaseSelection {
   id: string
@@ -58,24 +59,63 @@ export default function SplitFormContainer({
   // Update allSelections when parent selections change
   useEffect(() => {
     if (useParentSelections && allSelectionsFromParent) {
-      console.log('[SplitFormContainer] Using selections from parent:', allSelectionsFromParent.length)
+      debugLog('[SplitFormContainer] Using selections from parent:', allSelectionsFromParent.length)
       setAllSelections(allSelectionsFromParent)
       setLoading(false) // Set loading to false when using parent selections
     }
   }, [allSelectionsFromParent, useParentSelections])
 
+  // CRITICAL: Sync items state with parent props when they change (Owner only)
+  // For guests, items come from server-render and don't change
+  // For owner, parent (StatusPageClient) fetches items and passes as props
+  useEffect(() => {
+    debugLog('🔄 [SplitFormContainer DEBUG] ===== ITEMS SYNC FROM PARENT =====')
+    debugLog('[SplitFormContainer DEBUG] initialItems prop:', {
+      isOwner,
+      propsCount: initialItems.length,
+      propsData: initialItems.map(item => ({
+        id: item.id,
+        name: item.name,
+        quantity: item.quantity,
+        pricePerUnit: item.pricePerUnit
+      }))
+    })
+    if (isOwner) {
+      debugLog('[SplitFormContainer DEBUG] ✅ Owner mode: Syncing items from parent')
+      setItems(initialItems)
+    } else {
+      debugLog('[SplitFormContainer DEBUG] ⏭️ Guest mode: Skipping sync (items from server-render)')
+    }
+    debugLog('🔄 [SplitFormContainer DEBUG] ===== ITEMS SYNC FROM PARENT END =====')
+  }, [initialItems, isOwner])
+
   // Fetch items from API
   const fetchItems = async () => {
+    debugLog('📥 [SplitFormContainer DEBUG] ===== FETCH ITEMS START =====')
+    debugLog('[SplitFormContainer DEBUG] Fetching items from API for billId:', billId)
     try {
       const response = await fetch(`/api/bills/${billId}/items`)
       if (!response.ok) {
-        console.error('Error fetching items:', response.statusText)
+        debugError('❌ [SplitFormContainer DEBUG] Error fetching items:', response.statusText)
+        debugLog('📥 [SplitFormContainer DEBUG] ===== FETCH ITEMS END (ERROR) =====')
         return
       }
       const data: BillItem[] = await response.json()
+      debugLog('[SplitFormContainer DEBUG] ✅ Fetched items from API:', {
+        count: data.length,
+        items: data.map(item => ({
+          id: item.id,
+          name: item.name,
+          quantity: item.quantity,
+          pricePerUnit: item.pricePerUnit
+        }))
+      })
+      debugLog('[SplitFormContainer DEBUG] Calling setItems() with fetched data')
       setItems(data)
+      debugLog('📥 [SplitFormContainer DEBUG] ===== FETCH ITEMS END (SUCCESS) =====')
     } catch (error) {
-      console.error('Error fetching items:', error)
+      debugError('❌ [SplitFormContainer DEBUG] Error fetching items:', error)
+      debugLog('📥 [SplitFormContainer DEBUG] ===== FETCH ITEMS END (ERROR) =====')
     }
   }
 
@@ -85,7 +125,7 @@ export default function SplitFormContainer({
   // WORKAROUND: Use /live-selections endpoint (works on Vercel, /selections returns [] for unknown reason)
   const fetchSelections = async () => {
     try {
-      console.log('[SplitFormContainer] Fetching all selections...')
+      debugLog('[SplitFormContainer] Fetching all selections...')
 
       const response = await fetch(`/api/bills/${billId}/live-selections`)
       const allData: DatabaseSelection[] = await response.json()
@@ -93,7 +133,7 @@ export default function SplitFormContainer({
       if (isOwner) {
         // Owner sees ALL selections (status='SELECTING' regardless of paid flag)
         // Used for calculating remaining quantities
-        console.log('[SplitFormContainer] Owner selections fetched:', {
+        debugLog('[SplitFormContainer] Owner selections fetched:', {
           total: allData.length,
           liveSelecting: allData.filter(s => !s.paymentMethod).length,
           submitted: allData.filter(s => s.paymentMethod && !s.paid).length,
@@ -103,14 +143,14 @@ export default function SplitFormContainer({
       } else {
         // Guest only sees submitted selections (paymentMethod !== null) - payment history
         const submittedOnly = allData.filter(s => s.paymentMethod !== null)
-        console.log('[SplitFormContainer] Guest selections fetched:', {
+        debugLog('[SplitFormContainer] Guest selections fetched:', {
           submitted: submittedOnly.length
         })
         setAllSelections(submittedOnly)
       }
       setLoading(false)
     } catch (error) {
-      console.error('[SplitFormContainer] Error fetching selections:', error)
+      debugError('[SplitFormContainer] Error fetching selections:', error)
       setLoading(false)
     }
   }
@@ -118,7 +158,7 @@ export default function SplitFormContainer({
   // Recalculate remaining quantities when items or selections change
   // Uses safe access to handle empty or malformed itemQuantities
   useEffect(() => {
-    console.log('[SplitFormContainer] Recalculating remaining quantities:', {
+    debugLog('[SplitFormContainer] Recalculating remaining quantities:', {
       itemCount: items.length,
       selectionCount: allSelections.length
     })
@@ -145,7 +185,7 @@ export default function SplitFormContainer({
       remaining[item.id] = Math.max(0, item.quantity - claimedQty)
     })
 
-    console.log('[SplitFormContainer] Remaining quantities calculated:', {
+    debugLog('[SplitFormContainer] Remaining quantities calculated:', {
       claimed,
       remaining
     })
@@ -155,6 +195,7 @@ export default function SplitFormContainer({
 
   // Debounced fetch functions to prevent race conditions from rapid updates
   const debouncedFetchSelections = useDebounce(fetchSelections, 100)
+  const debouncedFetchItems = useDebounce(fetchItems, 500) // Wait for DB replication + cache
 
   // Realtime subscription for Selection changes and BillItem broadcasts
   // NEW ARCHITECTURE: All selections have status='SELECTING', only 'paid' flag differs
@@ -163,7 +204,7 @@ export default function SplitFormContainer({
   const { isConnected } = useRealtimeSubscription(billId, {
     // Initial data fetch on mount and after reconnection
     onInitialFetch: useParentSelections ? undefined : async () => {
-      console.log('[SplitFormContainer] Initial fetch triggered')
+      debugLog('[SplitFormContainer] Initial fetch triggered')
       await fetchSelections()
       // Don't fetch items initially - use props instead
     },
@@ -173,15 +214,28 @@ export default function SplitFormContainer({
     // Uses debounced version to prevent race conditions from rapid updates
     // Skip subscription if using parent selections (parent component handles realtime updates)
     onSelectionChange: useParentSelections ? undefined : () => {
-      console.log('[SplitFormContainer] Selection change detected - refetching all selections')
+      debugLog('[SplitFormContainer] Selection change detected - refetching all selections')
       debouncedFetchSelections()
     },
 
     // Item changes broadcast from owner
-    onItemChange: () => {
-      console.log('[SplitFormContainer] Item change detected - refetching items')
-      // Refetch items when broadcast is received
-      fetchItems()
+    // CRITICAL: Skip if isOwner - parent (StatusPageClient) handles item fetching
+    // This prevents race condition where both parent and container fetch items
+    onItemChange: isOwner ? undefined : () => {
+      debugLog('🔔 [SplitFormContainer DEBUG] ===== ITEM CHANGE EVENT =====')
+      debugLog('[SplitFormContainer DEBUG] Item change detected via realtime subscription')
+      debugLog('[SplitFormContainer DEBUG] Current items state before refetch:', {
+        count: items.length,
+        items: items.map(item => ({
+          id: item.id,
+          name: item.name,
+          quantity: item.quantity,
+          pricePerUnit: item.pricePerUnit
+        }))
+      })
+      debugLog('[SplitFormContainer DEBUG] Calling debouncedFetchItems() with 500ms delay')
+      debouncedFetchItems()
+      debugLog('🔔 [SplitFormContainer DEBUG] ===== ITEM CHANGE EVENT END =====')
     },
 
     // Unique channel suffix to avoid conflicts with other subscriptions

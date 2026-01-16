@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 
+// Force dynamic rendering - disable Next.js caching
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -29,7 +33,14 @@ export async function GET(
       throw error
     }
 
-    return NextResponse.json(liveSelections || [])
+    // Return with no-cache headers to prevent browser caching
+    return NextResponse.json(liveSelections || [], {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    })
   } catch (error) {
     console.error('Error fetching live selections:', error)
     return NextResponse.json(

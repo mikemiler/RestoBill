@@ -40,33 +40,8 @@ export async function PUT(
       )
     }
 
-    // Check if item has any selections
-    const { data: selections, error: selectionsError } = await supabaseAdmin
-      .from('Selection')
-      .select('id, itemQuantities')
-      .eq('billId', (await supabaseAdmin
-        .from('BillItem')
-        .select('billId')
-        .eq('id', id)
-        .single()
-      ).data?.billId)
-
-    if (selectionsError) {
-      throw selectionsError
-    }
-
-    // Check if this item is referenced in any selection
-    const hasSelections = selections?.some((selection: any) => {
-      const quantities = selection.itemQuantities as Record<string, number> || {}
-      return quantities[id] && quantities[id] > 0
-    })
-
-    if (hasSelections) {
-      return NextResponse.json(
-        { error: 'Diese Position kann nicht bearbeitet werden, da bereits Auswahlen dafür existieren' },
-        { status: 409 }
-      )
-    }
+    // Owner can always edit items, even if selections exist
+    // Guests' selections will adjust automatically to the new values
 
     // Calculate new total price
     const totalPrice = quantity * pricePerUnit
@@ -95,6 +70,9 @@ export async function PUT(
       )
     }
 
+    // Realtime events are automatically triggered by Supabase postgres_changes
+    // No manual broadcast needed - clients subscribed to BillItem table will receive UPDATE event
+
     return NextResponse.json({ success: true, item })
   } catch (error) {
     console.error('Error updating bill item:', error)
@@ -120,33 +98,9 @@ export async function DELETE(
       )
     }
 
-    // Check if item has any selections
-    const { data: selections, error: selectionsError } = await supabaseAdmin
-      .from('Selection')
-      .select('id, itemQuantities')
-      .eq('billId', (await supabaseAdmin
-        .from('BillItem')
-        .select('billId')
-        .eq('id', id)
-        .single()
-      ).data?.billId)
-
-    if (selectionsError) {
-      throw selectionsError
-    }
-
-    // Check if this item is referenced in any selection
-    const hasSelections = selections?.some((selection: any) => {
-      const quantities = selection.itemQuantities as Record<string, number> || {}
-      return quantities[id] && quantities[id] > 0
-    })
-
-    if (hasSelections) {
-      return NextResponse.json(
-        { error: 'Diese Position kann nicht gelöscht werden, da bereits Auswahlen dafür existieren' },
-        { status: 409 }
-      )
-    }
+    // Owner can always delete items, even if selections exist
+    // Selections referencing this item will still have the itemId in their itemQuantities,
+    // but the item won't exist anymore (handled gracefully in frontend)
 
     // Delete bill item
     const { error } = await supabaseAdmin
@@ -157,6 +111,9 @@ export async function DELETE(
     if (error) {
       throw error
     }
+
+    // Realtime events are automatically triggered by Supabase postgres_changes
+    // No manual broadcast needed - clients subscribed to BillItem table will receive DELETE event
 
     return NextResponse.json({ success: true })
   } catch (error) {

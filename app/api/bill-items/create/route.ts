@@ -54,11 +54,14 @@ export async function POST(request: NextRequest) {
     // Calculate total price
     const totalPrice = quantity * pricePerUnit
 
+    // Generate UUID for item
+    const itemId = randomUUID()
+
     // Create new bill item
     const { data: item, error } = await supabaseAdmin
       .from('BillItem')
       .insert({
-        id: randomUUID(), // Explicitly generate UUID
+        id: itemId,
         billId,
         name: name.trim(),
         quantity,
@@ -71,6 +74,9 @@ export async function POST(request: NextRequest) {
     if (error) {
       throw error
     }
+
+    // Realtime events are automatically triggered by Supabase postgres_changes
+    // No manual broadcast needed - clients subscribed to BillItem table will receive INSERT event
 
     return NextResponse.json({ success: true, item }, { status: 201 })
   } catch (error) {

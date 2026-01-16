@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRealtimeSubscription, useDebounce } from '@/lib/hooks'
+import { debugLog, debugError } from '@/lib/debug'
 import GuestSelectionsList from './GuestSelectionsList'
 import SplitFormContainer from './SplitFormContainer'
 
@@ -39,11 +40,43 @@ export default function StatusPageClient({
   shareToken,
   payerName,
   paypalHandle,
-  items,
-  itemRemainingQuantities,
+  items: initialItems,
+  itemRemainingQuantities: initialRemainingQuantities,
   totalBillAmount,
 }: StatusPageClientProps) {
   const [selections, setSelections] = useState<Selection[]>([])
+  const [items, setItems] = useState<BillItem[]>(initialItems)
+  const [itemRemainingQuantities, setItemRemainingQuantities] = useState<Record<string, number>>(initialRemainingQuantities)
+
+  // Fetch items from API
+  const fetchItems = async () => {
+    debugLog('📥 [StatusPageClient DEBUG] ===== FETCH ITEMS START =====')
+    debugLog('[StatusPageClient DEBUG] Fetching items from API for billId:', billId)
+    try {
+      const response = await fetch(`/api/bills/${billId}/items`)
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+      const data: BillItem[] = await response.json()
+      debugLog('[StatusPageClient DEBUG] ✅ Fetched items from API:', {
+        count: data.length,
+        items: data.map(item => ({
+          id: item.id,
+          name: item.name,
+          quantity: item.quantity,
+          pricePerUnit: item.pricePerUnit,
+          totalPrice: item.totalPrice
+        }))
+      })
+      debugLog('[StatusPageClient DEBUG] Calling setItems() with fetched data')
+      setItems(data)
+      debugLog('[StatusPageClient DEBUG] setItems() called - state will update on next render')
+      debugLog('📥 [StatusPageClient DEBUG] ===== FETCH ITEMS END (SUCCESS) =====')
+    } catch (error) {
+      debugError('❌ [StatusPageClient DEBUG] Error fetching items:', error)
+      debugLog('📥 [StatusPageClient DEBUG] ===== FETCH ITEMS END (ERROR) =====')
+    }
+  }
 
   // Fetch all selections (all have status='SELECTING' in new architecture)
   const fetchSelections = async () => {
@@ -77,14 +110,53 @@ export default function StatusPageClient({
 
       setSelections(validSelections)
     } catch (error) {
-      console.error('[StatusPageClient] Error fetching selections:', error)
+      debugError('[StatusPageClient] Error fetching selections:', error)
     }
   }
 
-  // Debounced version to prevent race conditions from rapid updates
+  // Debounced versions to prevent race conditions from rapid updates
   const debouncedFetchSelections = useDebounce(fetchSelections, 100)
+  const debouncedFetchItems = useDebounce(fetchItems, 500) // Wait for DB replication + cache
 
-  // Realtime subscription for Selection changes
+  // Recalculate remaining quantities when items or selections change
+  useEffect(() => {
+    debugLog('🔄 [StatusPageClient DEBUG] ===== RECALCULATE REMAINING QUANTITIES =====')
+    debugLog('[StatusPageClient DEBUG] Items state changed, recalculating:', {
+      itemsCount: items.length,
+      selectionsCount: selections.length,
+      itemsData: items.map(item => ({
+        id: item.id,
+        name: item.name,
+        quantity: item.quantity,
+        pricePerUnit: item.pricePerUnit
+      }))
+    })
+    const claimed: Record<string, number> = {}
+
+    // Calculate claimed quantities from ALL selections
+    selections.forEach((selection) => {
+      const itemQuantities = selection.itemQuantities as Record<string, number> | null
+      if (itemQuantities && typeof itemQuantities === 'object') {
+        Object.entries(itemQuantities).forEach(([itemId, quantity]) => {
+          const qty = typeof quantity === 'number' ? quantity : 0
+          claimed[itemId] = (claimed[itemId] || 0) + qty
+        })
+      }
+    })
+
+    // Calculate remaining for each item
+    const remaining: Record<string, number> = {}
+    items.forEach(item => {
+      const claimedQty = claimed[item.id] || 0
+      remaining[item.id] = Math.max(0, item.quantity - claimedQty)
+    })
+
+    debugLog('[StatusPageClient DEBUG] ✅ Remaining quantities calculated:', remaining)
+    setItemRemainingQuantities(remaining)
+    debugLog('🔄 [StatusPageClient DEBUG] ===== RECALCULATE REMAINING QUANTITIES END =====')
+  }, [items, selections])
+
+  // Realtime subscription for Selection changes and Item changes
   // CRITICAL: Use unique channel suffix to avoid conflicts with SplitForm's subscription
   // Without this, Supabase Realtime will only deliver events to ONE subscription (the last one created)
   const { isConnected } = useRealtimeSubscription(billId, {
@@ -95,8 +167,31 @@ export default function StatusPageClient({
     // Uses debounced version to prevent race conditions from rapid updates
     onSelectionChange: debouncedFetchSelections,
 
+    // Item changes broadcast from owner (when items are created/updated/deleted)
+    // Uses debounced version to wait for DB replication (prevents stale data)
+    onItemChange: () => {
+      debugLog('🔔 [StatusPageClient DEBUG] ===== ITEM CHANGE EVENT =====')
+      debugLog('[StatusPageClient DEBUG] Item change detected via realtime subscription')
+      debugLog('[StatusPageClient DEBUG] Current items state before refetch:', {
+        count: items.length,
+        items: items.map(item => ({
+          id: item.id,
+          name: item.name,
+          quantity: item.quantity,
+          pricePerUnit: item.pricePerUnit,
+          totalPrice: item.totalPrice
+        }))
+      })
+      debugLog('[StatusPageClient DEBUG] Calling debouncedFetchItems() with 500ms delay')
+      debouncedFetchItems()
+      debugLog('🔔 [StatusPageClient DEBUG] ===== ITEM CHANGE EVENT END =====')
+    },
+
     // Unique channel suffix to avoid conflicts with other subscriptions
     channelSuffix: 'status',
+
+    // Enable debug logging in development
+    debug: process.env.NODE_ENV === 'development'
   })
 
   return (

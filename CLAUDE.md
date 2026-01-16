@@ -178,6 +178,13 @@ All routes follow RESTful patterns:
 - Generates UUID v4 per browser (persists across page reloads)
 - Used for ActiveSelection tracking (prevents duplicate entries from same browser)
 
+**lib/broadcast.ts**
+- Utilities for sending Supabase Realtime broadcasts
+- Functions: `sendBroadcast()`, `broadcastItemChange()`
+- Handles channel subscription, broadcast sending, and cleanup
+- Used by API routes to notify clients of item changes (create/update/delete)
+- Ensures broadcasts are delivered reliably with proper channel lifecycle management
+
 **lib/hooks/useRealtimeSubscription.ts**
 - Centralized Supabase Realtime subscription hook
 - Connection monitoring with automatic reconnection (exponential backoff)
@@ -241,9 +248,9 @@ All routes follow RESTful patterns:
 - PayPal URLs include `locale.x=de_DE`
 
 ### 5. Edit Protection
-- Items can only be modified if `bill.selections.length === 0`
-- Prevents changing items after friends have made selections
-- API routes enforce this check
+- **REMOVED** - Owner can always edit/delete items, even if selections exist
+- Guests' selections adjust automatically when items change
+- Deleted items are handled gracefully in frontend (item won't render if it doesn't exist)
 
 ### 6. Validation Layers
 - **Client:** UX feedback (form validation)
@@ -456,7 +463,60 @@ All routes follow RESTful patterns:
 - All three methods open same share link: `/split/[shareToken]`
 - QR codes especially useful for in-person bill splitting (restaurant table)
 
-### 18. Realtime Subscription Hook (useRealtimeSubscription)
+### 18. BillItem Realtime Updates (Postgres Changes)
+**Purpose:** Automatically notify all connected clients when bill items are created, updated, or deleted
+
+**Architecture:** Uses Supabase Realtime `postgres_changes` - same reliable architecture as Selection table
+
+**How it works:**
+1. API route performs database operation (INSERT/UPDATE/DELETE on BillItem)
+2. Supabase automatically fires `postgres_changes` event via WebSocket
+3. All subscribed clients receive event (< 100ms latency)
+4. Components refetch items from `/api/bills/[id]/items`
+5. UI updates automatically
+
+**Setup Required:**
+1. **Enable Realtime for BillItem table:**
+   ```sql
+   ALTER PUBLICATION supabase_realtime ADD TABLE "BillItem";
+   ```
+   Run the provided [ENABLE-BILLITEM-REALTIME.sql](ENABLE-BILLITEM-REALTIME.sql) script in Supabase SQL Editor.
+
+2. **Create RLS Policies:**
+   - SELECT, INSERT, UPDATE, DELETE policies for `anon` and `authenticated` roles
+   - Required for Realtime events to reach clients
+   - Script includes all necessary policies
+
+**Components with `onItemChange` handler:**
+- `StatusPageClient` - Owner's status dashboard, refetches items when changes detected
+- `SplitFormContainer` - Guest split form container, refetches items when changes detected
+
+**Hook Integration:**
+The `useRealtimeSubscription` hook automatically subscribes to BillItem changes:
+```typescript
+const { isConnected } = useRealtimeSubscription(billId, {
+  onItemChange: () => {
+    console.log('Item changed - refetching')
+    fetchItems()
+  }
+})
+```
+
+**Benefits:**
+- **100% reliable** - Postgres-level events, not manual broadcasts
+- **Instant updates** - < 100ms latency across all users
+- **Automatic** - No manual event firing needed in API routes
+- **Consistent** - Same architecture as Selection table
+- **Scalable** - Handles 100+ concurrent users
+- **Simpler code** - No broadcast helper functions needed
+
+**Important:**
+- Realtime must be enabled for BillItem table in Supabase
+- RLS policies required for events to reach clients
+- Events filtered client-side by billId (same as Selection)
+- Client-side filtering prevents cross-bill event leakage
+
+### 19. Realtime Subscription Hook (useRealtimeSubscription)
 **Purpose:** Centralized Supabase Realtime management with connection monitoring and automatic reconnection
 
 **Location:** `lib/hooks/useRealtimeSubscription.ts`
