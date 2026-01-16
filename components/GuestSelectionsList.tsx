@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { formatEUR } from '@/lib/utils'
 
 interface BillItem {
@@ -34,32 +34,8 @@ export default function GuestSelectionsList({
   const [loadingSelectionId, setLoadingSelectionId] = useState<string | null>(null)
   const [expandedSelections, setExpandedSelections] = useState<Record<string, boolean>>({})
 
-  // Log when props change
-  useEffect(() => {
-    const timestamp = new Date().toISOString()
-    console.log(`\n👥 [GuestSelectionsList ${timestamp}] ===== PROPS RECEIVED =====`)
-    console.log('[GuestSelectionsList] Received props:', {
-      selectionsCount: selections.length,
-      itemsCount: items.length,
-      isOwner,
-      selections: selections.map(s => ({
-        id: s.id.substring(0, 8),
-        friendName: s.friendName,
-        itemCount: Object.keys(s.itemQuantities || {}).length,
-        itemQuantities: s.itemQuantities,
-        tipAmount: s.tipAmount,
-        paymentMethod: s.paymentMethod,
-        paid: s.paid,
-        status: s.status
-      }))
-    })
-    console.log('[GuestSelectionsList] ===== PROPS RECEIVED END =====\n')
-  }, [selections, items, isOwner])
-
   // Filter and sort selections (memoized for performance)
   const allSelections = useMemo(() => {
-    console.log(`\n🔄 [GuestSelectionsList] ===== useMemo RECALCULATING =====`)
-    console.log('[GuestSelectionsList] Input selections:', selections.length)
     // Split by paid flag for display logic
     const unpaid = selections.filter((s: Selection) => s.paid === false)
     const paid = selections.filter((s: Selection) => s.paid === true)
@@ -67,25 +43,6 @@ export default function GuestSelectionsList({
     // For guests: Show only unpaid selections (they don't see confirmation status)
     // For owner: Show both unpaid and confirmed selections
     const filtered = isOwner ? [...unpaid, ...paid] : unpaid
-
-    console.log('[GuestSelectionsList] Filtering logic:', {
-      unpaidCount: unpaid.length,
-      paidCount: paid.length,
-      filteredCount: filtered.length,
-      isOwner,
-      unpaidSelections: unpaid.map(s => ({
-        id: s.id.substring(0, 8),
-        friendName: s.friendName,
-        itemCount: Object.keys(s.itemQuantities || {}).length,
-        paid: s.paid
-      })),
-      paidSelections: paid.map(s => ({
-        id: s.id.substring(0, 8),
-        friendName: s.friendName,
-        itemCount: Object.keys(s.itemQuantities || {}).length,
-        paid: s.paid
-      }))
-    })
 
     // Sort: confirmed (paid=true) before unconfirmed (paid=false), then by date
     const sorted = filtered.sort((a, b) => {
@@ -96,19 +53,6 @@ export default function GuestSelectionsList({
       // Then by creation date (newest first)
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     })
-
-    console.log('[GuestSelectionsList] ✅ Final sorted selections:', {
-      count: sorted.length,
-      selections: sorted.map(s => ({
-        id: s.id.substring(0, 8),
-        friendName: s.friendName,
-        itemCount: Object.keys(s.itemQuantities || {}).length,
-        itemQuantities: s.itemQuantities,
-        paid: s.paid,
-        paymentMethod: s.paymentMethod
-      }))
-    })
-    console.log('[GuestSelectionsList] ===== useMemo RECALCULATING END =====\n')
 
     return sorted
   }, [selections, isOwner])
@@ -169,11 +113,6 @@ export default function GuestSelectionsList({
             ? 'Noch keine Auswahlen. Teile den Link mit deinen Gästen!'
             : 'Noch keine aktiven Auswahlen.'}
         </p>
-        {process.env.NODE_ENV === 'development' && (
-          <p className="text-xs text-gray-400 mt-2">
-            Debug: Received {selections.length} selections from props
-          </p>
-        )}
       </div>
     )
   }

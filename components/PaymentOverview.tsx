@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useEffect } from 'react'
+import { useMemo } from 'react'
 import { formatEUR } from '@/lib/utils'
 
 interface BillItem {
@@ -29,46 +29,11 @@ export default function PaymentOverview({
   selections,
   items,
 }: PaymentOverviewProps) {
-  // Log when props change
-  useEffect(() => {
-    const timestamp = new Date().toISOString()
-    console.log(`\n💰 [PaymentOverview ${timestamp}] ===== PROPS RECEIVED =====`)
-    console.log('[PaymentOverview] Received props:', {
-      totalBillAmount,
-      selectionsCount: selections.length,
-      itemsCount: items.length,
-      selections: selections.map(s => ({
-        id: s.id.substring(0, 8),
-        friendName: s.friendName,
-        itemCount: Object.keys(s.itemQuantities || {}).length,
-        tipAmount: s.tipAmount,
-        paymentMethod: s.paymentMethod,
-        paid: s.paid
-      }))
-    })
-    console.log('[PaymentOverview] ===== PROPS RECEIVED END =====\n')
-  }, [selections, items, totalBillAmount])
-
   // Filter selections: only show submitted ones (with paymentMethod)
   // Live selections (paymentMethod=null) are excluded from payment overview
-  const submittedSelections = useMemo(() => {
-    console.log('\n💰 [PaymentOverview] ===== useMemo: FILTERING SUBMITTED SELECTIONS =====')
-    const filtered = selections.filter((s: Selection) =>
-      s.paymentMethod !== null  // Exclude live selections (still choosing)
-    )
-    console.log('[PaymentOverview] Filtered result:', {
-      input: selections.length,
-      output: filtered.length,
-      filtered: filtered.map(s => ({
-        id: s.id.substring(0, 8),
-        friendName: s.friendName,
-        paymentMethod: s.paymentMethod,
-        paid: s.paid
-      }))
-    })
-    console.log('[PaymentOverview] ===== useMemo END =====\n')
-    return filtered
-  }, [selections])
+  const submittedSelections = useMemo(() =>
+    selections.filter((s: Selection) => s.paymentMethod !== null)
+  , [selections])
 
   // Split by paid flag
   const selectingSelections = useMemo(() =>

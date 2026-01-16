@@ -207,9 +207,6 @@ export function useRealtimeSubscription(
             // NOTE: Filter removed - client-side filtering instead to avoid schema mismatch errors
           },
           async (payload) => {
-            const timestamp = new Date().toISOString()
-            console.log(`\n⚡ [Realtime ${timestamp}] ===== SELECTION CHANGE EVENT =====`)
-
             // Extract data from payload
             const newRecord = payload.new as any
             const oldRecord = payload.old as any
@@ -217,90 +214,23 @@ export function useRealtimeSubscription(
             // CLIENT-SIDE FILTER: Only process events for this bill
             const recordBillId = newRecord?.billId || oldRecord?.billId
             if (recordBillId !== billId) {
-              log('❌ Ignoring Selection change for different bill:', recordBillId, '(expected:', billId, ')')
-              console.log('[Realtime] ===== SELECTION CHANGE EVENT END (IGNORED) =====\n')
+              log('Ignoring Selection change for different bill:', recordBillId)
               return
             }
 
-            const newPaid = newRecord?.paid
-            const oldPaid = oldRecord?.paid
-            const newPaymentMethod = newRecord?.paymentMethod
-            const oldPaymentMethod = oldRecord?.paymentMethod
-            const newItemQuantities = newRecord?.itemQuantities
-            const oldItemQuantities = oldRecord?.itemQuantities
-            const newFriendName = newRecord?.friendName
-            const oldFriendName = oldRecord?.friendName
-
-            console.log('[Realtime] 📦 FULL PAYLOAD:', {
-              eventType: payload.eventType,
-              table: payload.table,
-              schema: payload.schema,
-              billId: recordBillId,
-              hasOld: !!payload.old,
-              hasNew: !!payload.new,
-              commitTimestamp: payload.commit_timestamp
-            })
-
-            console.log('[Realtime] 📝 OLD RECORD:', oldRecord ? {
-              id: oldRecord.id?.substring(0, 8),
-              friendName: oldFriendName,
-              itemQuantities: oldItemQuantities,
-              itemCount: oldItemQuantities ? Object.keys(oldItemQuantities).length : 0,
-              tipAmount: oldRecord.tipAmount,
-              paid: oldPaid,
-              paymentMethod: oldPaymentMethod,
-              status: oldRecord.status
-            } : null)
-
-            console.log('[Realtime] 🆕 NEW RECORD:', newRecord ? {
-              id: newRecord.id?.substring(0, 8),
-              friendName: newFriendName,
-              itemQuantities: newItemQuantities,
-              itemCount: newItemQuantities ? Object.keys(newItemQuantities).length : 0,
-              tipAmount: newRecord.tipAmount,
-              paid: newPaid,
-              paymentMethod: newPaymentMethod,
-              status: newRecord.status
-            } : null)
-
-            console.log('[Realtime] 🔄 CHANGES DETECTED:', {
-              eventType: payload.eventType,
-              paidChanged: oldPaid !== newPaid,
-              paymentMethodChanged: oldPaymentMethod !== newPaymentMethod,
-              itemQuantitiesChanged: JSON.stringify(oldItemQuantities) !== JSON.stringify(newItemQuantities),
-              friendNameChanged: oldFriendName !== newFriendName
-            })
-
             try {
-              // NEW ARCHITECTURE: All selections have status='SELECTING'
-              // We differentiate by 'paid' flag and 'paymentMethod':
-              // - paymentMethod=null → Live selection (guest is still choosing)
-              // - paymentMethod set, paid=false → Submitted, awaiting payer confirmation
-              // - paymentMethod set, paid=true → Confirmed by payer
-
               // Fire BOTH callbacks if both are defined
               // This allows StatusPageClient (guest list) AND SplitForm (badges) to update simultaneously
               if (onSelectionChange) {
-                console.log('[Realtime] 🔥 Firing onSelectionChange callback')
                 await onSelectionChange()
-                console.log('[Realtime] ✅ onSelectionChange callback completed')
-              } else {
-                console.log('[Realtime] ⚠️ onSelectionChange callback NOT defined')
               }
 
               if (onActiveSelectionChange) {
-                console.log('[Realtime] 🔥 Firing onActiveSelectionChange callback')
                 await onActiveSelectionChange()
-                console.log('[Realtime] ✅ onActiveSelectionChange callback completed')
-              } else {
-                console.log('[Realtime] ⚠️ onActiveSelectionChange callback NOT defined')
               }
-
-              console.log('[Realtime] ===== SELECTION CHANGE EVENT END (SUCCESS) =====\n')
             } catch (error) {
-              logError('❌ Error in Selection change handlers:', error)
+              logError('Error in Selection change handlers:', error)
               onError?.(error instanceof Error ? error : new Error(String(error)))
-              console.log('[Realtime] ===== SELECTION CHANGE EVENT END (ERROR) =====\n')
             }
           }
         )
