@@ -2,8 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import SplitForm from './SplitForm'
-import SelectionSummary from './SelectionSummary'
-import { getOrCreateSessionId } from '@/lib/sessionStorage'
 import { useRealtimeSubscription, useDebounce } from '@/lib/hooks'
 
 interface DatabaseSelection {
@@ -50,11 +48,9 @@ export default function SplitFormContainer({
   isOwner = false,
 }: SplitFormContainerProps) {
   const [allSelections, setAllSelections] = useState<DatabaseSelection[]>(allSelectionsFromParent || [])
-  const [mySelections, setMySelections] = useState<DatabaseSelection[]>([])
   const [items, setItems] = useState<BillItem[]>(initialItems)
   const [itemRemainingQuantities, setItemRemainingQuantities] = useState<Record<string, number>>(initialRemainingQuantities)
   const [loading, setLoading] = useState(true)
-  const [sessionId, setSessionId] = useState<string>('')
 
   // If selections are provided from parent, use them instead of fetching
   const useParentSelections = !!allSelectionsFromParent
@@ -67,11 +63,6 @@ export default function SplitFormContainer({
       setLoading(false) // Set loading to false when using parent selections
     }
   }, [allSelectionsFromParent, useParentSelections])
-
-  // Initialize sessionId on mount
-  useEffect(() => {
-    setSessionId(getOrCreateSessionId())
-  }, [])
 
   // Fetch items from API
   const fetchItems = async () => {
@@ -123,37 +114,6 @@ export default function SplitFormContainer({
     }
   }
 
-  // Fetch my selections from API (this session only)
-  const fetchMySelections = async () => {
-    if (!sessionId) return
-
-    try {
-      const response = await fetch(`/api/selections/session?billId=${billId}&sessionId=${sessionId}`)
-      if (!response.ok) {
-        console.error('Error fetching my selections:', response.statusText)
-        return
-      }
-      const data: DatabaseSelection[] = await response.json()
-      setMySelections(data)
-    } catch (error) {
-      console.error('Error fetching my selections:', error)
-    }
-  }
-
-  // Fetch my selections when sessionId is available
-  useEffect(() => {
-    if (sessionId) {
-      fetchMySelections()
-    }
-  }, [sessionId, billId])
-
-  // Fetch my selections when parent selections change (to ensure we have the latest)
-  useEffect(() => {
-    if (useParentSelections && sessionId) {
-      fetchMySelections()
-    }
-  }, [allSelectionsFromParent, sessionId, useParentSelections])
-
   // Recalculate remaining quantities when items or selections change
   // Uses safe access to handle empty or malformed itemQuantities
   useEffect(() => {
@@ -194,7 +154,6 @@ export default function SplitFormContainer({
 
   // Debounced fetch functions to prevent race conditions from rapid updates
   const debouncedFetchSelections = useDebounce(fetchSelections, 100)
-  const debouncedFetchMySelections = useDebounce(fetchMySelections, 100)
 
   // Realtime subscription for Selection changes and BillItem broadcasts
   // NEW ARCHITECTURE: All selections have status='SELECTING', only 'paid' flag differs
@@ -205,7 +164,6 @@ export default function SplitFormContainer({
     onInitialFetch: useParentSelections ? undefined : async () => {
       console.log('[SplitFormContainer] Initial fetch triggered')
       await fetchSelections()
-      await fetchMySelections()
       // Don't fetch items initially - use props instead
     },
 
@@ -216,7 +174,6 @@ export default function SplitFormContainer({
     onSelectionChange: useParentSelections ? undefined : () => {
       console.log('[SplitFormContainer] Selection change detected - refetching all selections')
       debouncedFetchSelections()
-      debouncedFetchMySelections()
     },
 
     // Item changes broadcast from owner
@@ -242,36 +199,22 @@ export default function SplitFormContainer({
     )
   }
 
-  // Determine which selections to show in summary
-  // Owner: No summary (uses GuestSelectionsList instead)
-  // Guests: Only their own selections
-  const selectionsToShow = isOwner ? [] : mySelections
-
   return (
-    <>
-      {!isOwner && selectionsToShow.length > 0 && (
-        <SelectionSummary
-          selections={selectionsToShow}
-          items={items}
-          isOwner={isOwner}
-        />
-      )}
-      <div>
-        <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-gray-800 dark:text-gray-100">
-          {selectionsToShow.length > 0 ? 'Weitere Position auswählen' : 'Deine Auswahl'}
-        </h2>
-        <SplitForm
-          billId={billId}
-          shareToken={shareToken}
-          payerName={payerName}
-          paypalHandle={paypalHandle}
-          items={items}
-          itemRemainingQuantities={itemRemainingQuantities}
-          totalAmount={totalAmount}
-          allSelections={allSelections}
-          isOwner={isOwner}
-        />
-      </div>
-    </>
+    <div>
+      <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-gray-800 dark:text-gray-100">
+        Deine Auswahl
+      </h2>
+      <SplitForm
+        billId={billId}
+        shareToken={shareToken}
+        payerName={payerName}
+        paypalHandle={paypalHandle}
+        items={items}
+        itemRemainingQuantities={itemRemainingQuantities}
+        totalAmount={totalAmount}
+        allSelections={allSelections}
+        isOwner={isOwner}
+      />
+    </div>
   )
 }

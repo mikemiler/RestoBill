@@ -555,14 +555,13 @@ export default function SplitForm({
     return quantity.toString()
   }
 
-  // Generate quantity options based on remaining quantity
-  function getQuantityOptions(remainingQty: number): number[] {
-    if (remainingQty === 0) return []
-
+  // Generate all possible quantity options based on original item quantity
+  // Always returns the same number of options to prevent layout shifts
+  function getAllQuantityOptions(itemQuantity: number): number[] {
     const options = [0]
 
-    // Add whole numbers up to remaining quantity (all available quantities)
-    const maxWholeNumber = Math.floor(remainingQty)
+    // Add whole numbers up to original item quantity
+    const maxWholeNumber = Math.floor(itemQuantity)
     for (let i = 1; i <= maxWholeNumber; i++) {
       options.push(i)
     }
@@ -833,7 +832,10 @@ export default function SplitForm({
             // Note: "Bereits bezahlt" badge removed - payer marks selections as paid via paid flag
             // Status never changes to PAID - it always stays SELECTING
             const remainingQty = remainingQuantities[item.id] ?? item.quantity
-            const quantityOptions = getQuantityOptions(remainingQty)
+            // Live remaining quantity - accounts for current user's selection in real-time
+            const liveRemainingQty = Math.max(0, remainingQty - (selectedItems[item.id] || 0))
+            // Always show all quantity options based on original item quantity to prevent layout shifts
+            const quantityOptions = getAllQuantityOptions(item.quantity)
 
             // Get live selections for this item from unified Selection table
             const currentSessionId = sessionId || getOrCreateSessionId()
@@ -873,7 +875,7 @@ export default function SplitForm({
                     ? 'border-red-500 dark:border-red-600 bg-red-50 dark:bg-red-900/20'
                     : isEditingThis
                     ? 'border-gray-200 dark:border-gray-600 dark:bg-gray-700/50'
-                    : selectedItems[item.id] > 0
+                    : isFullyMarked && !isOverselected
                     ? 'border-green-500 dark:border-green-600 bg-green-50 dark:bg-green-900/20'
                     : customQuantityMode[item.id]
                     ? 'border-gray-200 dark:border-gray-600 dark:bg-gray-700/50'
@@ -1017,8 +1019,8 @@ export default function SplitForm({
 
                       if (allBadges.length === 0) return null
 
-                      const MAX_VISIBLE = 2
-                      const showMore = allBadges.length > 3
+                      const MAX_VISIBLE = 3
+                      const showMore = allBadges.length > 4
                       const visibleBadges = showMore ? allBadges.slice(0, MAX_VISIBLE) : allBadges
                       const remainingCount = allBadges.length - MAX_VISIBLE
 
@@ -1055,24 +1057,35 @@ export default function SplitForm({
                       )
                     })()}
 
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex-1 pr-2">
-                        <div className="flex items-center gap-2">
-                          <h3 className={`font-medium text-sm sm:text-base ${
-                            selectedItems[item.id] > 0
-                              ? 'text-green-600 dark:text-green-400'
-                              : 'text-gray-900 dark:text-gray-100'
-                          }`}>
-                            {selectedItems[item.id] > 0 && (
-                              <span className="font-bold">{formatQuantity(selectedItems[item.id])}× </span>
-                            )}
-                            {item.name}
-                          </h3>
-                        </div>
-                        <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
-                          {item.quantity}x à {formatEUR(item.pricePerUnit)} ={' '}
-                          {formatEUR(item.totalPrice)}
-                        </p>
+                    <div className="mb-2">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className={`font-medium text-sm sm:text-base ${
+                          selectedItems[item.id] > 0
+                            ? 'text-green-600 dark:text-green-400'
+                            : 'text-gray-900 dark:text-gray-100'
+                        }`}>
+                          {selectedItems[item.id] > 0 && (
+                            <span className="font-bold">{formatQuantity(selectedItems[item.id])}× </span>
+                          )}
+                          {item.name}
+                        </h3>
+                      </div>
+                      <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-1">
+                        {item.quantity}x à {formatEUR(item.pricePerUnit)} ={' '}
+                        {formatEUR(item.totalPrice)}
+                      </p>
+                      <div className="text-xs sm:text-sm">
+                        <span className="text-gray-600 dark:text-gray-400">Dein Anteil: </span>
+                        <span className={`font-semibold ${
+                          selectedItems[item.id] > 0
+                            ? 'text-green-600 dark:text-green-400'
+                            : 'text-gray-500 dark:text-gray-500'
+                        }`}>
+                          {selectedItems[item.id] > 0
+                            ? formatEUR(item.pricePerUnit * selectedItems[item.id])
+                            : '—'
+                          }
+                        </span>
                       </div>
                     </div>
                   </>
@@ -1097,70 +1110,68 @@ export default function SplitForm({
 
                 {!isEditingThis && (
                   <div className="space-y-2">
-                    {isFullyMarked && !isOverselected && selectedItems[item.id] === 0 ? (
-                      // Show info when fully marked by OTHERS (you haven't selected)
-                      <div className="flex items-center h-[38px] sm:h-[42px]">
-                        <div className="flex-1 flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
-                          <span className="text-gray-500 dark:text-gray-400 text-sm">✓</span>
-                          <span className="text-xs sm:text-sm text-gray-600 dark:text-gray-300">
-                            Vollständig ausgewählt
+                    {/* Status Info Line - always shown above buttons - fixed height to prevent layout shift */}
+                    <div className="h-[28px] flex items-center">
+                      {isFullyMarked && !isOverselected ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-green-600 dark:text-green-400 text-sm leading-none">✓</span>
+                          <span className="text-xs sm:text-sm text-green-600 dark:text-green-400 font-medium italic leading-none">
+                            Vollständig aufgeteilt
                           </span>
                         </div>
-                      </div>
-                    ) : isFullyMarked && !isOverselected && selectedItems[item.id] > 0 ? (
-                      // Show X button + hint in one row when fully marked and YOU selected something
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleItemQuantityChange(item.id, 0)}
-                          className="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors min-w-[2.5rem] bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500"
-                        >
-                          ✗
-                        </button>
-                        <div className="flex items-center gap-1.5 px-2 py-1 sm:py-1.5">
-                          <span className="text-gray-400 dark:text-gray-500 text-sm">✓</span>
-                          <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 italic">
-                            Vollständig ausgewählt
+                      ) : (
+                        <div className="flex items-center">
+                          <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 leading-none">
+                            Noch offen: {formatQuantity(liveRemainingQty)}
                           </span>
                         </div>
-                      </div>
-                    ) : (
-                      // Show quantity buttons only if not fully marked
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="flex gap-1.5 sm:gap-2 flex-wrap">
-                          {quantityOptions.map((qty) => (
+                      )}
+                    </div>
+
+                    {/* Quantity Buttons - always shown */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex gap-1.5 sm:gap-2 flex-wrap">
+                        {quantityOptions.map((qty) => {
+                          // Disable button if:
+                          // 1. Position is fully marked by others AND this is a selection button (qty > 0) AND user hasn't selected this item
+                          // 2. OR quantity exceeds what's currently available (remainingQty)
+                          const isDisabled =
+                            (isFullyMarked && !isOverselected && qty > 0 && selectedItems[item.id] === 0) ||
+                            (qty > 0 && qty > remainingQty)
+
+                          return (
                             <button
                               key={qty}
                               type="button"
                               onClick={() => handleItemQuantityChange(item.id, qty)}
+                              disabled={isDisabled}
                               className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors min-w-[2.5rem] ${
                                 selectedItems[item.id] === qty && !customQuantityMode[item.id]
                                   ? 'bg-green-600 text-white dark:bg-green-500'
-                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500'
+                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed'
                               }`}
                             >
                               {qty === 0 ? '✗' : `${qty}x`}
                             </button>
-                          ))}
-                          <button
-                            type="button"
-                            onClick={() => handleCustomQuantityToggle(item.id)}
-                            className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
-                              customQuantityMode[item.id]
-                                ? 'bg-green-600 text-white dark:bg-green-500'
-                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500'
-                            }`}
-                          >
-                            Anteilig
-                          </button>
-                        </div>
-                        {selectedItems[item.id] > 0 && !customQuantityMode[item.id] && (
-                          <span className="ml-auto text-xs sm:text-sm font-semibold text-green-600 dark:text-green-400">
-                            {formatEUR(item.pricePerUnit * selectedItems[item.id])}
-                          </span>
-                        )}
+                          )
+                        })}
+                        <button
+                          type="button"
+                          onClick={() => handleCustomQuantityToggle(item.id)}
+                          disabled={
+                            (isFullyMarked && !isOverselected && selectedItems[item.id] === 0) ||
+                            remainingQty === 0
+                          }
+                          className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+                            customQuantityMode[item.id]
+                              ? 'bg-green-600 text-white dark:bg-green-500'
+                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed'
+                          }`}
+                        >
+                          Anteilig
+                        </button>
                       </div>
-                    )}
+                    </div>
                     {!isFullyMarked && customQuantityMode[item.id] && (
                       <div className="space-y-2">
                         {/* Fraction Buttons */}
@@ -1402,6 +1413,31 @@ export default function SplitForm({
 
       {/* Total Summary */}
       <div className="border-t dark:border-gray-600 pt-3 sm:pt-4 space-y-1.5 sm:space-y-2">
+        {/* Selected Items Details */}
+        {Object.keys(selectedItems).length > 0 && (
+          <div className="space-y-1.5 pb-2 border-b dark:border-gray-600">
+            <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
+              Deine Positionen:
+            </div>
+            {items
+              .filter(item => selectedItems[item.id] > 0)
+              .map((item) => {
+                const quantity = selectedItems[item.id]
+                const itemTotal = item.pricePerUnit * quantity
+                return (
+                  <div key={item.id} className="flex justify-between text-xs sm:text-sm">
+                    <span className="text-gray-600 dark:text-gray-400">
+                      {formatQuantity(quantity)}× {item.name}
+                    </span>
+                    <span className="font-medium text-gray-900 dark:text-gray-200">
+                      {formatEUR(itemTotal)}
+                    </span>
+                  </div>
+                )
+              })}
+          </div>
+        )}
+
         <div className="flex justify-between text-xs sm:text-sm">
           <span className="text-gray-600 dark:text-gray-400">Zwischensumme:</span>
           <span className="font-medium text-gray-900 dark:text-gray-200">{formatEUR(subtotal)}</span>
