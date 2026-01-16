@@ -49,11 +49,16 @@ export default function StatusPageClient({
   const fetchSelections = async () => {
     const timestamp = new Date().toISOString()
     console.log(`🔍 [StatusPageClient ${timestamp}] ===== FETCHING SELECTIONS START =====`)
-    console.log(`[StatusPageClient] 📍 Fetching from: /api/bills/${billId}/selections`)
+    console.log(`[StatusPageClient] 📍 Fetching from: /api/bills/${billId}/live-selections`)
 
     try {
-      const response = await fetch(`/api/bills/${billId}/selections`)
+      const response = await fetch(`/api/bills/${billId}/live-selections`)
       console.log(`[StatusPageClient] 📡 Response status:`, response.status, response.statusText)
+      console.log(`[StatusPageClient] 📡 Response headers:`, {
+        'X-Debug-Count': response.headers.get('X-Debug-Count'),
+        'X-Debug-BillId': response.headers.get('X-Debug-BillId'),
+        'Content-Type': response.headers.get('Content-Type')
+      })
 
       const allData = await response.json()
       console.log(`[StatusPageClient] 📥 RAW DATA from API:`, {

@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     console.log('[DEBUG] Test 2: Fetching all selections (limit 10)...')
     const { data: allSelections, error: allError } = await supabaseAdmin
       .from('Selection')
-      .select('id, billId, friendName, status, paid, paymentMethod')
+      .select('id, billId, sessionId, friendName, status, paid, paymentMethod, createdAt')
       .limit(10)
 
     console.log('[DEBUG] All selections:', {
@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
     console.log('[DEBUG] Test 4: Fetching SELECTING selections...')
     const { data: selectingOnly, error: selectingError } = await supabaseAdmin
       .from('Selection')
-      .select('id, billId, friendName, status')
+      .select('id, billId, sessionId, friendName, status, createdAt')
       .eq('status', 'SELECTING')
       .limit(10)
 
@@ -94,10 +94,12 @@ export async function GET(request: NextRequest) {
           data: allSelections?.map(s => ({
             id: s.id,
             billId: s.billId,
+            sessionId: s.sessionId,
             friendName: s.friendName,
             status: s.status,
             paid: s.paid,
-            paymentMethod: s.paymentMethod
+            paymentMethod: s.paymentMethod,
+            createdAt: s.createdAt
           })),
           error: allError
         },
