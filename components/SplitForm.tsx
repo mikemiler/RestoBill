@@ -871,9 +871,11 @@ export default function SplitForm({
                 className={`border rounded-lg p-2.5 sm:p-3 transition-colors relative ${
                   isOverselected
                     ? 'border-red-500 dark:border-red-600 bg-red-50 dark:bg-red-900/20'
-                    : isFullyMarked
+                    : isEditingThis
+                    ? 'border-gray-200 dark:border-gray-600 dark:bg-gray-700/50'
+                    : selectedItems[item.id] > 0
                     ? 'border-green-500 dark:border-green-600 bg-green-50 dark:bg-green-900/20'
-                    : customQuantityMode[item.id] || isEditingThis
+                    : customQuantityMode[item.id]
                     ? 'border-gray-200 dark:border-gray-600 dark:bg-gray-700/50'
                     : 'border-gray-200 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500 dark:bg-gray-700/50 cursor-pointer'
                 }`}
@@ -1033,8 +1035,8 @@ export default function SplitForm({
                               )
                             } else if (badge.type === 'live') {
                               return (
-                                <div key={`live-${idx}`} className="bg-blue-500 dark:bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
-                                  <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                                <div key={`live-${idx}`} className="bg-gray-500 dark:bg-gray-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
                                   <span className="font-medium">{badge.data.guestName}</span>
                                   <span className="opacity-90">({formatQuantity(badge.data.quantity)}×)</span>
                                 </div>
@@ -1056,10 +1058,14 @@ export default function SplitForm({
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex-1 pr-2">
                         <div className="flex items-center gap-2">
-                          {isFullyMarked && !isOverselected && (
-                            <span className="text-green-600 dark:text-green-400 text-lg">✓</span>
-                          )}
-                          <h3 className="font-medium text-gray-900 dark:text-gray-100 text-sm sm:text-base">
+                          <h3 className={`font-medium text-sm sm:text-base ${
+                            selectedItems[item.id] > 0
+                              ? 'text-green-600 dark:text-green-400'
+                              : 'text-gray-900 dark:text-gray-100'
+                          }`}>
+                            {selectedItems[item.id] > 0 && (
+                              <span className="font-bold">{formatQuantity(selectedItems[item.id])}× </span>
+                            )}
                             {item.name}
                           </h3>
                         </div>
@@ -1091,44 +1097,71 @@ export default function SplitForm({
 
                 {!isEditingThis && (
                   <div className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 w-full sm:w-auto">
-                        Menge:
-                      </span>
-                      <div className="flex gap-1.5 sm:gap-2 flex-wrap">
-                        {quantityOptions.map((qty) => (
+                    {isFullyMarked && !isOverselected && selectedItems[item.id] === 0 ? (
+                      // Show info when fully marked by OTHERS (you haven't selected)
+                      <div className="flex items-center h-[38px] sm:h-[42px]">
+                        <div className="flex-1 flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
+                          <span className="text-gray-500 dark:text-gray-400 text-sm">✓</span>
+                          <span className="text-xs sm:text-sm text-gray-600 dark:text-gray-300">
+                            Vollständig ausgewählt
+                          </span>
+                        </div>
+                      </div>
+                    ) : isFullyMarked && !isOverselected && selectedItems[item.id] > 0 ? (
+                      // Show X button + hint in one row when fully marked and YOU selected something
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleItemQuantityChange(item.id, 0)}
+                          className="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors min-w-[2.5rem] bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500"
+                        >
+                          ✗
+                        </button>
+                        <div className="flex items-center gap-1.5 px-2 py-1 sm:py-1.5">
+                          <span className="text-gray-400 dark:text-gray-500 text-sm">✓</span>
+                          <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 italic">
+                            Vollständig ausgewählt
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      // Show quantity buttons only if not fully marked
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex gap-1.5 sm:gap-2 flex-wrap">
+                          {quantityOptions.map((qty) => (
+                            <button
+                              key={qty}
+                              type="button"
+                              onClick={() => handleItemQuantityChange(item.id, qty)}
+                              className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors min-w-[2.5rem] ${
+                                selectedItems[item.id] === qty && !customQuantityMode[item.id]
+                                  ? 'bg-green-600 text-white dark:bg-green-500'
+                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500'
+                              }`}
+                            >
+                              {qty === 0 ? '✗' : `${qty}x`}
+                            </button>
+                          ))}
                           <button
-                            key={qty}
                             type="button"
-                            onClick={() => handleItemQuantityChange(item.id, qty)}
-                            className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors min-w-[2.5rem] ${
-                              selectedItems[item.id] === qty && !customQuantityMode[item.id]
+                            onClick={() => handleCustomQuantityToggle(item.id)}
+                            className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+                              customQuantityMode[item.id]
                                 ? 'bg-green-600 text-white dark:bg-green-500'
                                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500'
                             }`}
                           >
-                            {qty === 0 ? '✗' : `${qty}x`}
+                            Anteilig
                           </button>
-                        ))}
-                        <button
-                          type="button"
-                          onClick={() => handleCustomQuantityToggle(item.id)}
-                          className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
-                            customQuantityMode[item.id]
-                              ? 'bg-green-600 text-white dark:bg-green-500'
-                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500'
-                          }`}
-                        >
-                          Anteilig
-                        </button>
+                        </div>
+                        {selectedItems[item.id] > 0 && !customQuantityMode[item.id] && (
+                          <span className="ml-auto text-xs sm:text-sm font-semibold text-green-600 dark:text-green-400">
+                            {formatEUR(item.pricePerUnit * selectedItems[item.id])}
+                          </span>
+                        )}
                       </div>
-                      {selectedItems[item.id] > 0 && !customQuantityMode[item.id] && (
-                        <span className="ml-auto text-xs sm:text-sm font-semibold text-green-600 dark:text-green-400">
-                          {formatEUR(item.pricePerUnit * selectedItems[item.id])}
-                        </span>
-                      )}
-                    </div>
-                    {customQuantityMode[item.id] && (
+                    )}
+                    {!isFullyMarked && customQuantityMode[item.id] && (
                       <div className="space-y-2">
                         {/* Fraction Buttons */}
                         <div>
