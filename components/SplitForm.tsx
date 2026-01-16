@@ -1172,7 +1172,7 @@ export default function SplitForm({
                         </button>
                       </div>
                     </div>
-                    {!isFullyMarked && customQuantityMode[item.id] && (
+                    {customQuantityMode[item.id] && (
                       <div className="space-y-2">
                         {/* Fraction Buttons */}
                         <div>
@@ -1241,7 +1241,7 @@ export default function SplitForm({
                                   }))
                                 }
                               }}
-                              className="w-32 px-2.5 py-1.5 border border-gray-300 dark:border-gray-500 rounded-lg focus:ring-2 focus:ring-green-500 dark:focus:ring-green-400 focus:border-transparent text-xs dark:bg-gray-600 dark:text-gray-100"
+                              className="w-36 px-2.5 py-1.5 border border-gray-300 dark:border-gray-500 rounded-lg focus:ring-2 focus:ring-green-500 dark:focus:ring-green-400 focus:border-transparent text-xs dark:bg-gray-600 dark:text-gray-100"
                             />
                             <span className="text-xs text-gray-500 dark:text-gray-400">Personen</span>
                           </div>
@@ -1261,7 +1261,7 @@ export default function SplitForm({
                               value={customQuantityInput[item.id] || ''}
                               onChange={(e) => handleCustomQuantityInputChange(item.id, e.target.value)}
                               placeholder={`Max ${remainingQty}`}
-                              className="flex-1 px-2.5 sm:px-3 py-2 border border-gray-300 dark:border-gray-500 rounded-lg focus:ring-2 focus:ring-green-500 dark:focus:ring-green-400 focus:border-transparent text-xs sm:text-sm dark:bg-gray-600 dark:text-gray-100"
+                              className="w-36 px-2.5 py-1.5 border border-gray-300 dark:border-gray-500 rounded-lg focus:ring-2 focus:ring-green-500 dark:focus:ring-green-400 focus:border-transparent text-xs dark:bg-gray-600 dark:text-gray-100"
                             />
                             {selectedItems[item.id] > 0 && (
                               <span className="text-xs sm:text-sm font-semibold text-green-600 dark:text-green-400 whitespace-nowrap">
