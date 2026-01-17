@@ -58,7 +58,7 @@ export default async function SplitBillPage({
           <div className="mb-2 md:mb-3 flex justify-center">
             <Image
               src="/logo.png"
-              alt="Kill The Bill Logo"
+              alt="WerHatteWas Logo"
               width={50}
               height={50}
               className="app-logo md:w-[60px] md:h-[60px]"

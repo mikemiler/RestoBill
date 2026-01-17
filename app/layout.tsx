@@ -3,7 +3,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
 
 export const metadata: Metadata = {
-  title: "Kill The Bill - Rechnung einfach teilen",
+  title: "WerHatteWas - Rechnung einfach teilen",
   description: "Teile Restaurant-Rechnungen einfach mit deinen Freunden. Foto hochladen, Items auswählen, per PayPal bezahlen.",
   icons: {
     icon: '/logo.png',

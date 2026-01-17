@@ -187,7 +187,7 @@ export default function CreateBillPage() {
           <div className="mb-4 flex justify-center">
             <Image
               src="/logo.png"
-              alt="Kill The Bill Logo"
+              alt="WerHatteWas Logo"
               width={80}
               height={80}
               className="app-logo"

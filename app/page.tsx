@@ -11,7 +11,7 @@ export default function Home() {
         <div className="mb-6 flex justify-center">
           <Image
             src="/logo.png"
-            alt="Kill The Bill Logo"
+            alt="WerHatteWas Logo"
             width={150}
             height={150}
             priority
@@ -19,7 +19,7 @@ export default function Home() {
           />
         </div>
         <h1 className="text-5xl font-bold mb-4 text-gray-900 dark:text-gray-50">
-          Kill The Bill
+          WerHatteWas
         </h1>
         <p className="text-xl text-gray-600 dark:text-gray-300 mb-8">
           Restaurant-Rechnungen einfach teilen
