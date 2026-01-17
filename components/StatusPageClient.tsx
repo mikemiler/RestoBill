@@ -5,6 +5,7 @@ import { useRealtimeSubscription, useDebounce } from '@/lib/hooks'
 import { debugLog, debugError } from '@/lib/debug'
 import GuestSelectionsList from './GuestSelectionsList'
 import SplitFormContainer from './SplitFormContainer'
+import DonationBanner from './DonationBanner'
 
 interface BillItem {
   id: string
@@ -250,6 +251,9 @@ export default function StatusPageClient({
           isOwner={true}
         />
       </div>
+
+      {/* Donation Banner */}
+      <DonationBanner />
     </>
   )
 }

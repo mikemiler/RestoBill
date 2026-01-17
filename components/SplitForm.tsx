@@ -1280,6 +1280,7 @@ export default function SplitForm({
                           </span>
                           <div className="flex gap-1.5 flex-wrap">
                             {[
+                              { label: '1/2', value: 1/2 },
                               { label: '1/3', value: 1/3 },
                               { label: '1/4', value: 1/4 },
                               { label: '1/5', value: 1/5 },
