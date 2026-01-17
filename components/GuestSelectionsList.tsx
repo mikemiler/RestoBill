@@ -257,7 +257,7 @@ export default function GuestSelectionsList({
                   disabled={loadingSelectionId === selection.id}
                   className="w-full px-4 py-2.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 dark:bg-green-500 dark:hover:bg-green-600 dark:disabled:bg-gray-600 text-white rounded-lg text-sm font-semibold transition-colors"
                 >
-                  {loadingSelectionId === selection.id ? 'Bestätigen...' : '✓ Bezahlt'}
+                  {loadingSelectionId === selection.id ? 'Bestätigen...' : '✓ Zahlung bestätigen'}
                 </button>
               ) : (
                 <button
@@ -265,7 +265,7 @@ export default function GuestSelectionsList({
                   disabled={loadingSelectionId === selection.id}
                   className="w-full px-4 py-2.5 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 dark:bg-gray-700 dark:hover:bg-gray-600 dark:disabled:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium transition-colors"
                 >
-                  {loadingSelectionId === selection.id ? 'Zurücksetzen...' : '↻ Nicht bezahlt'}
+                  {loadingSelectionId === selection.id ? 'Zurücksetzen...' : '↻ Zahlung zurücksetzen'}
                 </button>
                 )}
               </div>

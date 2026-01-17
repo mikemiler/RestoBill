@@ -41,3 +41,10 @@ next-env.d.ts
 # prisma
 /prisma/dev.db
 /prisma/dev.db-journal
+
+# SQL files (database scripts)
+*.sql
+
+# Markdown files (except CLAUDE.md)
+*.md
+!CLAUDE.md

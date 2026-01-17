@@ -42,8 +42,9 @@ interface DatabaseSelection {
   itemQuantities: Record<string, number>
   tipAmount: number
   paid: boolean
-  paymentMethod: 'PAYPAL' | 'CASH'
+  paymentMethod: 'PAYPAL' | 'CASH' | null  // null = still selecting (live selection)
   status: 'SELECTING' | 'PAID'
+  sessionId?: string  // Optional - only present for live selections
   createdAt: string
 }
 
@@ -385,17 +386,27 @@ export default function SplitForm({
     try {
       const currentSessionId = sessionId || getOrCreateSessionId()
 
-      // Filter out current user's own live selection (but keep their PAID selections)
+      // CRITICAL: Filter out current user's own live selection from BOTH sources
+      // selections prop contains ALL selections (including own live selection with paymentMethod=null)
+      // We need to exclude own live selection but keep own submitted selections (paymentMethod set)
+      const otherSelections = selections.filter(sel => {
+        const isOwnLiveSelection = sel.paymentMethod === null &&
+          'sessionId' in sel &&
+          (sel as any).sessionId === currentSessionId
+        return !isOwnLiveSelection
+      })
+
+      // Filter out current user's own live selection from liveSelections
       const otherLiveSelections = liveSelections.filter(sel => sel.sessionId !== currentSessionId)
 
       // IMPORTANT: Filter out live selections that have already been converted to PAID
       // This prevents double-counting when a selection transitions from SELECTING → PAID
       // The same Selection ID exists in both lists during the transition period
-      const paidSelectionIds = new Set(selections.map(s => s.id))
+      const paidSelectionIds = new Set(otherSelections.map(s => s.id))
       const validLiveSelections = otherLiveSelections.filter(sel => !paidSelectionIds.has(sel.id))
 
-      // Combine PAID selections (including own) and OTHER users' live selections (excluding converted ones)
-      const allSelections = [...selections, ...validLiveSelections]
+      // Combine other selections (excluding own live) and OTHER users' live selections
+      const allSelections = [...otherSelections, ...validLiveSelections]
 
       // Calculate claimed quantities per item from ALL selections (excluding own live)
       const claimed: Record<string, number> = {}
@@ -418,7 +429,8 @@ export default function SplitForm({
       })
 
       debugLog('[SplitForm] Calculated remaining quantities:', {
-        paidSelectionsCount: selections.length,
+        originalSelectionsCount: selections.length,
+        otherSelectionsCount: otherSelections.length,
         liveSelectionsCount: liveSelections.length,
         otherLiveSelectionsCount: otherLiveSelections.length,
         validLiveSelectionsCount: validLiveSelections.length,

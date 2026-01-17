@@ -22,6 +22,7 @@ interface Selection {
   paid: boolean
   paymentMethod: 'PAYPAL' | 'CASH' | null
   status: 'SELECTING' | 'PAID'
+  sessionId?: string  // Optional - only present for live selections
   createdAt: string
 }
 
@@ -119,6 +120,8 @@ export default function StatusPageClient({
   const debouncedFetchItems = useDebounce(fetchItems, 500) // Wait for DB replication + cache
 
   // Recalculate remaining quantities when items or selections change
+  // IMPORTANT: Exclude owner's own selection from the calculation (like in SplitForm)
+  // This allows the owner to change their own selection without being blocked
   useEffect(() => {
     debugLog('🔄 [StatusPageClient DEBUG] ===== RECALCULATE REMAINING QUANTITIES =====')
     debugLog('[StatusPageClient DEBUG] Items state changed, recalculating:', {
@@ -131,10 +134,28 @@ export default function StatusPageClient({
         pricePerUnit: item.pricePerUnit
       }))
     })
+
+    // Get owner's sessionId from localStorage (like guests do)
+    const ownerSessionId = typeof window !== 'undefined'
+      ? localStorage.getItem('userSessionId')
+      : null
+
     const claimed: Record<string, number> = {}
 
-    // Calculate claimed quantities from ALL selections
+    // Calculate claimed quantities from ALL selections EXCEPT owner's own live selection
+    // This allows the owner to freely change their own selection
     selections.forEach((selection) => {
+      // Skip owner's own live selection (paymentMethod=null means still selecting)
+      const isOwnerLiveSelection = selection.paymentMethod === null &&
+        ownerSessionId &&
+        'sessionId' in selection &&
+        (selection as any).sessionId === ownerSessionId
+
+      if (isOwnerLiveSelection) {
+        debugLog('[StatusPageClient DEBUG] Skipping owner\'s own live selection from claimed calculation')
+        return
+      }
+
       const itemQuantities = selection.itemQuantities as Record<string, number> | null
       if (itemQuantities && typeof itemQuantities === 'object') {
         Object.entries(itemQuantities).forEach(([itemId, quantity]) => {
@@ -151,7 +172,11 @@ export default function StatusPageClient({
       remaining[item.id] = Math.max(0, item.quantity - claimedQty)
     })
 
-    debugLog('[StatusPageClient DEBUG] ✅ Remaining quantities calculated:', remaining)
+    debugLog('[StatusPageClient DEBUG] ✅ Remaining quantities calculated:', {
+      ownerSessionId,
+      claimed,
+      remaining
+    })
     setItemRemainingQuantities(remaining)
     debugLog('🔄 [StatusPageClient DEBUG] ===== RECALCULATE REMAINING QUANTITIES END =====')
   }, [items, selections])

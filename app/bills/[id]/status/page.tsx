@@ -9,6 +9,7 @@ import CopyButton from '@/components/CopyButton'
 import QRCode from '@/components/QRCode'
 import EditablePayerName from '@/components/EditablePayerName'
 import StatusPageClient from '@/components/StatusPageClient'
+import WhatsAppShareButton from '@/components/WhatsAppShareButton'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -105,6 +106,9 @@ export default async function BillStatusPage({
                 className="flex-1 px-3 sm:px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 dark:text-gray-200 text-xs sm:text-sm"
               />
               <CopyButton text={shareUrl} />
+            </div>
+            <div className="mb-4">
+              <WhatsAppShareButton shareUrl={shareUrl} />
             </div>
             <div className="share-qr-section">
               <p className="text-sm text-gray-600 dark:text-gray-300 mb-3 text-center">

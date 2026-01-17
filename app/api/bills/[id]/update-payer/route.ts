@@ -8,7 +8,7 @@ export async function PUT(
 ) {
   try {
     const body = await request.json()
-    const { payerName } = body
+    const { payerName, paypalHandle } = body
 
     // Validation
     if (!payerName) {
@@ -27,10 +27,26 @@ export async function PUT(
       )
     }
 
-    // Update bill
+    // Validate PayPal handle if provided
+    let sanitizedPaypalHandle = null
+    if (paypalHandle && typeof paypalHandle === 'string') {
+      const handleRegex = /^[A-Za-z0-9_-]+$/
+      if (!handleRegex.test(paypalHandle)) {
+        return NextResponse.json(
+          { error: 'PayPal Username darf nur Buchstaben, Zahlen, _ und - enthalten' },
+          { status: 400 }
+        )
+      }
+      sanitizedPaypalHandle = paypalHandle.trim()
+    }
+
+    // Update bill with both name and PayPal handle
     const { data: bill, error } = await supabaseAdmin
       .from('Bill')
-      .update({ payerName: sanitizedName })
+      .update({
+        payerName: sanitizedName,
+        paypalHandle: sanitizedPaypalHandle,
+      })
       .eq('id', params.id)
       .select()
       .single()
@@ -42,11 +58,12 @@ export async function PUT(
     return NextResponse.json({
       success: true,
       payerName: bill.payerName,
+      paypalHandle: bill.paypalHandle,
     })
   } catch (error) {
-    console.error('Error updating payer name:', error)
+    console.error('Error updating payer info:', error)
     return NextResponse.json(
-      { error: 'Fehler beim Aktualisieren des Namens' },
+      { error: 'Fehler beim Aktualisieren der Daten' },
       { status: 500 }
     )
   }
