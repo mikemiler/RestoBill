@@ -94,10 +94,9 @@ npx ts-node test-supabase-connection.ts  # Verify Supabase connection
 **Payer Flow:**
 1. Create bill → `POST /api/bills/create` → Get billId + shareToken
 2. Upload image → `POST /api/bills/[id]/upload` → Claude analyzes items
-3. Review items → `/bills/[id]/review` → View analyzed items, share link with QR code
-4. Edit items (optional) → API routes in `/api/bill-items/` (only if no selections exist)
+3. Status page → `/bills/[id]/status` → View analyzed items, share link with QR code, monitor payments
+4. Edit items (optional) → API routes in `/api/bill-items/` (editable at any time)
 5. Share link with friends → `/split/[shareToken]` (via link copy, WhatsApp, or QR code)
-6. Monitor status → `/bills/[id]/status` → See live selections and payment progress
 
 **Friend Flow (PayPal):**
 1. Open share link → Server-rendered page with bill data
@@ -201,14 +200,13 @@ All routes follow RESTful patterns:
 - `/split/[token]/page.tsx` - Public split page (no JS needed)
 - `/split/[token]/cash-confirmed/page.tsx` - Cash payment confirmation page
 - `/bills/[id]/status/page.tsx` - Status dashboard with real-time updates
-- `/bills/[id]/review/page.tsx` - Review analyzed items after upload
 
 **Redirect Pages (client-side):**
 - `/payment-redirect/page.tsx` - Intermediary page that redirects to PayPal (helps keep browser open instead of opening PayPal app)
 
 **Client Components (interactive):**
 - `SplitFormContainer` - Container managing guest selections and form display (uses useRealtimeSubscription)
-- `SplitForm` - Item selection with quantity buttons, live selection tracking (uses useRealtimeSubscription)
+- `SplitForm` - Item selection with quantity buttons, live selection tracking, editable name display (uses useRealtimeSubscription)
 - `SelectionSummary` - Display all previous selections from database via sessionId (multiple payments)
 - `GuestSelectionsList` - Accordion-based guest list with collapsible details, payment confirmation buttons (payer only)
 - `BillItemsEditor` - Add/edit/delete items (payer only)
@@ -221,6 +219,8 @@ All routes follow RESTful patterns:
 - `CopyButton`, `RefreshButton` - Interactive controls
 - `ThemeProvider` - Enforces dark mode globally
 - `StatusPageClient` - Status dashboard container (removed PaymentOverview, uses GuestSelectionsList)
+- `EditableGuestName` - Editable guest name component (localStorage only, for guests)
+- `EditablePayerName` - Editable payer name component (DB + localStorage, for owner)
 
 **Pattern:** Minimize client components. Use server components for static/data-heavy pages.
 
@@ -282,7 +282,56 @@ All routes follow RESTful patterns:
 - **No localStorage:** All selection data comes from database (single source of truth)
 - **Session tracking:** Guest selections are filtered by sessionId (unique per browser)
 
-### 11. Payment Status Terminology
+### 11. Owner Selection Filtering (Remaining Quantities)
+**CRITICAL:** Owner's own live selection must be excluded from remaining quantity calculations to allow free selection changes.
+
+**Problem:** If owner's own selection is counted in "claimed" quantities, buttons become disabled after first selection.
+- Example: Item has quantity 2 → Owner selects 1x → remaining becomes 1 (2-1) → 2x button disabled ❌
+
+**Solution:** Filter out owner's own live selection in both `StatusPageClient` and `SplitForm`:
+
+**StatusPageClient.tsx:**
+```typescript
+// Get owner's sessionId from localStorage
+const ownerSessionId = localStorage.getItem('userSessionId')
+
+// Filter out owner's own live selection (paymentMethod=null)
+selections.forEach((selection) => {
+  const isOwnerLiveSelection = selection.paymentMethod === null &&
+    ownerSessionId &&
+    selection.sessionId === ownerSessionId
+  if (isOwnerLiveSelection) return // Skip
+  // ... add to claimed quantities
+})
+```
+
+**SplitForm.tsx:**
+```typescript
+// Filter out owner's own live selection from selections prop
+const otherSelections = selections.filter(sel => {
+  const isOwnLiveSelection = sel.paymentMethod === null &&
+    'sessionId' in sel &&
+    sel.sessionId === currentSessionId
+  return !isOwnLiveSelection
+})
+
+// Filter out from liveSelections array
+const otherLiveSelections = liveSelections.filter(sel =>
+  sel.sessionId !== currentSessionId
+)
+
+// Combine for claimed calculation
+const allSelections = [...otherSelections, ...validLiveSelections]
+```
+
+**Key Points:**
+- Only filter out **live** selections (`paymentMethod=null`)
+- Keep submitted selections (`paymentMethod` set) in calculations
+- Use `sessionId` for identification (stored in localStorage)
+- Filter in **both** `selections` prop and `liveSelections` state
+- This allows owner to freely toggle between 0x, 1x, 2x, etc. ✅
+
+### 12. Payment Status Terminology
 **CRITICAL:** Status field is NO LONGER used for payment tracking. Use `paid` flag only.
 
 **New Terminology (2024):**
@@ -310,10 +359,23 @@ All routes follow RESTful patterns:
 - GuestSelectionsList Badge (Owner): "⏳ Eingereicht" (yellow) → "✓ Zahlung bestätigt" (green)
 - GuestSelectionsList Badge (Guest): "⏳ Eingereicht" (always yellow, no confirmation visible to guests)
 - Payment Method Badge: "💵 Bar" or "💳 PayPal" (shown when paymentMethod is set)
-- Button text (Owner only): "✓ Zahlung bestätigen" / "↻ Zahlung zurücksetzen"
+- Button text (Owner only): "✓ Zahlung bestätigen" (action to confirm) / "↻ Zahlung zurücksetzen" (action to reset)
 - NO item-level "Bereits bezahlt" badges anymore
 - NO payment buttons for guests - only PayPal link (optional) + cash payment info
 - NO date/time display in guest list (removed for cleaner UI)
+
+**Editable Name Components:**
+- **Guests:** `EditableGuestName` in purple box above item selection
+  - Shows "Du bist: [Name]" with edit icon
+  - Saves to localStorage only
+  - Updates live selection via API on change
+- **Owner (Payer):** `EditablePayerName` in blue box above item selection
+  - Shows "Für mich: [Name]" with edit icon
+  - Saves to database via `/api/bills/[id]/update-payer`
+  - Updates localStorage and live selection on change
+  - Also updates `payerName` in Bill table
+- Both positioned at top of SplitForm component
+- Edit UI: inline input with checkmark/X buttons, Enter to save, Escape to cancel
 
 **GuestSelectionsList Accordion UI:**
 - Compact collapsed view showing: Name, status badges, payment method, total amount, chevron icon
@@ -452,14 +514,14 @@ All routes follow RESTful patterns:
    - Opens WhatsApp with `https://wa.me/?text=...`
 
 3. **QR Code Generator**
-   - Displays on `/bills/[id]/review` page
+   - Displays on `/bills/[id]/status` page
    - Uses `react-qr-code` library (QRCodeSVG component)
    - Level "H" (high) error correction
    - Configurable size (default 200px)
    - Friends can scan QR code to open split page instantly
 
 **Usage Pattern:**
-- Review page shows: Copy button + WhatsApp button + QR code
+- Status page shows: Copy button + WhatsApp button + QR code
 - All three methods open same share link: `/split/[shareToken]`
 - QR codes especially useful for in-person bill splitting (restaurant table)
 
@@ -1025,8 +1087,7 @@ app/
 ├── payment-redirect/page.tsx          # PayPal redirect intermediary (keeps browser open)
 ├── bills/[id]/
 │   ├── upload/page.tsx               # Image upload
-│   ├── review/page.tsx               # Review analyzed items with share link
-│   └── status/page.tsx               # Payer dashboard with live updates
+│   └── status/page.tsx               # Payer dashboard with live updates and share link
 ├── split/[token]/
 │   ├── page.tsx                      # Public split page (server)
 │   └── cash-confirmed/page.tsx       # Cash payment confirmation

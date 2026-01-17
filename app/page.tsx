@@ -29,10 +29,17 @@ export default function Home() {
           <h2 className="text-2xl font-semibold mb-4 text-gray-800 dark:text-gray-100">
             So funktioniert&apos;s
           </h2>
+
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6">
+            <p className="text-sm text-blue-800 dark:text-blue-300">
+              <strong>💡 Wichtig:</strong> Diese Schritte sind nur für dich als Bezahler. Deine Gäste bekommen später einen Link und wählen dort ihre Positionen aus.
+            </p>
+          </div>
+
           <ol className="text-left space-y-4 text-gray-700 dark:text-gray-200">
             <li className="flex items-start">
               <span className="font-bold text-blue-600 dark:text-blue-400 mr-3">1.</span>
-              <span>Foto der Restaurant-Rechnung hochladen</span>
+              <span>Rechnung fotografieren und hochladen</span>
             </li>
             <li className="flex items-start">
               <span className="font-bold text-blue-600 dark:text-blue-400 mr-3">2.</span>
@@ -40,15 +47,15 @@ export default function Home() {
             </li>
             <li className="flex items-start">
               <span className="font-bold text-blue-600 dark:text-blue-400 mr-3">3.</span>
-              <span>Link an Freunde teilen</span>
+              <span>Link an deine Gäste teilen (WhatsApp, QR-Code, etc.)</span>
             </li>
             <li className="flex items-start">
               <span className="font-bold text-blue-600 dark:text-blue-400 mr-3">4.</span>
-              <span>Jeder wählt seine Positionen aus</span>
+              <span>Jeder Gast wählt seine Positionen aus und zahlt dich zurück (PayPal oder Bar)</span>
             </li>
             <li className="flex items-start">
               <span className="font-bold text-blue-600 dark:text-blue-400 mr-3">5.</span>
-              <span>Direkt per PayPal bezahlen - fertig!</span>
+              <span>Du bestätigst die Zahlungseingänge - fertig!</span>
             </li>
           </ol>
         </div>
