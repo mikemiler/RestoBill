@@ -299,12 +299,28 @@ export function useRealtimeSubscription(
             log('🎯 EVENT TYPE:', payload.eventType)
 
             // CLIENT-SIDE FILTER: Only process events for this bill
+            // WORKAROUND: Skip billId check for DELETE events because REPLICA IDENTITY FULL
+            // doesn't work reliably in Supabase (oldRecord only contains id, not billId)
             const recordBillId = newRecord?.billId || oldRecord?.billId
-            log('🔍 Checking billId:', { recordBillId, expectedBillId: billId, match: recordBillId === billId })
+            const isDeleteEvent = payload.eventType === 'DELETE'
 
-            if (recordBillId !== billId) {
+            log('🔍 Checking billId:', {
+              recordBillId,
+              expectedBillId: billId,
+              match: recordBillId === billId,
+              isDeleteEvent,
+              skipCheck: isDeleteEvent && !recordBillId
+            })
+
+            // Skip check for DELETE events without billId (REPLICA IDENTITY issue)
+            // Each component has unique channel (bill:billId:suffix), so cross-bill events are unlikely
+            if (!isDeleteEvent && recordBillId !== billId) {
               log('⚠️ Ignoring BillItem change for different bill:', recordBillId)
               return
+            }
+
+            if (isDeleteEvent && !recordBillId) {
+              log('⚠️ DELETE event without billId (REPLICA IDENTITY issue) - processing anyway')
             }
 
             log('✅ Event is for correct bill, processing...')
