@@ -7,6 +7,8 @@ import { formatEUR } from '@/lib/utils'
 import { getOrCreateSessionId } from '@/lib/sessionStorage'
 import { useRealtimeSubscription, useDebounce } from '@/lib/hooks'
 import { debugLog, debugError } from '@/lib/debug'
+import EditableGuestName from './EditableGuestName'
+import EditablePayerName from './EditablePayerName'
 
 // Browser-only Supabase client
 const supabase = typeof window !== 'undefined'
@@ -858,6 +860,67 @@ export default function SplitForm({
 
   return (
     <div className="space-y-4 sm:space-y-5 md:space-y-6 pb-32">
+
+      {/* Editable Guest Name - Only for guests, not owner */}
+      {friendName && !isOwner && (
+        <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 sm:p-4 border border-purple-200 dark:border-purple-700">
+          <EditableGuestName
+            initialName={friendName}
+            onNameChange={(newName) => {
+              setFriendName(newName)
+              // Update live selection with new name immediately
+              const currentSessionId = sessionId || getOrCreateSessionId()
+              if (currentSessionId && Object.keys(selectedItems).length > 0) {
+                fetch('/api/live-selections/update', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    billId,
+                    itemId: Object.keys(selectedItems)[0], // Any item ID, just to trigger update
+                    sessionId: currentSessionId,
+                    guestName: newName,
+                    quantity: selectedItems[Object.keys(selectedItems)[0]],
+                    tipAmount: tipPercent === -1
+                      ? parseFloat(customTip) || 0
+                      : (subtotal * tipPercent) / 100
+                  })
+                }).catch(err => console.error('Failed to update name in live selection:', err))
+              }
+            }}
+          />
+        </div>
+      )}
+
+      {/* Owner Name Display - Editable */}
+      {friendName && isOwner && (
+        <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 sm:p-4 border border-blue-200 dark:border-blue-700">
+          <EditablePayerName
+            billId={billId}
+            initialName={friendName}
+            onNameChange={(newName) => {
+              setFriendName(newName)
+              // Update live selection with new name immediately
+              const currentSessionId = sessionId || getOrCreateSessionId()
+              if (currentSessionId && Object.keys(selectedItems).length > 0) {
+                fetch('/api/live-selections/update', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    billId,
+                    itemId: Object.keys(selectedItems)[0],
+                    sessionId: currentSessionId,
+                    guestName: newName,
+                    quantity: selectedItems[Object.keys(selectedItems)[0]],
+                    tipAmount: tipPercent === -1
+                      ? parseFloat(customTip) || 0
+                      : (subtotal * tipPercent) / 100
+                  })
+                }).catch(err => console.error('Failed to update name in live selection:', err))
+              }
+            }}
+          />
+        </div>
+      )}
 
       <div>
         <label className="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 sm:mb-3">

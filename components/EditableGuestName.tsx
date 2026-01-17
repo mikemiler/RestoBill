@@ -1,69 +1,47 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
-interface EditablePayerNameProps {
-  billId: string
+interface EditableGuestNameProps {
   initialName: string
-  onNameChange?: (name: string) => void
+  onNameChange: (name: string) => void
 }
 
-export default function EditablePayerName({
-  billId,
+export default function EditableGuestName({
   initialName,
   onNameChange,
-}: EditablePayerNameProps) {
+}: EditableGuestNameProps) {
   const [isEditing, setIsEditing] = useState(false)
-  const [payerName, setPayerName] = useState(initialName)
+  const [guestName, setGuestName] = useState(initialName)
   const [editValue, setEditValue] = useState(initialName)
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const handleSave = async () => {
+  // Update local state when initialName changes
+  useEffect(() => {
+    setGuestName(initialName)
+    setEditValue(initialName)
+  }, [initialName])
+
+  const handleSave = () => {
     if (!editValue.trim()) {
       setError('Name darf nicht leer sein')
       return
     }
 
-    setLoading(true)
+    const trimmedName = editValue.trim()
+    setGuestName(trimmedName)
+    setIsEditing(false)
     setError('')
 
-    try {
-      const response = await fetch(`/api/bills/${billId}/update-payer`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          payerName: editValue.trim(),
-        }),
-      })
+    // Update localStorage
+    localStorage.setItem('friendName', trimmedName)
 
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Fehler beim Speichern')
-      }
-
-      setPayerName(data.payerName)
-      setIsEditing(false)
-
-      // Update localStorage
-      localStorage.setItem('payerName', data.payerName)
-
-      // Notify parent component if callback is provided
-      if (onNameChange) {
-        onNameChange(data.payerName)
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ein Fehler ist aufgetreten')
-    } finally {
-      setLoading(false)
-    }
+    // Notify parent component
+    onNameChange(trimmedName)
   }
 
   const handleCancel = () => {
-    setEditValue(payerName)
+    setEditValue(guestName)
     setIsEditing(false)
     setError('')
   }
@@ -89,15 +67,13 @@ export default function EditablePayerName({
           />
           <button
             onClick={handleSave}
-            disabled={loading}
-            className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 dark:bg-purple-500 dark:hover:bg-purple-600 dark:disabled:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+            className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600 text-white rounded-lg text-sm font-medium transition-colors"
           >
-            {loading ? '...' : '✓'}
+            ✓
           </button>
           <button
             onClick={handleCancel}
-            disabled={loading}
-            className="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 dark:bg-gray-600 dark:hover:bg-gray-500 dark:disabled:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg text-sm font-medium transition-colors"
+            className="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200 rounded-lg text-sm font-medium transition-colors"
           >
             ✗
           </button>
@@ -112,7 +88,7 @@ export default function EditablePayerName({
   return (
     <div className="inline-flex items-center gap-2">
       <span className="text-sm sm:text-base text-gray-600 dark:text-gray-300">
-        Für mich: {payerName}
+        Du bist: {guestName}
       </span>
       <button
         onClick={() => setIsEditing(true)}

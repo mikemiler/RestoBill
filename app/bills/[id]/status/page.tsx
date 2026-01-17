@@ -7,7 +7,6 @@ import CollapsibleReceipt from '@/components/CollapsibleReceipt'
 import BillAutoSave from '@/components/BillAutoSave'
 import CopyButton from '@/components/CopyButton'
 import QRCode from '@/components/QRCode'
-import EditablePayerName from '@/components/EditablePayerName'
 import StatusPageClient from '@/components/StatusPageClient'
 import WhatsAppShareButton from '@/components/WhatsAppShareButton'
 
@@ -80,14 +79,11 @@ export default async function BillStatusPage({
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-gray-50 mb-1 md:mb-2">
               Deine Rechnung
             </h1>
-            <div className="flex flex-col items-center gap-1">
-              <EditablePayerName billId={bill.id} initialName={bill.payerName} />
-              {bill.restaurantName && (
-                <p className="text-sm sm:text-base text-gray-600 dark:text-gray-300">
-                  {bill.restaurantName}
-                </p>
-              )}
-            </div>
+            {bill.restaurantName && (
+              <p className="text-sm sm:text-base text-gray-600 dark:text-gray-300">
+                {bill.restaurantName}
+              </p>
+            )}
           </div>
 
           {/* Share Link */}
