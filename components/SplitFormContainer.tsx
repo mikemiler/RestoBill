@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react'
 import SplitForm from './SplitForm'
 import { useRealtimeSubscription, useDebounce } from '@/lib/hooks'
 import { debugLog, debugError } from '@/lib/debug'
-import DonationBanner from './DonationBanner'
 
 interface DatabaseSelection {
   id: string
@@ -271,9 +270,6 @@ export default function SplitFormContainer({
         allSelections={allSelections}
         isOwner={isOwner}
       />
-
-      {/* Donation Banner */}
-      <DonationBanner />
     </div>
   )
 }

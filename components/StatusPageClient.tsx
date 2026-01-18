@@ -221,7 +221,7 @@ export default function StatusPageClient({
   })
 
   return (
-    <>
+    <div className="pb-24">
       {/* Guest Selections List */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 p-4 sm:p-5 md:p-6 mb-4 md:mb-6">
         <h2 className="text-lg sm:text-xl font-semibold mb-4 text-gray-800 dark:text-gray-100 flex items-center gap-2">
@@ -254,6 +254,6 @@ export default function StatusPageClient({
 
       {/* Donation Banner */}
       <DonationBanner />
-    </>
+    </div>
   )
 }
