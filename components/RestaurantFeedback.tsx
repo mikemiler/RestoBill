@@ -28,14 +28,17 @@ export default function RestaurantFeedback({
     setSelectedRating(rating)
     setIsSubmitted(false)
 
-    // For rating 3 (top), immediately open Google review
-    if (rating === 3 && reviewUrl) {
+    // For rating 3 (top), immediately save feedback
+    if (rating === 3) {
       await saveFeedback(rating, null)
     }
   }
 
   const saveFeedback = async (rating: number, text: string | null) => {
-    if (!sessionId) return
+    if (!sessionId) {
+      alert('Session wird geladen, bitte versuche es in einem Moment erneut.')
+      return
+    }
 
     setIsSubmitting(true)
     try {
