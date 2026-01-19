@@ -983,13 +983,25 @@ rm -rf .next && npm run build  # Clear cache and rebuild
 ### Real-time/Live Selection Issues
 **Symptoms:** Live selections not updating, stale data, or missing updates
 
+**✅ REALTIME FULLY WORKING:**
+- ✅ **Selection table:** Realtime enabled with full CRUD policies (SELECT, INSERT, UPDATE, DELETE)
+- ✅ **BillItem table:** Realtime enabled with full CRUD policies (SELECT, INSERT, UPDATE, DELETE)
+- ✅ Both tables are in `supabase_realtime` publication
+- ✅ RLS policies active for `anon` and `authenticated` roles
+- ✅ WebSocket connections working for all selections (whole numbers AND fractional)
+- ✅ Anteilige Markierungen (fractional selections like 1/2, 1/3) working in realtime
+
+**Previous issue (FIXED):**
+- ❌ **Problem:** Fraction buttons (1/2, 1/3) and "Teilen durch N" only updated local state, no API call
+- ✅ **Solution:** Added `await handleItemQuantityChange()` to trigger realtime updates
+- ✅ **Files changed:** [SplitForm.tsx:1300-1343](components/SplitForm.tsx#L1300-L1343)
+
 **Common causes and fixes:**
-1. **Supabase Realtime not enabled**
+1. **Supabase Realtime verification (already enabled, but verify if issues persist)**
    - Check Supabase dashboard → Database → Replication
-   - Enable realtime for `Selection` table (unified table, no ActiveSelection)
-   - Run SQL to enable: `ALTER PUBLICATION supabase_realtime ADD TABLE "Selection";`
-   - Verify with: `SELECT * FROM pg_publication_tables WHERE pubname = 'supabase_realtime';`
-   - Realtime is REQUIRED (no polling fallback anymore)
+   - Verify `Selection` and `BillItem` tables are in publication
+   - Run SQL to verify: `SELECT * FROM pg_publication_tables WHERE pubname = 'supabase_realtime';`
+   - Should show both `Selection` and `BillItem` tables
 
 1a. **Missing RLS Policies (MOST COMMON!)**
    - Symptom: Deselection only works after selecting a different item
@@ -1142,6 +1154,84 @@ lib/
 prisma/
 └── schema.prisma                      # Database schema (Bill, BillItem, Selection, ActiveSelection)
 ```
+
+## Supabase Configuration
+
+### Realtime Publication Status
+
+**✅ ENABLED TABLES:**
+- ✅ **BillItem** - Realtime enabled (for live item updates)
+- ✅ **Selection** - Realtime enabled (for live guest selections)
+
+**❌ DISABLED TABLES:**
+- ❌ **Bill** - Realtime disabled (not needed, bill data rarely changes)
+- ❌ **_BillItemToSelection** - Realtime disabled (legacy join table, not used)
+
+**Verification:**
+```sql
+-- Check which tables have realtime enabled
+SELECT schemaname, tablename
+FROM pg_publication_tables
+WHERE pubname = 'supabase_realtime';
+
+-- Expected result: BillItem, Selection
+```
+
+### Row Level Security (RLS) Policies
+
+**All tables have RLS enabled with full CRUD policies for `anon` and `authenticated` roles.**
+
+#### Bill Table Policies
+- ✅ `Allow public delete to Bill` (DELETE) - anon, authenticated
+- ✅ `Allow public insert to Bill` (INSERT) - anon, authenticated
+- ✅ `Allow public read Bill` (SELECT) - anon, authenticated
+- ✅ `Allow public update to Bill` (UPDATE) - anon, authenticated
+
+#### BillItem Table Policies
+- ✅ `Allow public delete to BillItem` (DELETE) - anon, authenticated
+- ✅ `Allow public insert to BillItem` (INSERT) - anon, authenticated
+- ✅ `Allow public read access to BillItem` (SELECT) - anon, authenticated
+- ✅ `Allow public update to BillItem` (UPDATE) - anon, authenticated
+
+#### Selection Table Policies
+- ✅ `Allow public delete to Selection` (DELETE) - anon, authenticated
+- ✅ `Allow public insert to Selection` (INSERT) - anon, authenticated
+- ✅ `Allow public read access to Selection` (SELECT) - anon, authenticated
+- ✅ `Allow public update to Selection` (UPDATE) - anon, authenticated
+
+**Why all policies are public:**
+- Bills are accessed via unguessable UUID share tokens (not sequential IDs)
+- Share tokens act as "secret URLs" for bill access control
+- Simpler architecture than complex RLS rules per bill
+- Appropriate for public bill-splitting app
+
+**Verification:**
+```sql
+-- Check RLS policies for a table
+SELECT policyname, cmd AS command, roles
+FROM pg_policies
+WHERE tablename = 'Selection'
+ORDER BY cmd;
+
+-- Expected result: 4 policies (SELECT, INSERT, UPDATE, DELETE) for anon/authenticated
+```
+
+### Critical Configuration Notes
+
+1. **UPDATE Policy is REQUIRED for Realtime**
+   - Without UPDATE policy, Supabase blocks UPDATE events from being sent to clients
+   - This was the root cause of anteilige Markierungen (fractional selections) not updating in realtime
+   - All CRUD policies (SELECT, INSERT, UPDATE, DELETE) must exist for full realtime functionality
+
+2. **Realtime Publication must be enabled**
+   - Run: `ALTER PUBLICATION supabase_realtime ADD TABLE "TableName";`
+   - Both BillItem and Selection tables are enabled
+   - Bill table is intentionally disabled (not needed for realtime updates)
+
+3. **Client-side filtering used instead of server-side**
+   - Realtime subscriptions filter by billId on client-side
+   - This avoids schema mismatch errors with Supabase filter syntax
+   - Each component uses unique channelSuffix to prevent event conflicts
 
 ## Deployment Notes
 

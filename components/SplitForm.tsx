@@ -1297,15 +1297,15 @@ export default function SplitForm({
                                 <button
                                   key={fraction.label}
                                   type="button"
-                                  onClick={() => {
+                                  onClick={async () => {
+                                    // Update custom input display
                                     setCustomQuantityInput((prev) => ({
                                       ...prev,
                                       [item.id]: actualValue.toString()
                                     }))
-                                    setSelectedItems((prev) => ({
-                                      ...prev,
-                                      [item.id]: actualValue
-                                    }))
+
+                                    // Update selection with API call (triggers realtime update)
+                                    await handleItemQuantityChange(item.id, actualValue)
                                   }}
                                   className="px-2 py-1 bg-purple-100 hover:bg-purple-200 dark:bg-purple-700 dark:hover:bg-purple-600 text-purple-700 dark:text-purple-100 rounded text-xs font-medium transition-colors"
                                 >
@@ -1326,19 +1326,20 @@ export default function SplitForm({
                               type="number"
                               min="2"
                               placeholder="Anzahl Personen"
-                              onChange={(e) => {
+                              onChange={async (e) => {
                                 const persons = parseInt(e.target.value)
                                 if (!isNaN(persons) && persons > 1) {
                                   // Round to 2 decimal places
                                   const value = parseFloat(Math.min(item.quantity / persons, remainingQty).toFixed(2))
+
+                                  // Update custom input display
                                   setCustomQuantityInput((prev) => ({
                                     ...prev,
                                     [item.id]: value.toString()
                                   }))
-                                  setSelectedItems((prev) => ({
-                                    ...prev,
-                                    [item.id]: value
-                                  }))
+
+                                  // Update selection with API call (triggers realtime update)
+                                  await handleItemQuantityChange(item.id, value)
                                 }
                               }}
                               className="w-36 px-2.5 py-1.5 border border-gray-300 dark:border-gray-500 rounded-lg focus:ring-2 focus:ring-green-500 dark:focus:ring-green-400 focus:border-transparent text-xs dark:bg-gray-600 dark:text-gray-100"
