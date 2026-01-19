@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
+import { resizeImage } from '@/lib/imageProcessing'
 
 export default function UploadBillPage() {
   const router = useRouter()
@@ -13,15 +14,16 @@ export default function UploadBillPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [analyzing, setAnalyzing] = useState(false)
+  const [compressing, setCompressing] = useState(false)
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const selectedFile = e.target.files?.[0]
     if (!selectedFile) return
 
     // Validate file
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/heic']
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/heic', 'image/webp']
     if (!allowedTypes.includes(selectedFile.type)) {
-      setError('Nur JPG, PNG und HEIC Dateien sind erlaubt')
+      setError('Nur JPG, PNG, HEIC und WebP Dateien sind erlaubt')
       return
     }
 
@@ -50,12 +52,24 @@ export default function UploadBillPage() {
     }
 
     setLoading(true)
-    setAnalyzing(true)
     setError('')
 
     try {
+      // Compress image client-side to stay under Vercel's 4.5MB limit
+      setCompressing(true)
+      const compressedFile = await resizeImage(file, {
+        maxWidth: 2000,
+        maxHeight: 2000,
+        quality: 0.85,
+        format: 'image/jpeg',
+      })
+      setCompressing(false)
+      setAnalyzing(true)
+
+      console.log(`Compressed ${(file.size / 1024 / 1024).toFixed(2)}MB → ${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`)
+
       const formData = new FormData()
-      formData.append('image', file)
+      formData.append('image', compressedFile)
 
       const response = await fetch(`/api/bills/${billId}/upload`, {
         method: 'POST',
@@ -74,6 +88,7 @@ export default function UploadBillPage() {
       setError(err instanceof Error ? err.message : 'Ein Fehler ist aufgetreten')
       setLoading(false)
       setAnalyzing(false)
+      setCompressing(false)
     }
   }
 
@@ -114,14 +129,14 @@ export default function UploadBillPage() {
                     <span className="font-semibold">Klicke hier</span> oder ziehe ein Bild
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    JPG, PNG oder HEIC (max. 10MB)
+                    JPG, PNG, WebP oder HEIC (max. 10MB)
                   </p>
                 </div>
                 <input
                   id="file-upload"
                   type="file"
                   className="hidden"
-                  accept="image/jpeg,image/png,image/jpg,image/heic"
+                  accept="image/jpeg,image/png,image/jpg,image/heic,image/webp"
                   onChange={handleFileChange}
                 />
               </label>
@@ -145,6 +160,22 @@ export default function UploadBillPage() {
                   Andere Datei wählen
                 </button>
               </div>
+
+              {compressing && (
+                <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-600 dark:border-purple-400"></div>
+                    <div>
+                      <p className="font-semibold text-purple-900 dark:text-purple-300">
+                        Bild wird optimiert...
+                      </p>
+                      <p className="text-sm text-purple-700 dark:text-purple-400">
+                        Komprimierung für schnelleren Upload
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {analyzing && (
                 <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
@@ -173,7 +204,11 @@ export default function UploadBillPage() {
                 disabled={loading}
                 className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 dark:bg-blue-500 dark:hover:bg-blue-600 dark:disabled:bg-gray-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
               >
-                {loading ? 'Wird analysiert...' : 'Hochladen & Analysieren'}
+                {compressing
+                  ? 'Optimiert...'
+                  : analyzing
+                  ? 'Wird analysiert...'
+                  : 'Hochladen & Analysieren'}
               </button>
             </div>
           )}
