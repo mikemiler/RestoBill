@@ -1632,13 +1632,13 @@ export default function SplitForm({
               <span className="font-bold text-green-600 dark:text-green-400">{formatEUR(ownActiveAmount)}</span>
             </div>
             <div className={`font-bold ${
-              remainingAmount === 0 && totalPaidAmount > 0
+              remainingAmount === 0
                 ? 'text-green-600 dark:text-green-400'
                 : remainingAmount > 0
                 ? 'text-orange-600 dark:text-orange-400'
                 : 'text-red-600 dark:text-red-400'
             }`}>
-              {remainingAmount === 0 && totalPaidAmount > 0
+              {remainingAmount === 0
                 ? '✓ Vollständig aufgeteilt!'
                 : remainingAmount > 0
                 ? `Noch offen: ${formatEUR(remainingAmount)} / ${formatEUR(totalAmount)}`
