@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import sharp from 'sharp'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -78,15 +79,21 @@ Antworte NUR mit dem JSON-Objekt, ohne zusätzlichen Text.`
     }
 
     const imageBuffer = await imageResponse.arrayBuffer()
-    const base64Image = Buffer.from(imageBuffer).toString('base64')
 
-    // Determine media type from URL or response
-    const contentType = imageResponse.headers.get('content-type') || 'image/jpeg'
-    const mediaType = contentType.includes('png')
-      ? 'image/png'
-      : contentType.includes('heic')
-      ? 'image/heic'
-      : 'image/jpeg'
+    // Resize image to reduce API costs and improve speed
+    // Max 2000px on longest side, 85% quality
+    const resizedBuffer = await sharp(Buffer.from(imageBuffer))
+      .resize(2000, 2000, {
+        fit: 'inside',
+        withoutEnlargement: true, // Don't upscale smaller images
+      })
+      .jpeg({ quality: 85 }) // Convert to JPEG for best compatibility
+      .toBuffer()
+
+    const base64Image = resizedBuffer.toString('base64')
+
+    // Always use JPEG after sharp processing
+    const mediaType = 'image/jpeg'
 
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-5',

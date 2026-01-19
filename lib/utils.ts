@@ -70,11 +70,11 @@ export function validateImageFile(
   maxSizeMB = 10
 ): { valid: true } | { valid: false; error: string } {
   // Check file type
-  const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/heic']
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/heic', 'image/webp']
   if (!allowedTypes.includes(file.type)) {
     return {
       valid: false,
-      error: 'Nur JPG, PNG und HEIC Dateien sind erlaubt',
+      error: 'Nur JPG, PNG, HEIC und WebP Dateien sind erlaubt',
     }
   }
 
