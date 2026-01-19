@@ -9,7 +9,6 @@ import CopyButton from '@/components/CopyButton'
 import QRCode from '@/components/QRCode'
 import StatusPageClient from '@/components/StatusPageClient'
 import WhatsAppShareButton from '@/components/WhatsAppShareButton'
-import ReviewLinkSection from '@/components/ReviewLinkSection'
 import RestaurantFeedback from '@/components/RestaurantFeedback'
 
 export const dynamic = 'force-dynamic'
@@ -120,9 +119,6 @@ export default async function BillStatusPage({
                 <QRCode value={shareUrl} size={180} />
               </div>
             </div>
-
-            {/* Review-Link Sektion (nur wenn Restaurant gefunden) */}
-            {bill.reviewUrl && <ReviewLinkSection reviewUrl={bill.reviewUrl} />}
           </div>
 
           {/* Receipt Image - Collapsible */}
