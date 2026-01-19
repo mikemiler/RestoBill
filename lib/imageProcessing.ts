@@ -35,7 +35,8 @@ export async function resizeImage(
     quality,
   })
 
-  return new Promise((resolve, reject) => {
+  // Wrap in timeout promise
+  const resizePromise = new Promise<File>((resolve, reject) => {
     const reader = new FileReader()
 
     reader.onerror = () => {
@@ -88,34 +89,77 @@ export async function resizeImage(
         ctx.drawImage(img, 0, 0, width, height)
         console.log('[resizeImage] Canvas drawn, converting to blob...')
 
-        // Convert canvas to blob
-        canvas.toBlob(
-          (blob) => {
-            if (!blob) {
-              console.error('[resizeImage] Blob creation failed')
-              reject(new Error('Failed to create blob'))
-              return
+        // Convert canvas to blob (with fallback for older browsers)
+        if (canvas.toBlob) {
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                console.error('[resizeImage] Blob creation failed, trying fallback...')
+                // Fallback: Use toDataURL
+                try {
+                  const dataUrl = canvas.toDataURL(format, quality)
+                  const base64Data = dataUrl.split(',')[1]
+                  const binaryString = atob(base64Data)
+                  const bytes = new Uint8Array(binaryString.length)
+                  for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i)
+                  }
+                  const fallbackBlob = new Blob([bytes], { type: format })
+                  const compressedFile = new File([fallbackBlob], file.name, {
+                    type: format,
+                    lastModified: Date.now(),
+                  })
+                  console.log('[resizeImage] ✅ Fallback successful!', `${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`)
+                  resolve(compressedFile)
+                } catch (fallbackError) {
+                  console.error('[resizeImage] Fallback also failed:', fallbackError)
+                  reject(new Error('Bild-Konvertierung fehlgeschlagen. Bitte verwende ein anderes Bild.'))
+                }
+                return
+              }
+
+              console.log('[resizeImage] Blob created:', `${(blob.size / 1024 / 1024).toFixed(2)}MB`)
+
+              // Create new File from blob
+              const compressedFile = new File([blob], file.name, {
+                type: format,
+                lastModified: Date.now(),
+              })
+
+              const compressionRatio = ((1 - compressedFile.size / file.size) * 100).toFixed(1)
+              console.log('[resizeImage] ✅ Success!', {
+                finalSize: `${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`,
+                reduction: `${compressionRatio}%`,
+              })
+
+              resolve(compressedFile)
+            },
+            format,
+            quality
+          )
+        } else {
+          // Fallback for browsers without toBlob support
+          console.warn('[resizeImage] canvas.toBlob not supported, using fallback')
+          try {
+            const dataUrl = canvas.toDataURL(format, quality)
+            const base64Data = dataUrl.split(',')[1]
+            const binaryString = atob(base64Data)
+            const bytes = new Uint8Array(binaryString.length)
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i)
             }
-
-            console.log('[resizeImage] Blob created:', `${(blob.size / 1024 / 1024).toFixed(2)}MB`)
-
-            // Create new File from blob
-            const compressedFile = new File([blob], file.name, {
+            const fallbackBlob = new Blob([bytes], { type: format })
+            const compressedFile = new File([fallbackBlob], file.name, {
               type: format,
               lastModified: Date.now(),
             })
-
-            const compressionRatio = ((1 - compressedFile.size / file.size) * 100).toFixed(1)
-            console.log('[resizeImage] ✅ Success!', {
-              finalSize: `${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`,
-              reduction: `${compressionRatio}%`,
-            })
-
+            console.log('[resizeImage] ✅ Fallback successful!', `${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`)
             resolve(compressedFile)
-          },
-          format,
-          quality
-        )
+          } catch (fallbackError) {
+            console.error('[resizeImage] Fallback failed:', fallbackError)
+            reject(new Error('Bild-Konvertierung fehlgeschlagen (kein Browser-Support).'))
+          }
+        }
       }
 
       img.src = e.target?.result as string
@@ -123,6 +167,17 @@ export async function resizeImage(
 
     reader.readAsDataURL(file)
   })
+
+  // Add 30-second timeout
+  const timeoutPromise = new Promise<File>((_, reject) =>
+    setTimeout(() => {
+      console.error('[resizeImage] Timeout after 30s')
+      reject(new Error('Bild-Komprimierung dauert zu lange (Timeout). Bitte verwende ein kleineres Bild.'))
+    }, 30000)
+  )
+
+  // Race between resize and timeout
+  return Promise.race([resizePromise, timeoutPromise])
 }
 
 /**

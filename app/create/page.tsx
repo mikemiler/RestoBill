@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
+import { resizeImage } from '@/lib/imageProcessing'
 
 export default function CreateBillPage() {
   const router = useRouter()
@@ -29,9 +30,9 @@ export default function CreateBillPage() {
     if (!selectedFile) return
 
     // Validate file
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/heic']
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/heic', 'image/webp']
     if (!allowedTypes.includes(selectedFile.type)) {
-      setError('Nur JPG, PNG und HEIC Dateien sind erlaubt')
+      setError('Nur JPG, PNG, WebP und HEIC Dateien sind erlaubt')
       return
     }
 
@@ -60,6 +61,13 @@ export default function CreateBillPage() {
       return
     }
 
+    console.log('=== ANALYZE START ===')
+    console.log('Original file:', {
+      name: file.name,
+      size: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
+      type: file.type,
+    })
+
     setAnalyzing(true)
     setError('')
 
@@ -72,6 +80,25 @@ export default function CreateBillPage() {
     }, 100)
 
     try {
+      // CRITICAL: Compress image client-side BEFORE upload to stay under Vercel's 4.5MB limit
+      console.log('🔄 Starting client-side compression...')
+      const compressedFile = await resizeImage(file, {
+        maxWidth: 2000,
+        maxHeight: 2000,
+        quality: 0.85,
+        format: 'image/jpeg',
+      })
+
+      console.log('✅ Compression complete!')
+      console.log(`Original: ${(file.size / 1024 / 1024).toFixed(2)}MB → Compressed: ${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`)
+
+      // CRITICAL: Abort if still too large
+      if (compressedFile.size > 4.5 * 1024 * 1024) {
+        throw new Error(
+          `Bild ist auch nach Komprimierung zu groß (${(compressedFile.size / 1024 / 1024).toFixed(2)}MB). Bitte verwende ein kleineres Bild.`
+        )
+      }
+
       // Create bill with temporary name
       const createResponse = await fetch('/api/bills/create', {
         method: 'POST',
@@ -93,14 +120,18 @@ export default function CreateBillPage() {
       const newBillId = createData.billId
       setBillId(newBillId)
 
-      // Upload and analyze image
+      console.log('📤 Uploading compressed image...')
+
+      // Upload and analyze image (now using compressed file)
       const formData = new FormData()
-      formData.append('image', file)
+      formData.append('image', compressedFile)
 
       const uploadResponse = await fetch(`/api/bills/${newBillId}/upload`, {
         method: 'POST',
         body: formData,
       })
+
+      console.log('Upload response status:', uploadResponse.status)
 
       const uploadData = await uploadResponse.json()
 
@@ -108,9 +139,11 @@ export default function CreateBillPage() {
         throw new Error(uploadData.error || 'Fehler beim Hochladen')
       }
 
+      console.log('✅ Analysis complete!')
       // Analysis complete!
       setAnalysisComplete(true)
     } catch (err) {
+      console.error('=== ANALYZE ERROR ===', err)
       setError(err instanceof Error ? err.message : 'Ein Fehler ist aufgetreten')
       setBillId(null)
     } finally {
@@ -208,13 +241,14 @@ export default function CreateBillPage() {
           </h2>
 
           {!preview ? (
-            <label
-              htmlFor="file-upload"
-              className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:border-blue-500 dark:hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
-            >
-              <div className="flex flex-col items-center justify-center pt-5 pb-6">
+            <div className="space-y-4">
+              {/* Camera button */}
+              <label
+                htmlFor="camera-upload"
+                className="flex items-center justify-center gap-3 w-full bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-500 dark:to-blue-600 hover:from-blue-700 hover:to-blue-800 dark:hover:from-blue-600 dark:hover:to-blue-700 text-white font-semibold py-4 px-6 rounded-lg cursor-pointer transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 <svg
-                  className="w-12 h-12 mb-3 text-gray-400 dark:text-gray-500"
+                  className="w-6 h-6"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -223,25 +257,75 @@ export default function CreateBillPage() {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth={2}
-                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                    d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
                   />
                 </svg>
-                <p className="mb-2 text-sm text-gray-700 dark:text-gray-300">
-                  <span className="font-semibold">Klicke hier</span> oder ziehe ein Bild
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  JPG, PNG oder HEIC (max. 10MB)
-                </p>
+                <span>Foto aufnehmen</span>
+                <input
+                  id="camera-upload"
+                  type="file"
+                  className="hidden"
+                  accept="image/jpeg,image/png,image/jpg,image/heic,image/webp"
+                  capture="environment"
+                  onChange={handleFileChange}
+                  disabled={analyzing || analysisComplete}
+                />
+              </label>
+
+              {/* Separator */}
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-300 dark:border-gray-600"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+                    oder
+                  </span>
+                </div>
               </div>
-              <input
-                id="file-upload"
-                type="file"
-                className="hidden"
-                accept="image/jpeg,image/png,image/jpg,image/heic"
-                onChange={handleFileChange}
-                disabled={analyzing || analysisComplete}
-              />
-            </label>
+
+              {/* File upload area */}
+              <label
+                htmlFor="file-upload"
+                className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:border-blue-500 dark:hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+              >
+                <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                  <svg
+                    className="w-12 h-12 mb-3 text-gray-400 dark:text-gray-500"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                    />
+                  </svg>
+                  <p className="mb-2 text-sm text-gray-700 dark:text-gray-300">
+                    <span className="font-semibold">Datei auswählen</span>
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    JPG, PNG, WebP oder HEIC (max. 10MB)
+                  </p>
+                </div>
+                <input
+                  id="file-upload"
+                  type="file"
+                  className="hidden"
+                  accept="image/jpeg,image/png,image/jpg,image/heic,image/webp"
+                  onChange={handleFileChange}
+                  disabled={analyzing || analysisComplete}
+                />
+              </label>
+            </div>
           ) : (
             <div className="space-y-3">
               <div className="relative">
