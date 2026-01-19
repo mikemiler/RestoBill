@@ -42,6 +42,8 @@ export default function RestaurantFeedback({
 
     setIsSubmitting(true)
     try {
+      console.log('Sending feedback:', { billId, sessionId, rating, feedbackText: text })
+
       const response = await fetch('/api/feedback/create', {
         method: 'POST',
         headers: {
@@ -55,8 +57,13 @@ export default function RestaurantFeedback({
         })
       })
 
+      const data = await response.json()
+      console.log('API response:', data)
+
       if (!response.ok) {
-        throw new Error('Fehler beim Speichern')
+        console.error('API error:', data)
+        alert(`Fehler: ${data.error || 'Unbekannter Fehler'}`)
+        return
       }
 
       setIsSubmitted(true)
@@ -138,7 +145,7 @@ export default function RestaurantFeedback({
               rel="noopener noreferrer"
               className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
             >
-              ⭐ Jetzt Bewertung hinterlassen
+              Google Maps Bewertung
             </a>
           </div>
           {isSubmitted && (
