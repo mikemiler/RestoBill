@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { supabaseAdmin } from '@/lib/supabase'
 import { sanitizeInput } from '@/lib/utils'
 
 export async function POST(req: NextRequest) {
@@ -36,13 +36,14 @@ export async function POST(req: NextRequest) {
 
     // Verify bill exists
     console.log('🔍 Checking if bill exists...')
-    const bill = await prisma.bill.findUnique({
-      where: { id: billId },
-      select: { id: true }
-    })
+    const { data: bill, error: billError } = await supabaseAdmin
+      .from('Bill')
+      .select('id')
+      .eq('id', billId)
+      .single()
 
-    if (!bill) {
-      console.log('❌ Bill not found:', billId)
+    if (billError || !bill) {
+      console.log('❌ Bill not found:', billId, billError)
       return NextResponse.json(
         { error: 'Rechnung nicht gefunden' },
         { status: 404 }
@@ -53,24 +54,31 @@ export async function POST(req: NextRequest) {
 
     // Check if user already gave feedback
     console.log('🔍 Checking for existing feedback...')
-    const existingFeedback = await prisma.restaurantFeedback.findFirst({
-      where: {
-        billId,
-        sessionId
-      }
-    })
+    const { data: existingFeedback } = await supabaseAdmin
+      .from('RestaurantFeedback')
+      .select('*')
+      .eq('billId', billId)
+      .eq('sessionId', sessionId)
+      .single()
 
     if (existingFeedback) {
       console.log('📝 Updating existing feedback:', existingFeedback.id)
       // Update existing feedback
-      const updated = await prisma.restaurantFeedback.update({
-        where: { id: existingFeedback.id },
-        data: {
+      const { data: updated, error: updateError } = await supabaseAdmin
+        .from('RestaurantFeedback')
+        .update({
           rating,
           feedbackText: feedbackText ? sanitizeInput(feedbackText) : null,
           friendName: friendName ? sanitizeInput(friendName) : null
-        }
-      })
+        })
+        .eq('id', existingFeedback.id)
+        .select()
+        .single()
+
+      if (updateError) {
+        console.error('❌ Update error:', updateError)
+        throw updateError
+      }
 
       console.log('✅ Feedback updated successfully')
       return NextResponse.json({
@@ -81,15 +89,22 @@ export async function POST(req: NextRequest) {
 
     // Create new feedback
     console.log('➕ Creating new feedback...')
-    const feedback = await prisma.restaurantFeedback.create({
-      data: {
+    const { data: feedback, error: createError } = await supabaseAdmin
+      .from('RestaurantFeedback')
+      .insert({
         billId,
         sessionId,
         rating,
         feedbackText: feedbackText ? sanitizeInput(feedbackText) : null,
         friendName: friendName ? sanitizeInput(friendName) : null
-      }
-    })
+      })
+      .select()
+      .single()
+
+    if (createError) {
+      console.error('❌ Create error:', createError)
+      throw createError
+    }
 
     console.log('✅ Feedback created successfully:', feedback.id)
     return NextResponse.json({

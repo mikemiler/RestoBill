@@ -29,6 +29,35 @@ This file should always represent the current state of the project.
 - Keep code readable and maintainable
 - No unnecessary dependencies or patterns
 
+## Critical: Database Access in API Routes
+
+**ALWAYS use Supabase Admin Client, NEVER use Prisma in API routes!**
+
+```typescript
+// ✅ CORRECT - Use Supabase Admin Client
+import { supabaseAdmin } from '@/lib/supabase'
+const { data, error } = await supabaseAdmin.from('Table').select('*')
+
+// ❌ WRONG - Do NOT use Prisma in API routes
+import { prisma } from '@/lib/prisma'
+const data = await prisma.table.findMany()
+```
+
+**Why:**
+- Prisma has connection issues with Vercel Serverless Functions (cold starts, timeouts)
+- Supabase Admin Client is optimized for serverless environments
+- ALL existing API routes use `supabaseAdmin` - maintain consistency
+- Prevents "Can't reach database server" errors on Vercel
+
+**Where to use Prisma:**
+- Schema definition (`prisma/schema.prisma`)
+- Database migrations (`npx prisma db push`)
+- Type generation (`npx prisma generate`)
+
+**Where to use Supabase Admin Client:**
+- ALL API routes (`app/api/**/*.ts`)
+- Server-side data fetching in pages (if not using Supabase directly)
+
 ## Essential Commands
 
 ### Development
