@@ -21,6 +21,29 @@ This file should always represent the current state of the project.
 
 **Deployment:** Vercel (ALL code must be Vercel-compatible - see Deployment Notes section)
 
+## ⚠️ CRITICAL: GIT WORKFLOW ⚠️
+
+**!!!!! NEVER COMMIT OR PUSH CODE !!!!!**
+
+**NEVER use git commit, git push, or any git commands that modify the repository!**
+
+- ❌ **FORBIDDEN:** `git commit`, `git push`, `git add`, `git merge`, `git rebase`
+- ✅ **ALLOWED:** `git status`, `git diff`, `git log` (read-only commands)
+- 👤 **USER ONLY:** All commits and pushes are done MANUALLY by the user
+- 🚫 **NO EXCEPTIONS:** Even for "small fixes" or "urgent deployments"
+
+**Why:**
+- User wants full control over git history
+- User reviews all changes before committing
+- User decides when and what to deploy
+- Prevents accidental deployments to production
+
+**If changes need to be deployed:**
+1. Tell the user what files were changed
+2. User will review changes
+3. User will commit and push manually
+4. You can suggest commit messages, but never execute them
+
 ## Core Principle: KISS (Keep It Simple, Stupid)
 
 - Favor simplicity over complexity
