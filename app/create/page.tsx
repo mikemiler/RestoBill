@@ -505,7 +505,7 @@ export default function CreateBillPage() {
               ) : !payerName.trim() ? (
                 'Bitte Namen eingeben'
               ) : (
-                'Weiter zur Übersicht'
+                'Weiter'
               )}
             </button>
           </form>

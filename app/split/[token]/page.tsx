@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import Image from 'next/image'
 import SplitFormContainer from '@/components/SplitFormContainer'
 import CollapsibleReceipt from '@/components/CollapsibleReceipt'
+import RestaurantFeedback from '@/components/RestaurantFeedback'
 
 export default async function SplitBillPage({
   params,
@@ -91,6 +92,15 @@ export default async function SplitBillPage({
             items={sortedItems}
             itemRemainingQuantities={itemRemainingQuantities}
             totalAmount={totalBillAmount}
+          />
+        </div>
+
+        {/* Restaurant Feedback */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 p-4 sm:p-5 md:p-6">
+          <RestaurantFeedback
+            billId={bill.id}
+            reviewUrl={bill.reviewUrl}
+            restaurantName={bill.restaurantName}
           />
         </div>
       </div>

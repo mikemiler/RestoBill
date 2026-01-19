@@ -1,8 +1,24 @@
 'use client'
 
-export default function WhatsAppShareButton({ shareUrl }: { shareUrl: string }) {
+interface WhatsAppShareButtonProps {
+  shareUrl: string
+  reviewUrl?: string
+  restaurantName?: string
+}
+
+export default function WhatsAppShareButton({
+  shareUrl,
+  reviewUrl,
+  restaurantName
+}: WhatsAppShareButtonProps) {
   function shareViaWhatsApp() {
-    const text = `Hallo! Bitte wähle deine Positionen aus der Restaurant-Rechnung aus: ${shareUrl}`
+    let text = `Hallo! Bitte wähle deine Positionen aus der Restaurant-Rechnung aus: ${shareUrl}`
+
+    // Add review request if restaurant found
+    if (reviewUrl && restaurantName) {
+      text += `\n\nWenn du zufrieden warst, hinterlasse gerne eine Google-Bewertung für ${restaurantName}: ${reviewUrl}`
+    }
+
     const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`
     window.open(whatsappUrl, '_blank')
   }

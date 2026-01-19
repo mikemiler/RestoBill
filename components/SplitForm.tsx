@@ -1587,7 +1587,7 @@ export default function SplitForm({
               <div className="flex items-center gap-2 bg-white dark:bg-gray-700 rounded-lg p-2">
                 <span className="text-sm">💵</span>
                 <span className="flex-1 text-sm text-gray-700 dark:text-gray-300">
-                  Oder bar bezahlen
+                  Bar bezahlen
                 </span>
               </div>
             </div>

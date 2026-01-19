@@ -15,9 +15,9 @@ This file should always represent the current state of the project.
 
 ## Project Overview
 
-**RestoBill** is a German-language web application for splitting restaurant bills. Users upload a receipt photo, Claude Vision API analyzes items automatically, and friends select their items via a shareable link to pay through PayPal or cash.
+**RestoBill** is a German-language web application for splitting restaurant bills. Users upload a receipt photo, Claude Vision API analyzes items automatically, and friends select their items via a shareable link to pay through PayPal or cash. After payment, guests are encouraged to leave Google reviews for the restaurant.
 
-**Tech Stack:** Next.js 14 (App Router), TypeScript, Prisma, Supabase (PostgreSQL + Storage), Claude Vision API, Tailwind CSS
+**Tech Stack:** Next.js 14 (App Router), TypeScript, Prisma, Supabase (PostgreSQL + Storage), Claude Vision API, Google Places API (New), Tailwind CSS
 
 **Deployment:** Vercel (ALL code must be Vercel-compatible - see Deployment Notes section)
 
@@ -55,11 +55,12 @@ npx ts-node test-supabase-connection.ts  # Verify Supabase connection
 
 ### Database Schema (Prisma)
 
-**Four main models with cascade delete:**
+**Five main models with cascade delete:**
 
 1. **Bill** - Restaurant bill created by payer
    - Contains: `payerName`, `paypalHandle`, `imageUrl`, `shareToken` (UUID), `restaurantName`, `totalAmount`
-   - Relations: `items[]`, `selections[]`, `activeSelections[]`
+   - **Google Places Integration:** `restaurantAddress`, `googlePlaceId`, `googleMapsUrl`, `reviewUrl`
+   - Relations: `items[]`, `selections[]`, `feedback[]`
 
 2. **BillItem** - Individual items on the bill
    - Contains: `name`, `quantity`, `pricePerUnit`, `totalPrice`
@@ -78,6 +79,16 @@ npx ts-node test-supabase-connection.ts  # Verify Supabase connection
    - **Payment confirmation:** Uses `paid` flag (true/false), NOT status change
    - **Unique constraint:** Partial index on (billId, sessionId) WHERE status='SELECTING' (only one selection per session)
 
+4. **RestaurantFeedback** - Guest feedback for restaurants
+   - Contains: `rating` (1=😞, 2=😐, 3=😊), `feedbackText`, `sessionId`, `friendName`
+   - `rating`: 1 (schlecht), 2 (mittel), 3 (top)
+   - `feedbackText`: Personal feedback (only for rating 1 or 2, null for rating 3)
+   - `sessionId`: Browser session identifier (tracks which guest gave feedback)
+   - `friendName`: Optional guest name
+   - Belongs to one Bill
+   - **Purpose:** Collect positive Google reviews (rating 3) or constructive feedback (rating 1-2) for restaurant improvement
+   - One feedback per session per bill (can be updated)
+
 **Payment Methods Enum:**
 - `PAYPAL` - Payment via PayPal.me link
 - `CASH` - Cash payment (guest notifies payer, no redirect)
@@ -93,8 +104,8 @@ npx ts-node test-supabase-connection.ts  # Verify Supabase connection
 
 **Payer Flow:**
 1. Create bill → `POST /api/bills/create` → Get billId + shareToken
-2. Upload image → `POST /api/bills/[id]/upload` → Claude analyzes items
-3. Status page → `/bills/[id]/status` → View analyzed items, share link with QR code, monitor payments
+2. Upload image → `POST /api/bills/[id]/upload` → Claude analyzes items + address → Google Places finds restaurant → Review URL generated
+3. Status page → `/bills/[id]/status` → View analyzed items, share link with QR code, Google review link, monitor payments
 4. Edit items (optional) → API routes in `/api/bill-items/` (editable at any time)
 5. Share link with friends → `/split/[shareToken]` (via link copy, WhatsApp, or QR code)
 
@@ -108,13 +119,18 @@ npx ts-node test-supabase-connection.ts  # Verify Supabase connection
 6. Choose payment method: PayPal or Cash
 7. Submit → `POST /api/selections/create` → Selection saved (status=SELECTING, paid=false)
 8. **PayPal:** Redirect to `/payment-redirect` page → Auto-redirect to PayPal.me (stays in browser)
-9. Payer manually confirms payment via `/api/selections/[id]/mark-paid` (sets paid=true)
+9. **Restaurant Feedback (optional):**
+   - Select rating (😞 schlecht, 😐 mittel, 😊 top)
+   - Rating 3 (😊) → Show Google review link (if reviewUrl exists)
+   - Rating 1-2 → Show textarea for personal feedback → `POST /api/feedback/create`
+10. Payer manually confirms payment via `/api/selections/[id]/mark-paid` (sets paid=true)
 
 **Friend Flow (Cash):**
 1-7. Same as PayPal flow (status remains SELECTING, paid=false)
 8. **Cash:** Redirect to `/split/[token]/cash-confirmed` → Confirmation page with payment instructions
-9. Guest pays cash directly to payer
-10. Payer manually confirms payment (sets paid=true)
+9. **Restaurant Feedback (optional):** Same as PayPal flow
+10. Guest pays cash directly to payer
+11. Payer manually confirms payment (sets paid=true)
 
 ### API Routes Structure
 
@@ -144,6 +160,9 @@ All routes follow RESTful patterns:
 - `POST /api/live-selections/update-tip` - Update tip amount only
 - `POST /api/live-selections/cleanup` - Clean up expired selections (30+ days old)
 
+**Restaurant Feedback:**
+- `POST /api/feedback/create` - Save guest feedback (rating + optional text)
+
 **Note:** The `/api/bills/[id]/selections` endpoint was deprecated due to issues on Vercel. Use `/live-selections` instead.
 
 **Security:** All public routes validate `shareToken` before proceeding.
@@ -157,8 +176,15 @@ All routes follow RESTful patterns:
 
 **lib/claude.ts**
 - `analyzeBillImage()` - Sends image to Claude Vision API with German prompt
-- Extracts: items array, restaurantName, totalAmount
+- Extracts: items array, restaurantName, totalAmount, restaurantAddress
 - Validates URLs (SSRF prevention) and clamps values
+
+**lib/googlePlaces.ts**
+- `searchRestaurant()` - Searches restaurant on Google Maps via Text Search API
+- Takes: restaurantName, restaurantAddress (optional)
+- Returns: placeId, googleMapsUrl, reviewUrl, formattedAddress, rating, photoUrl
+- Automatically called during bill upload if restaurant name found
+- Non-blocking: App continues if Google Places API fails
 
 **lib/utils.ts**
 - `sanitizeInput()` - XSS prevention
@@ -211,7 +237,10 @@ All routes follow RESTful patterns:
 - `GuestSelectionsList` - Accordion-based guest list with collapsible details, payment confirmation buttons (payer only)
 - `BillItemsEditor` - Add/edit/delete items (payer only)
 - `SelectionCard` - Display individual selection on status page
-- `ShareLink` - Share link with copy button and WhatsApp integration
+- `ShareLink` - Share link with copy button, WhatsApp integration, and review link (standalone component, used in split page)
+- `WhatsAppShareButton` - WhatsApp share button with optional review text
+- `ReviewLinkSection` - Google review link copy section (displayed when restaurant found)
+- `RestaurantFeedback` - Restaurant feedback with 3 smiley ratings (😞 schlecht, 😐 mittel, 😊 top), Google review link for rating 3, textarea for rating 1-2
 - `QRCode` - QR code generator for share links (uses react-qr-code)
 - `CollapsibleReceipt` - Expandable receipt image view
 - `BillsList` - List of bill history
@@ -524,6 +553,70 @@ const allSelections = [...otherSelections, ...validLiveSelections]
 - Status page shows: Copy button + WhatsApp button + QR code
 - All three methods open same share link: `/split/[shareToken]`
 - QR codes especially useful for in-person bill splitting (restaurant table)
+
+### 17. Google Places Integration (Restaurant Reviews)
+**Purpose:** Automatically find restaurant on Google Maps and generate review links for guests
+
+**Architecture:**
+1. **Claude Vision API** extracts restaurant name + address from receipt
+2. **Google Places Text Search API** finds restaurant on Google Maps
+3. **Review URL** generated: `https://search.google.com/local/writereview?placeid={placeId}`
+4. **WhatsApp message** includes review request when restaurant found
+
+**Data Flow:**
+```
+Upload receipt → Claude extracts name + address
+              → Google Places searches restaurant
+              → Bill updated with placeId, googleMapsUrl, reviewUrl
+              → Status page shows review link + QR code
+              → WhatsApp message includes review request
+```
+
+**Database Fields (Bill table):**
+- `restaurantAddress` - Full address extracted from receipt
+- `googlePlaceId` - Unique Google Place ID (e.g., "ChIJ...")
+- `googleMapsUrl` - Direct link to restaurant on Google Maps
+- `reviewUrl` - Link for guests to leave Google review
+
+**Implementation:**
+- **Upload Route:** Automatically calls `searchRestaurant()` after Claude analysis
+- **Non-blocking:** App continues if Google Places API fails (no error shown to user)
+- **Caching:** Place ID stored in database (no repeated API calls for same restaurant)
+
+**Components:**
+- `ReviewLinkSection` - Displays review URL with copy button (shown when `reviewUrl` exists)
+- `WhatsAppShareButton` - Appends review request to message if `reviewUrl` + `restaurantName` provided
+
+**API Setup:**
+- Requires `GOOGLE_PLACES_API_KEY` in `.env`
+- Enable "Places API (New)" in Google Cloud Console
+- $200/month free credit (~6250 free searches)
+- Text Search: ~$32 per 1000 requests
+
+**Error Handling:**
+- Missing API key → Logged, app continues without review link
+- Restaurant not found → No error, app continues without review link
+- API error → Logged, app continues without review link
+
+**Google Places API Response:**
+```typescript
+{
+  placeId: string           // "ChIJ..." format
+  name: string              // Verified restaurant name
+  formattedAddress: string  // Google's standardized address
+  googleMapsUrl: string     // Link to Google Maps
+  reviewUrl: string         // Review link for guests
+  photoUrl?: string         // Optional restaurant photo
+  rating?: number           // Optional Google rating
+  userRatingsTotal?: number // Optional review count
+}
+```
+
+**Best Practices:**
+- Trust Google's address format over Claude's (more accurate)
+- Review URL works even if guest doesn't have Google account (prompts sign-in)
+- QR code can be used for in-person review requests
+- WhatsApp message is opt-in (only sent if user clicks WhatsApp button)
 
 ### 18. BillItem Realtime Updates (Postgres Changes)
 **Purpose:** Automatically notify all connected clients when bill items are created, updated, or deleted
@@ -884,6 +977,9 @@ DATABASE_URL=postgresql://postgres:[password]@db.[ref].supabase.co:5432/postgres
 NEXT_PUBLIC_SUPABASE_URL=https://[ref].supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiI...
 SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiI...
+
+# Google Places API
+GOOGLE_PLACES_API_KEY=AIzaSy...
 
 # App URL (for share links)
 NEXT_PUBLIC_APP_URL=http://localhost:3000

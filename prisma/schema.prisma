@@ -22,14 +22,22 @@ model Bill {
   restaurantName String?
   totalAmount    Float?
 
+  // Google Places Integration
+  restaurantAddress String? // Vollständige Adresse vom Beleg
+  googlePlaceId     String? // Google Place ID (eindeutig)
+  googleMapsUrl     String? // Google Maps Link zum Restaurant
+  reviewUrl         String? // Review-Link für Gäste (https://search.google.com/local/writereview?placeid=...)
+
   // Relations
   items      BillItem[]
   selections Selection[]
+  feedback   RestaurantFeedback[]
 
   // Public Link Token
   shareToken String @unique @default(uuid())
 
   @@index([shareToken])
+  @@index([googlePlaceId])
 }
 
 model BillItem {
@@ -101,4 +109,27 @@ model Selection {
   @@index([status])
   @@index([expiresAt])
   @@index([billId, sessionId]) // Composite index for lookups
+}
+
+// Restaurant Feedback Model
+// Stores feedback from guests - either Google review redirect or personal feedback
+model RestaurantFeedback {
+  id        String   @id @default(uuid())
+  billId    String
+  bill      Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
+
+  sessionId  String  // Browser session (identifies guest)
+  friendName String? // Optional name of guest
+
+  // Rating: 1=schlecht (😞), 2=mittel (😐), 3=top (😊)
+  rating Int
+
+  // Personal feedback (only for rating 1 or 2, null for rating 3)
+  feedbackText String?
+
+  createdAt DateTime @default(now())
+
+  @@index([billId])
+  @@index([sessionId])
+  @@index([rating])
 }

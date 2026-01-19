@@ -15,6 +15,7 @@ export interface BillAnalysisResult {
   items: BillItemExtracted[]
   restaurantName?: string
   totalAmount?: number
+  restaurantAddress?: string // Vollständige Adresse vom Beleg
 }
 
 /**
@@ -33,6 +34,7 @@ WICHTIG:
 - Berechne den Preis pro Stück (pricePerUnit = totalPrice / quantity)
 - Ignoriere Summen, Zwischensummen, MwSt, Service Charges
 - Extrahiere nur die eigentlichen Speisen und Getränke
+- Extrahiere auch die VOLLSTÄNDIGE ADRESSE des Restaurants (falls auf dem Beleg sichtbar)
 
 Gib die Antwort als JSON zurück im folgenden Format:
 {
@@ -44,7 +46,8 @@ Gib die Antwort als JSON zurück im folgenden Format:
     }
   ],
   "restaurantName": "Restaurant Name (optional)",
-  "totalAmount": 45.00 (optional, Gesamtsumme falls erkennbar)
+  "totalAmount": 45.00 (optional, Gesamtsumme falls erkennbar),
+  "restaurantAddress": "Vollständige Adresse inkl. Straße, PLZ, Stadt (optional, NUR wenn auf Beleg sichtbar)"
 }
 
 Antworte NUR mit dem JSON-Objekt, ohne zusätzlichen Text.`

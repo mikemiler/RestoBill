@@ -9,6 +9,8 @@ import CopyButton from '@/components/CopyButton'
 import QRCode from '@/components/QRCode'
 import StatusPageClient from '@/components/StatusPageClient'
 import WhatsAppShareButton from '@/components/WhatsAppShareButton'
+import ReviewLinkSection from '@/components/ReviewLinkSection'
+import RestaurantFeedback from '@/components/RestaurantFeedback'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -104,7 +106,11 @@ export default async function BillStatusPage({
               <CopyButton text={shareUrl} />
             </div>
             <div className="mb-4">
-              <WhatsAppShareButton shareUrl={shareUrl} />
+              <WhatsAppShareButton
+                shareUrl={shareUrl}
+                reviewUrl={bill.reviewUrl || undefined}
+                restaurantName={bill.restaurantName || undefined}
+              />
             </div>
             <div className="share-qr-section">
               <p className="text-sm text-gray-600 dark:text-gray-300 mb-3 text-center">
@@ -114,6 +120,9 @@ export default async function BillStatusPage({
                 <QRCode value={shareUrl} size={180} />
               </div>
             </div>
+
+            {/* Review-Link Sektion (nur wenn Restaurant gefunden) */}
+            {bill.reviewUrl && <ReviewLinkSection reviewUrl={bill.reviewUrl} />}
           </div>
 
           {/* Receipt Image - Collapsible */}
@@ -134,6 +143,15 @@ export default async function BillStatusPage({
             itemRemainingQuantities={itemRemainingQuantities}
             totalBillAmount={totalBillAmount}
           />
+
+          {/* Restaurant Feedback */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 p-4 sm:p-5 md:p-6 mt-4 md:mt-6">
+            <RestaurantFeedback
+              billId={bill.id}
+              reviewUrl={bill.reviewUrl}
+              restaurantName={bill.restaurantName}
+            />
+          </div>
         </div>
       </div>
     </>

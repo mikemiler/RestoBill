@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { uploadBillImage } from '@/lib/supabase'
 import { analyzeBillImage } from '@/lib/claude'
+import { searchRestaurant } from '@/lib/googlePlaces'
 import { validateImageFile } from '@/lib/utils'
 import { randomUUID } from 'crypto'
 
@@ -64,13 +65,37 @@ export async function POST(
       )
     }
 
-    // Update bill with image URL and restaurant info
+    // Search for restaurant on Google Maps (if name found)
+    let placeResult = null
+    if (analysis.restaurantName) {
+      try {
+        console.log('[Upload] Searching restaurant on Google Maps:', analysis.restaurantName)
+        placeResult = await searchRestaurant(
+          analysis.restaurantName,
+          analysis.restaurantAddress
+        )
+        if (placeResult) {
+          console.log('[Upload] Restaurant found:', placeResult.name, placeResult.placeId)
+        } else {
+          console.log('[Upload] Restaurant not found on Google Maps')
+        }
+      } catch (error) {
+        console.error('[Upload] Error searching restaurant:', error)
+        // Continue without Google Places data (non-blocking)
+      }
+    }
+
+    // Update bill with image URL, restaurant info, and Google Places data
     const { error: updateError } = await supabaseAdmin
       .from('Bill')
       .update({
         imageUrl: imageUrl,
         restaurantName: analysis.restaurantName,
         totalAmount: analysis.totalAmount,
+        restaurantAddress: placeResult?.formattedAddress || analysis.restaurantAddress,
+        googlePlaceId: placeResult?.placeId,
+        googleMapsUrl: placeResult?.googleMapsUrl,
+        reviewUrl: placeResult?.reviewUrl,
       })
       .eq('id', billId)
 

@@ -2,8 +2,15 @@
 
 import { useState } from 'react'
 
-export default function ShareLink({ shareUrl }: { shareUrl: string }) {
+interface ShareLinkProps {
+  shareUrl: string
+  reviewUrl?: string
+  restaurantName?: string
+}
+
+export default function ShareLink({ shareUrl, reviewUrl, restaurantName }: ShareLinkProps) {
   const [copied, setCopied] = useState(false)
+  const [reviewCopied, setReviewCopied] = useState(false)
 
   async function copyToClipboard() {
     try {
@@ -15,8 +22,25 @@ export default function ShareLink({ shareUrl }: { shareUrl: string }) {
     }
   }
 
+  async function copyReviewLink() {
+    if (!reviewUrl) return
+    try {
+      await navigator.clipboard.writeText(reviewUrl)
+      setReviewCopied(true)
+      setTimeout(() => setReviewCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+  }
+
   function shareViaWhatsApp() {
-    const text = `Hallo! Bitte wähle deine Positionen aus der Restaurant-Rechnung aus: ${shareUrl}`
+    let text = `Hallo! Bitte wähle deine Positionen aus der Restaurant-Rechnung aus: ${shareUrl}`
+
+    // Add review request if restaurant found
+    if (reviewUrl && restaurantName) {
+      text += `\n\nWenn du zufrieden warst, hinterlasse gerne eine Google-Bewertung für ${restaurantName}: ${reviewUrl}`
+    }
+
     const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`
     window.open(whatsappUrl, '_blank')
   }
@@ -47,6 +71,29 @@ export default function ShareLink({ shareUrl }: { shareUrl: string }) {
         </svg>
         <span>Per WhatsApp teilen</span>
       </button>
+
+      {/* Review-Link Sektion (nur wenn Restaurant gefunden) */}
+      {reviewUrl && (
+        <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+            ⭐ Bitte deine Freunde, eine Google-Bewertung zu hinterlassen:
+          </p>
+          <div className="flex items-center space-x-2">
+            <input
+              type="text"
+              value={reviewUrl}
+              readOnly
+              className="flex-1 px-3 sm:px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 dark:text-gray-200 text-xs sm:text-sm"
+            />
+            <button
+              onClick={copyReviewLink}
+              className="bg-yellow-500 hover:bg-yellow-600 dark:bg-yellow-600 dark:hover:bg-yellow-700 text-white px-4 sm:px-6 py-2 rounded-lg font-semibold whitespace-nowrap transition-colors text-sm sm:text-base"
+            >
+              {reviewCopied ? '✓ Kopiert!' : '⭐ Kopieren'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
