@@ -27,17 +27,36 @@ export async function resizeImage(
     format = 'image/jpeg',
   } = options
 
+  console.log('[resizeImage] Start:', {
+    originalFile: file.name,
+    originalSize: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
+    originalType: file.type,
+    targetFormat: format,
+    quality,
+  })
+
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
 
-    reader.onerror = () => reject(new Error('Failed to read file'))
+    reader.onerror = () => {
+      console.error('[resizeImage] FileReader error')
+      reject(new Error('Failed to read file'))
+    }
 
     reader.onload = (e) => {
+      console.log('[resizeImage] File loaded into memory')
       const img = new Image()
 
-      img.onerror = () => reject(new Error('Failed to load image'))
+      img.onerror = () => {
+        console.error('[resizeImage] Image load error')
+        reject(new Error('Failed to load image'))
+      }
 
       img.onload = () => {
+        console.log('[resizeImage] Image dimensions:', {
+          original: `${img.width}x${img.height}`,
+        })
+
         // Calculate new dimensions (maintain aspect ratio)
         let width = img.width
         let height = img.height
@@ -46,6 +65,9 @@ export async function resizeImage(
           const ratio = Math.min(maxWidth / width, maxHeight / height)
           width = Math.round(width * ratio)
           height = Math.round(height * ratio)
+          console.log('[resizeImage] Resizing to:', `${width}x${height}`, `(ratio: ${ratio.toFixed(2)})`)
+        } else {
+          console.log('[resizeImage] No resize needed (image smaller than max)')
         }
 
         // Create canvas and draw resized image
@@ -55,6 +77,7 @@ export async function resizeImage(
 
         const ctx = canvas.getContext('2d')
         if (!ctx) {
+          console.error('[resizeImage] Canvas context error')
           reject(new Error('Failed to get canvas context'))
           return
         }
@@ -63,19 +86,29 @@ export async function resizeImage(
         ctx.imageSmoothingEnabled = true
         ctx.imageSmoothingQuality = 'high'
         ctx.drawImage(img, 0, 0, width, height)
+        console.log('[resizeImage] Canvas drawn, converting to blob...')
 
         // Convert canvas to blob
         canvas.toBlob(
           (blob) => {
             if (!blob) {
+              console.error('[resizeImage] Blob creation failed')
               reject(new Error('Failed to create blob'))
               return
             }
+
+            console.log('[resizeImage] Blob created:', `${(blob.size / 1024 / 1024).toFixed(2)}MB`)
 
             // Create new File from blob
             const compressedFile = new File([blob], file.name, {
               type: format,
               lastModified: Date.now(),
+            })
+
+            const compressionRatio = ((1 - compressedFile.size / file.size) * 100).toFixed(1)
+            console.log('[resizeImage] ✅ Success!', {
+              finalSize: `${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`,
+              reduction: `${compressionRatio}%`,
             })
 
             resolve(compressedFile)
