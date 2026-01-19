@@ -1095,6 +1095,52 @@ npx prisma generate  # Regenerate client
 - Verify bucket `bill-images` exists in Supabase dashboard
 - Check storage policies allow public read + authenticated write
 
+### Supabase RLS Policies Setup
+**When to run:** After creating new tables via Prisma schema changes (`npx prisma db push`)
+
+**Problem:** New tables in Supabase don't have Row Level Security (RLS) policies by default, which blocks API access even with valid credentials.
+
+**Solution:** Enable RLS and create public CRUD policies for each new table.
+
+**Example: RestaurantFeedback Table**
+```sql
+-- 1. Enable RLS for the table
+ALTER TABLE "RestaurantFeedback" ENABLE ROW LEVEL SECURITY;
+
+-- 2. Allow public read access
+CREATE POLICY "Allow public read access to RestaurantFeedback"
+ON "RestaurantFeedback" FOR SELECT TO anon, authenticated USING (true);
+
+-- 3. Allow public insert
+CREATE POLICY "Allow public insert to RestaurantFeedback"
+ON "RestaurantFeedback" FOR INSERT TO anon, authenticated WITH CHECK (true);
+
+-- 4. Allow public update
+CREATE POLICY "Allow public update to RestaurantFeedback"
+ON "RestaurantFeedback" FOR UPDATE TO anon, authenticated
+USING (true) WITH CHECK (true);
+
+-- 5. Allow public delete
+CREATE POLICY "Allow public delete to RestaurantFeedback"
+ON "RestaurantFeedback" FOR DELETE TO anon, authenticated USING (true);
+```
+
+**How to apply:**
+1. Open Supabase Dashboard → SQL Editor
+2. Paste the SQL commands above (replace "RestaurantFeedback" with your table name)
+3. Execute the script
+4. Verify policies exist: Database → Tables → [TableName] → Policies
+
+**Why all policies are public:**
+- App uses share tokens (UUID v4) for access control, not database-level auth
+- Simpler than complex RLS rules per record
+- Appropriate for bill-splitting use case where anyone with share link can access
+
+**Important:**
+- All four policies (SELECT, INSERT, UPDATE, DELETE) are required for full functionality
+- Missing UPDATE or DELETE policies will break realtime updates
+- Apply same pattern to all new tables that need API access
+
 ### Claude API Errors
 - Verify `ANTHROPIC_API_KEY` in `.env.local`
 - Ensure image URL is publicly accessible

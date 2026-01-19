@@ -54,12 +54,12 @@ export async function POST(req: NextRequest) {
 
     // Check if user already gave feedback
     console.log('🔍 Checking for existing feedback...')
-    const { data: existingFeedback } = await supabaseAdmin
+    const { data: existingFeedback, error: existingError } = await supabaseAdmin
       .from('RestaurantFeedback')
       .select('*')
       .eq('billId', billId)
       .eq('sessionId', sessionId)
-      .single()
+      .maybeSingle() // Use maybeSingle instead of single - returns null if not found
 
     if (existingFeedback) {
       console.log('📝 Updating existing feedback:', existingFeedback.id)
