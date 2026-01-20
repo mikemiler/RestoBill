@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { sanitizeInput } from '@/lib/utils'
+import { randomUUID } from 'crypto'
 
 export async function POST(req: NextRequest) {
   try {
@@ -92,6 +93,7 @@ export async function POST(req: NextRequest) {
     const { data: feedback, error: createError } = await supabaseAdmin
       .from('RestaurantFeedback')
       .insert({
+        id: randomUUID(), // CRITICAL: Supabase doesn't auto-generate UUIDs, must be set manually
         billId,
         sessionId,
         rating,
