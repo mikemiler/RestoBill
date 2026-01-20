@@ -1,6 +1,6 @@
 {
   "buildCommand": "npm run build",
-  "installCommand": "rm -rf node_modules .next && npm ci",
+  "installCommand": "npm ci",
   "framework": "nextjs",
   "regions": ["fra1"],
   "build": {
