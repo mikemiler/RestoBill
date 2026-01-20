@@ -1125,6 +1125,8 @@ npx prisma generate  # Regenerate client
 
 **Solution:** Enable RLS and create public CRUD policies for each new table.
 
+**Status:** ✅ All tables (Bill, BillItem, Selection, RestaurantFeedback) have RLS policies already configured.
+
 **Example: RestaurantFeedback Table**
 ```sql
 -- 1. Enable RLS for the table
@@ -1173,6 +1175,21 @@ ON "RestaurantFeedback" FOR DELETE TO anon, authenticated USING (true);
 ```bash
 rm -rf .next && npm run build  # Clear cache and rebuild
 ```
+
+### Vercel Build Cache Issues
+**Symptoms:** Build fails with "Module not found" errors for existing files, or npm installs only 94 packages instead of 463
+
+**Problem:** Vercel's build cache is corrupted and contains old dependency data
+
+**Solution:**
+1. **Vercel Dashboard** → Project → **Settings** → **General** → Scroll to **Advanced**
+2. Click **"Clear Build Cache"** button
+3. Go to **Deployments** tab → Latest deployment → **"..."** → **"Redeploy"**
+4. IMPORTANT: Uncheck "Use existing Build Cache" when redeploying
+
+**Prevention:** The `vercel.json` installCommand (`rm -rf node_modules .next && npm ci`) helps prevent this, but cannot clear Vercel's pre-restore cache layer. Manual cache clearing is required when cache becomes corrupted.
+
+**Alternative:** Delete the Vercel project and re-import from GitHub for a completely fresh start.
 
 ### Real-time/Live Selection Issues
 **Symptoms:** Live selections not updating, stale data, or missing updates
