@@ -24,15 +24,143 @@ interface GuestSelectionsListProps {
   items: BillItem[]
   selections: Selection[]  // Now passed as props!
   isOwner?: boolean
+  totalBillAmount?: number
 }
 
 export default function GuestSelectionsList({
   items,
   selections,
   isOwner = false,
+  totalBillAmount = 0,
 }: GuestSelectionsListProps) {
   const [loadingSelectionId, setLoadingSelectionId] = useState<string | null>(null)
   const [expandedSelections, setExpandedSelections] = useState<Record<string, boolean>>({})
+
+  // Calculate summary data (memoized for performance)
+  const summaryData = useMemo(() => {
+    console.log('🔢 [GuestSelectionsList] Recalculating summary data:', {
+      totalSelections: selections.length,
+      totalBillAmount,
+      selectionsData: selections.map(s => ({
+        friendName: s.friendName,
+        paymentMethod: s.paymentMethod,
+        paid: s.paid,
+        tipAmount: s.tipAmount,
+        itemQuantities: s.itemQuantities
+      }))
+    })
+
+    // Count ALL selections (including live selections with paymentMethod=null)
+    // Live selections = guests still choosing
+    // Submitted selections = paymentMethod set, waiting for or already confirmed
+    const validSelections = selections.filter(s => {
+      const hasItems = s.itemQuantities && Object.keys(s.itemQuantities).length > 0
+      const hasTip = s.tipAmount && s.tipAmount > 0
+      return hasItems || hasTip
+    })
+
+    console.log('🔢 [GuestSelectionsList] Valid selections (including live):', {
+      count: validSelections.length,
+      selections: validSelections.map(s => ({
+        friendName: s.friendName,
+        paymentMethod: s.paymentMethod,
+        paid: s.paid,
+        tipAmount: s.tipAmount,
+        hasItems: Object.keys(s.itemQuantities).length > 0
+      }))
+    })
+
+    // Calculate total tip from ALL valid selections (including live)
+    const totalTip = validSelections.reduce((sum, s) => sum + s.tipAmount, 0)
+
+    // Calculate average tip percentage (based on bill amount)
+    const averageTipPercentage = totalBillAmount > 0
+      ? (totalTip / totalBillAmount) * 100
+      : 0
+
+    // Calculate total amount (bill + tip)
+    const totalAmount = totalBillAmount + totalTip
+
+    // Calculate total confirmed payments (paid=true, with OR without paymentMethod)
+    // Owner can confirm both submitted selections AND live selections (e.g. cash payment without formal submit)
+    const confirmedSelections = validSelections.filter(s => s.paid === true)
+    console.log('🔢 [GuestSelectionsList] Confirmed selections:', {
+      count: confirmedSelections.length,
+      selections: confirmedSelections.map(s => ({
+        friendName: s.friendName,
+        itemQuantities: s.itemQuantities,
+        tipAmount: s.tipAmount
+      }))
+    })
+
+    const totalConfirmed = confirmedSelections.reduce((sum, s) => {
+      const itemQuantities = s.itemQuantities || {}
+      const subtotal = Object.entries(itemQuantities).reduce((itemSum, [itemId, quantity]) => {
+        const item = items.find(i => i.id === itemId)
+        if (!item) return itemSum
+        return itemSum + (item.pricePerUnit * quantity)
+      }, 0)
+      console.log('🔢 [GuestSelectionsList] Confirmed selection calculation:', {
+        friendName: s.friendName,
+        subtotal,
+        tipAmount: s.tipAmount,
+        total: subtotal + s.tipAmount
+      })
+      return sum + subtotal + s.tipAmount
+    }, 0)
+
+    // Calculate total pending payments (includes BOTH submitted and live selections)
+    // pending = paid=false (either paymentMethod set OR null for live selections)
+    const pendingSelections = validSelections.filter(s => s.paid === false)
+    console.log('🔢 [GuestSelectionsList] Pending selections:', {
+      count: pendingSelections.length,
+      selections: pendingSelections.map(s => ({
+        friendName: s.friendName,
+        itemQuantities: s.itemQuantities,
+        tipAmount: s.tipAmount,
+        paymentMethod: s.paymentMethod
+      }))
+    })
+
+    const totalPending = pendingSelections.reduce((sum, s) => {
+      const itemQuantities = s.itemQuantities || {}
+      const subtotal = Object.entries(itemQuantities).reduce((itemSum, [itemId, quantity]) => {
+        const item = items.find(i => i.id === itemId)
+        if (!item) {
+          console.log('🔢 [GuestSelectionsList] Item not found for ID:', itemId)
+          return itemSum
+        }
+        const lineTotal = item.pricePerUnit * quantity
+        console.log('🔢 [GuestSelectionsList] Item calculation:', {
+          itemName: item.name,
+          pricePerUnit: item.pricePerUnit,
+          quantity,
+          lineTotal
+        })
+        return itemSum + lineTotal
+      }, 0)
+      console.log('🔢 [GuestSelectionsList] Pending selection calculation:', {
+        friendName: s.friendName,
+        subtotal,
+        tipAmount: s.tipAmount,
+        total: subtotal + s.tipAmount
+      })
+      return sum + subtotal + s.tipAmount
+    }, 0)
+
+    const result = {
+      totalBillAmount,
+      totalTip,
+      averageTipPercentage,
+      totalAmount,
+      totalConfirmed,
+      totalPending,
+    }
+
+    console.log('🔢 [GuestSelectionsList] Summary result:', result)
+
+    return result
+  }, [items, selections, totalBillAmount])
 
   // Filter and sort selections (memoized for performance)
   const allSelections = useMemo(() => {
@@ -274,6 +402,42 @@ export default function GuestSelectionsList({
           </div>
         )
       })}
+
+      {/* Summary Section - Below guest list */}
+      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg border border-blue-200 dark:border-blue-800 p-3 sm:p-4 mt-4">
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <p className="text-xs text-gray-600 dark:text-gray-400 mb-0.5">Rechnungssumme</p>
+            <p className="text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100">
+              {formatEUR(summaryData.totalBillAmount)}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-600 dark:text-gray-400 mb-0.5">Trinkgeld ⌀ {summaryData.averageTipPercentage.toFixed(1)}%</p>
+            <p className="text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100">
+              {formatEUR(summaryData.totalTip)}
+            </p>
+          </div>
+        </div>
+        <div className="pt-3 border-t border-blue-200 dark:border-blue-700">
+          <div className="flex justify-between items-center mb-2">
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Gesamtsumme</p>
+            <p className="text-xl sm:text-2xl font-bold text-blue-600 dark:text-blue-400">
+              {formatEUR(summaryData.totalAmount)}
+            </p>
+          </div>
+          <div className="flex justify-between items-center text-xs text-gray-600 dark:text-gray-400">
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 bg-green-500 rounded-full" />
+              Bestätigt: {formatEUR(summaryData.totalConfirmed)}
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 bg-yellow-500 rounded-full" />
+              Ausstehend: {formatEUR(summaryData.totalPending)}
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

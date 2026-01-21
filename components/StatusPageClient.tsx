@@ -234,6 +234,7 @@ export default function StatusPageClient({
           items={items}
           selections={selections}
           isOwner={true}
+          totalBillAmount={totalBillAmount}
         />
       </div>
 
