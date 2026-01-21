@@ -892,7 +892,7 @@ export default function SplitForm({
   }
 
   return (
-    <div className="space-y-4 sm:space-y-5 md:space-y-6 pb-32">
+    <div className="space-y-4 sm:space-y-5 md:space-y-6">
 
       {/* Editable Guest Name - Only for guests, not owner */}
       {friendName && !isOwner && (
@@ -1295,7 +1295,7 @@ export default function SplitForm({
                             remainingQty === 0
                           }
                           className={`px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
-                            customQuantityMode[item.id]
+                            customQuantityMode[item.id] || (selectedItems[item.id] > 0 && !quantityOptions.includes(selectedItems[item.id]))
                               ? 'bg-green-600 text-white dark:bg-green-500'
                               : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed'
                           }`}
@@ -1673,11 +1673,11 @@ export default function SplitForm({
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-base">💵</span>
                   <h4 className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-gray-100">
-                    Oder bar bezahlen
+                    Bar bezahlen
                   </h4>
                 </div>
                 <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 ml-6">
-                  Gib {payerName} das Geld beim nächsten Treffen.
+                  Gib {payerName} das Geld Bar.
                 </p>
               </div>
             </div>
