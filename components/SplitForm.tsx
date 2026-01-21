@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
-import { formatEUR } from '@/lib/utils'
+import { formatEUR, generatePayPalUrlWithoutAmount, formatAmountForPayPal } from '@/lib/utils'
 import { getOrCreateSessionId } from '@/lib/sessionStorage'
 import { useRealtimeSubscription, useDebounce } from '@/lib/hooks'
 import { debugLog, debugError } from '@/lib/debug'
@@ -84,6 +84,7 @@ export default function SplitForm({
   const [customTip, setCustomTip] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [amountCopied, setAmountCopied] = useState(false)
   const [liveSelections, setLiveSelections] = useState<LiveSelection[]>([])
   const [remainingQuantities, setRemainingQuantities] = useState<Record<string, number>>(itemRemainingQuantities)
   const [selections, setSelections] = useState<DatabaseSelection[]>(allSelections)
@@ -323,10 +324,21 @@ export default function SplitForm({
 
   // Calculate total confirmed amount (paid=true only)
   // Note: All selections have status=SELECTING now
+  // IMPORTANT: Only count ITEMS, not tips, because totalAmount is the bill total (no tips)
+  // CRITICAL: Exclude owner's own live selection to prevent double counting
+  const currentSessionId = sessionId || getOrCreateSessionId()
   const totalPaidAmount = selections
-    .filter(sel => sel.paid === true)
+    .filter(sel => {
+      // Skip owner's own live selection (paymentMethod=null means still selecting)
+      const isOwnLiveSelection = sel.paymentMethod === null &&
+        'sessionId' in sel &&
+        (sel as any).sessionId === currentSessionId
+
+      // Only count paid selections that are NOT owner's own live selection
+      return sel.paid === true && !isOwnLiveSelection
+    })
     .reduce((sum, selection) => {
-      // Calculate selection subtotal from item quantities
+      // Calculate selection subtotal from item quantities (WITHOUT tip)
       const selectionSubtotal = Object.entries(selection.itemQuantities).reduce((itemSum, [itemId, quantity]) => {
         const item = items.find(i => i.id === itemId)
         if (item) {
@@ -334,7 +346,8 @@ export default function SplitForm({
         }
         return itemSum
       }, 0)
-      return sum + selectionSubtotal + selection.tipAmount
+      // Don't add tipAmount here - we're comparing against bill total
+      return sum + selectionSubtotal
     }, 0)
 
   // Calculate own active selection from local state (for instant feedback)
@@ -344,7 +357,7 @@ export default function SplitForm({
   }, 0)
 
   // Calculate other guests' active selections from liveSelections (realtime)
-  const currentSessionId = sessionId || getOrCreateSessionId()
+  // Note: currentSessionId already defined above
   const othersActiveAmount = liveSelections.reduce((sum, sel) => {
     // Skip current user's selections to avoid double counting
     if (sel.sessionId === currentSessionId) return sum
@@ -361,7 +374,7 @@ export default function SplitForm({
   // Total active amount = own selections + others' selections
   const totalActiveAmount = ownActiveAmount + othersActiveAmount
 
-  // Calculate remaining amount
+  // Calculate remaining amount (display only will be rounded)
   const remainingAmount = totalAmount - totalPaidAmount - totalActiveAmount
 
   // Calculate percentage for progress
@@ -569,17 +582,20 @@ export default function SplitForm({
   // Format quantity as fraction if applicable
   function formatQuantity(quantity: number): string {
     const fractions = [
+      { value: 1/2, label: '1/2' },
       { value: 1/3, label: '1/3' },
+      { value: 2/3, label: '2/3' },
       { value: 1/4, label: '1/4' },
+      { value: 3/4, label: '3/4' },
       { value: 1/5, label: '1/5' },
+      { value: 2/5, label: '2/5' },
+      { value: 3/5, label: '3/5' },
+      { value: 4/5, label: '4/5' },
       { value: 1/6, label: '1/6' },
       { value: 1/7, label: '1/7' },
       { value: 1/8, label: '1/8' },
       { value: 1/9, label: '1/9' },
       { value: 1/10, label: '1/10' },
-      { value: 1/2, label: '1/2' },
-      { value: 2/3, label: '2/3' },
-      { value: 3/4, label: '3/4' },
     ]
 
     // Check if quantity matches a common fraction (with small tolerance for floating point errors)
@@ -589,8 +605,8 @@ export default function SplitForm({
       }
     }
 
-    // Return as decimal if not a common fraction
-    return quantity.toString()
+    // Return as decimal if not a common fraction (rounded to 2 decimal places for display only)
+    return (Math.round(quantity * 100) / 100).toString()
   }
 
   // Generate all possible quantity options based on original item quantity
@@ -607,7 +623,7 @@ export default function SplitForm({
     return options
   }
 
-  async function handleItemQuantityChange(itemId: string, quantity: number) {
+  async function handleItemQuantityChange(itemId: string, quantity: number, closeCustomMode: boolean = false) {
     // Calculate new selectedItems state
     let newSelectedItems: Record<string, number>
     if (quantity === 0) {
@@ -619,8 +635,8 @@ export default function SplitForm({
 
     setSelectedItems(newSelectedItems)
 
-    // Disable custom mode when selecting a preset quantity
-    if (customQuantityMode[itemId]) {
+    // Only close custom mode if explicitly requested (e.g., when clicking preset buttons 0x, 1x, 2x)
+    if (closeCustomMode && customQuantityMode[itemId]) {
       setCustomQuantityMode((prev) => {
         const newMode = { ...prev }
         delete newMode[itemId]
@@ -668,8 +684,25 @@ export default function SplitForm({
   }
 
   function handleCustomQuantityToggle(itemId: string) {
-    setCustomQuantityMode((prev) => ({ ...prev, [itemId]: true }))
-    setCustomQuantityInput((prev) => ({ ...prev, [itemId]: '' }))
+    setCustomQuantityMode((prev) => {
+      const newMode = { ...prev }
+      if (newMode[itemId]) {
+        // Close custom mode (toggle off)
+        delete newMode[itemId]
+      } else {
+        // Open custom mode (toggle on)
+        newMode[itemId] = true
+      }
+      return newMode
+    })
+
+    // When opening custom mode, populate input with current selection (if any)
+    if (!customQuantityMode[itemId]) {
+      setCustomQuantityInput((prev) => ({
+        ...prev,
+        [itemId]: selectedItems[itemId] ? selectedItems[itemId].toString() : ''
+      }))
+    }
   }
 
   async function handleCustomQuantityInputChange(itemId: string, value: string) {
@@ -740,7 +773,7 @@ export default function SplitForm({
     const maxQty = Math.floor(remainingQty)
     const nextQty = currentQty >= maxQty ? 0 : currentQty + 1
 
-    handleItemQuantityChange(itemId, nextQty)
+    handleItemQuantityChange(itemId, nextQty, true)
   }
 
   function handleTipChange(percent: number) {
@@ -1242,9 +1275,9 @@ export default function SplitForm({
                             <button
                               key={qty}
                               type="button"
-                              onClick={() => handleItemQuantityChange(item.id, qty)}
+                              onClick={() => handleItemQuantityChange(item.id, qty, true)}
                               disabled={isDisabled}
-                              className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors min-w-[2.5rem] ${
+                              className={`px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg text-xs sm:text-sm font-medium transition-colors min-w-[3rem] ${
                                 selectedItems[item.id] === qty && !customQuantityMode[item.id]
                                   ? 'bg-green-600 text-white dark:bg-green-500'
                                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed'
@@ -1261,7 +1294,7 @@ export default function SplitForm({
                             (isFullyMarked && !isOverselected && selectedItems[item.id] === 0) ||
                             remainingQty === 0
                           }
-                          className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+                          className={`px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
                             customQuantityMode[item.id]
                               ? 'bg-green-600 text-white dark:bg-green-500'
                               : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed'
@@ -1282,8 +1315,13 @@ export default function SplitForm({
                             {[
                               { label: '1/2', value: 1/2 },
                               { label: '1/3', value: 1/3 },
+                              { label: '2/3', value: 2/3 },
                               { label: '1/4', value: 1/4 },
+                              { label: '3/4', value: 3/4 },
                               { label: '1/5', value: 1/5 },
+                              { label: '2/5', value: 2/5 },
+                              { label: '3/5', value: 3/5 },
+                              { label: '4/5', value: 4/5 },
                               { label: '1/6', value: 1/6 },
                               { label: '1/7', value: 1/7 },
                               { label: '1/8', value: 1/8 },
@@ -1307,7 +1345,7 @@ export default function SplitForm({
                                     // Update selection with API call (triggers realtime update)
                                     await handleItemQuantityChange(item.id, actualValue)
                                   }}
-                                  className="px-2 py-1 bg-purple-100 hover:bg-purple-200 dark:bg-purple-700 dark:hover:bg-purple-600 text-purple-700 dark:text-purple-100 rounded text-xs font-medium transition-colors"
+                                  className="px-3 py-2 bg-purple-100 hover:bg-purple-200 dark:bg-purple-700 dark:hover:bg-purple-600 text-purple-700 dark:text-purple-100 rounded-lg text-xs sm:text-sm font-medium transition-colors"
                                 >
                                   {fraction.label}
                                 </button>
@@ -1555,40 +1593,92 @@ export default function SplitForm({
         </div>
       </div>
 
-      {/* Payment Info Box */}
-      {!isOwner && (
+      {/* Payment Info Box - Copy Amount Flow */}
+      {!isOwner && total > 0 && (
         <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 sm:p-4 space-y-3">
           <div className="flex items-start gap-2">
             <span className="text-blue-600 dark:text-blue-400 text-lg">ℹ️</span>
-            <div className="flex-1 space-y-2">
+            <div className="flex-1 space-y-3">
               <p className="text-xs sm:text-sm text-blue-800 dark:text-blue-300">
                 <span className="font-semibold">{payerName}</span> bezahlt die Gesamtrechnung. Bezahle deinen Anteil ({formatEUR(total)}) direkt an <span className="font-semibold">{payerName}</span>:
               </p>
 
-              {/* PayPal Link (optional) */}
-              {paypalHandle && total > 0 && (
-                <div className="flex items-center gap-2 bg-white dark:bg-gray-700 rounded-lg p-2">
-                  <span className="text-sm">💳</span>
-                  <a
-                    href={`https://paypal.me/${paypalHandle}/${total.toFixed(2)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-1 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
+              {/* PayPal Payment Flow */}
+              {paypalHandle && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-base">💳</span>
+                    <h4 className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-gray-100">
+                      Per PayPal bezahlen:
+                    </h4>
+                  </div>
+
+                  {/* Step 1: Copy Amount Button */}
+                  <button
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(formatAmountForPayPal(total))
+                        setAmountCopied(true)
+                      } catch (error) {
+                        console.error('Failed to copy amount:', error)
+                      }
+                    }}
+                    className={`w-full ${
+                      amountCopied
+                        ? 'bg-green-600 dark:bg-green-500 hover:bg-green-700 dark:hover:bg-green-600'
+                        : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600'
+                    } text-gray-900 dark:text-gray-100 font-semibold py-2.5 px-4 rounded-lg transition-colors text-xs sm:text-sm flex items-center justify-center gap-2`}
                   >
-                    Per PayPal bezahlen
-                  </a>
-                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                  </svg>
+                    {amountCopied ? (
+                      <>
+                        <span>✓</span>
+                        <span>Betrag kopiert ({formatAmountForPayPal(total)} €)</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>📋</span>
+                        <span>Betrag kopieren ({formatAmountForPayPal(total)} €)</span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* Step 2: Open PayPal Button (disabled until copied) */}
+                  <button
+                    onClick={() => {
+                      if (!amountCopied) return
+                      const paypalUrl = generatePayPalUrlWithoutAmount(paypalHandle)
+                      window.open(paypalUrl, '_blank', 'noopener,noreferrer')
+                    }}
+                    disabled={!amountCopied}
+                    className={`w-full ${
+                      amountCopied
+                        ? 'bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 cursor-pointer'
+                        : 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed opacity-50'
+                    } text-white font-semibold py-2.5 px-4 rounded-lg transition-colors text-xs sm:text-sm flex items-center justify-center gap-2`}
+                  >
+                    <span>💳</span>
+                    <span>PayPal öffnen & Betrag einfügen</span>
+                  </button>
+
+                  {!amountCopied && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                      ⬆️ Kopiere erst den Betrag, dann öffne PayPal
+                    </p>
+                  )}
                 </div>
               )}
 
-              {/* Cash Payment Info */}
-              <div className="flex items-center gap-2 bg-white dark:bg-gray-700 rounded-lg p-2">
-                <span className="text-sm">💵</span>
-                <span className="flex-1 text-sm text-gray-700 dark:text-gray-300">
-                  Bar bezahlen
-                </span>
+              {/* Cash Payment Option */}
+              <div className="pt-2 border-t border-blue-200 dark:border-blue-800">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-base">💵</span>
+                  <h4 className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-gray-100">
+                    Oder bar bezahlen
+                  </h4>
+                </div>
+                <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 ml-6">
+                  Gib {payerName} das Geld beim nächsten Treffen.
+                </p>
               </div>
             </div>
           </div>
@@ -1607,7 +1697,11 @@ export default function SplitForm({
           {/* Progress Bar with Percentage Inside */}
           <div className="relative w-full bg-gray-200 dark:bg-gray-700 rounded-full h-6 sm:h-7 overflow-hidden shadow-inner">
             <div
-              className="h-full bg-gradient-to-r from-green-500 via-green-500 to-blue-500 dark:from-green-600 dark:via-green-600 dark:to-blue-600 transition-all duration-500 flex items-center justify-center"
+              className={`h-full transition-all duration-500 flex items-center justify-center ${
+                totalCoveredPercentage >= 99.9
+                  ? 'bg-gradient-to-r from-green-500 to-green-600 dark:from-green-600 dark:to-green-700'
+                  : 'bg-gradient-to-r from-blue-500 to-blue-600 dark:from-blue-600 dark:to-blue-700'
+              }`}
               style={{ width: `${totalCoveredPercentage}%` }}
             >
               {totalCoveredPercentage > 15 && (
@@ -1632,17 +1726,21 @@ export default function SplitForm({
               <span className="font-bold text-green-600 dark:text-green-400">{formatEUR(ownActiveAmount)}</span>
             </div>
             <div className={`font-bold ${
-              remainingAmount === 0
+              Math.abs(remainingAmount) < 0.01 && Math.abs(totalAmount - totalPaidAmount) < 0.01
+                ? 'text-green-600 dark:text-green-400'
+                : Math.abs(remainingAmount) < 0.01
                 ? 'text-green-600 dark:text-green-400'
                 : remainingAmount > 0
                 ? 'text-orange-600 dark:text-orange-400'
                 : 'text-red-600 dark:text-red-400'
             }`}>
-              {remainingAmount === 0
+              {Math.abs(remainingAmount) < 0.01 && Math.abs(totalAmount - totalPaidAmount) < 0.01
+                ? '✓ Fertig aufgeteilt!'
+                : Math.abs(remainingAmount) < 0.01
                 ? '✓ Vollständig aufgeteilt!'
                 : remainingAmount > 0
-                ? `Noch offen: ${formatEUR(remainingAmount)} / ${formatEUR(totalAmount)}`
-                : `❗ Überbucht: ${formatEUR(Math.abs(remainingAmount))}`
+                ? `Noch offen: ${formatEUR(Math.round(remainingAmount * 100) / 100)} / ${formatEUR(totalAmount)}`
+                : `❗ Überbucht: ${formatEUR(Math.round(Math.abs(remainingAmount) * 100) / 100)}`
               }
             </div>
           </div>

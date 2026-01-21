@@ -22,10 +22,33 @@ export function formatEUR(amount: number): string {
 }
 
 /**
- * Generate PayPal.me payment URL
+ * Generate PayPal.me payment URL WITHOUT amount
+ * User will manually enter the amount in PayPal app
+ * @param paypalHandle - PayPal username (e.g., "maxmustermann")
+ * @returns PayPal.me URL without amount
+ */
+export function generatePayPalUrlWithoutAmount(paypalHandle: string): string {
+  return `https://paypal.me/${paypalHandle}`
+}
+
+/**
+ * Format amount for PayPal input (without currency symbol)
+ * @param amount - Amount in EUR
+ * @returns Formatted amount string (e.g., "42.50")
+ */
+export function formatAmountForPayPal(amount: number): string {
+  // Round to 2 decimal places and return as string with 2 decimals
+  const roundedAmount = Math.round(amount * 100) / 100
+  return roundedAmount.toFixed(2)
+}
+
+/**
+ * Generate PayPal.me payment URL (DEPRECATED - use generatePayPalUrlWithoutAmount instead)
  * @param paypalHandle - PayPal username (e.g., "maxmustermann")
  * @param amount - Amount in EUR
  * @returns PayPal.me URL with prefilled amount
+ * @deprecated This function is deprecated because passing amount in URL causes issues
+ * when PayPal app opens (amount gets lost). Use generatePayPalUrlWithoutAmount + manual copy instead.
  */
 export function generatePayPalUrl(
   paypalHandle: string,

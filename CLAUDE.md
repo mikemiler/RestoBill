@@ -168,14 +168,17 @@ npx ts-node test-supabase-connection.ts  # Verify Supabase connection
 4. Select items with quantities (0, 0.5, 1, 2, custom fractions)
    - Live selections tracked in Selection table (status=SELECTING, visible to payer in real-time)
 5. Add tip (0%, 7%, 10%, 15%, or custom)
-6. Choose payment method: PayPal or Cash
-7. Submit → `POST /api/selections/create` → Selection saved (status=SELECTING, paid=false)
-8. **PayPal:** Redirect to `/payment-redirect` page → Auto-redirect to PayPal.me (stays in browser)
-9. **Restaurant Feedback (optional):**
+6. **PayPal Payment (Copy-Amount Flow):**
+   - Guest sees amount prominently displayed (e.g., "42,50 €")
+   - Step 1: Click "Betrag kopieren" → Amount copied to clipboard as "42.50"
+   - Step 2: Click "PayPal öffnen" → Opens paypal.me/username (WITHOUT amount in URL)
+   - Step 3: Guest pastes amount in PayPal app/website and sends payment
+   - **Why:** Amount in URL gets lost when PayPal app opens, copy-paste is faster with app login (biometrics)
+7. **Restaurant Feedback (optional):**
    - Select rating (😞 schlecht, 😐 mittel, 😊 top)
    - Rating 3 (😊) → Show Google review link (if reviewUrl exists)
    - Rating 1-2 → Show textarea for personal feedback → `POST /api/feedback/create`
-10. Payer manually confirms payment via `/api/selections/[id]/mark-paid` (sets paid=true)
+8. Payer manually confirms payment via `/api/selections/[id]/mark-paid` (sets paid=true)
 
 **Friend Flow (Cash):**
 1-7. Same as PayPal flow (status remains SELECTING, paid=false)
@@ -241,7 +244,9 @@ All routes follow RESTful patterns:
 **lib/utils.ts**
 - `sanitizeInput()` - XSS prevention
 - `formatEUR()` - German EUR formatting
-- `generatePayPalUrl()` - Builds paypal.me/username/amount URLs
+- `generatePayPalUrlWithoutAmount()` - Builds paypal.me/username URLs (without amount)
+- `formatAmountForPayPal()` - Formats amount for clipboard (e.g., "42.50")
+- `generatePayPalUrl()` - **DEPRECATED** - Builds paypal.me/username/amount URLs (amount gets lost when app opens)
 - `calculateTotal()` - Sums selections with multipliers
 - `validateImageFile()` - Type/size validation
 
@@ -279,13 +284,11 @@ All routes follow RESTful patterns:
 - `/split/[token]/cash-confirmed/page.tsx` - Cash payment confirmation page
 - `/bills/[id]/status/page.tsx` - Status dashboard with real-time updates
 
-**Redirect Pages (client-side):**
-- `/payment-redirect/page.tsx` - Intermediary page that redirects to PayPal (helps keep browser open instead of opening PayPal app)
-
 **Client Components (interactive):**
 - `SplitFormContainer` - Container managing guest selections and form display (uses useRealtimeSubscription)
 - `SplitForm` - Item selection with quantity buttons, live selection tracking, editable name display (uses useRealtimeSubscription)
 - `SelectionSummary` - Display all previous selections from database via sessionId (multiple payments)
+- `PaymentInfoBox` - Payment instructions with copy-amount flow (copy amount → open PayPal → paste amount)
 - `GuestSelectionsList` - Accordion-based guest list with collapsible details, payment confirmation buttons (payer only)
 - `BillItemsEditor` - Add/edit/delete items (payer only)
 - `SelectionCard` - Display individual selection on status page
@@ -1307,7 +1310,6 @@ const { isConnected, connectionStatus, reconnect } = useRealtimeSubscription(bil
 app/
 ├── page.tsx                           # Landing page
 ├── create/page.tsx                    # Create bill form
-├── payment-redirect/page.tsx          # PayPal redirect intermediary (keeps browser open)
 ├── bills/[id]/
 │   ├── upload/page.tsx               # Image upload
 │   └── status/page.tsx               # Payer dashboard with live updates and share link
