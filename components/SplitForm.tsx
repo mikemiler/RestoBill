@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js'
 import { formatEUR } from '@/lib/utils'
 import { getOrCreateSessionId } from '@/lib/sessionStorage'
 import { useRealtimeSubscription } from '@/lib/hooks'
+import confetti from 'canvas-confetti'
 
 // Browser-only Supabase client
 const supabase = typeof window !== 'undefined'
@@ -82,6 +83,8 @@ export default function SplitForm({
   const [liveSelections, setLiveSelections] = useState<LiveSelection[]>([])
   const [remainingQuantities, setRemainingQuantities] = useState<Record<string, number>>(itemRemainingQuantities)
   const [selections, setSelections] = useState<DatabaseSelection[]>(allSelections)
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false)
+  const wasFullyAllocatedRef = useRef(false)
 
   // Sync selections state when allSelections prop changes (from parent updates)
   useEffect(() => {
@@ -261,6 +264,90 @@ export default function SplitForm({
   // Note: We no longer cleanup ActiveSelections when leaving the page
   // This allows guests to return later and continue where they left off
   // ActiveSelections are only cleaned up when the guest actually submits payment
+
+  // Fire confetti when 100% is reached
+  const fireConfetti = () => {
+    const duration = 3000
+    const animationEnd = Date.now() + duration
+    const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 }
+
+    function randomInRange(min: number, max: number) {
+      return Math.random() * (max - min) + min
+    }
+
+    const interval: any = setInterval(function() {
+      const timeLeft = animationEnd - Date.now()
+
+      if (timeLeft <= 0) {
+        return clearInterval(interval)
+      }
+
+      const particleCount = 50 * (timeLeft / duration)
+
+      // Fire confetti from left and right
+      confetti({
+        ...defaults,
+        particleCount,
+        origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 }
+      })
+      confetti({
+        ...defaults,
+        particleCount,
+        origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 }
+      })
+    }, 250)
+  }
+
+  // Check for 100% completion and trigger confetti
+  useEffect(() => {
+    // Calculate total covered percentage (same logic as in render)
+    const totalPaidAmount = selections.reduce((sum, selection) => {
+      const selectionSubtotal = Object.entries(selection.itemQuantities).reduce((itemSum, [itemId, quantity]) => {
+        const item = items.find(i => i.id === itemId)
+        if (item) {
+          return itemSum + (item.pricePerUnit * quantity)
+        }
+        return itemSum
+      }, 0)
+      return sum + selectionSubtotal + selection.tipAmount
+    }, 0)
+
+    const currentSessionId = sessionId || getOrCreateSessionId()
+    const ownActiveAmount = items.reduce((sum, item) => {
+      const quantity = selectedItems[item.id] || 0
+      return sum + (item.pricePerUnit * quantity)
+    }, 0)
+
+    const othersActiveAmount = liveSelections.reduce((sum, sel) => {
+      if (sel.sessionId === currentSessionId) return sum
+      const quantities = sel.itemQuantities as Record<string, number>
+      if (!quantities) return sum
+      return sum + Object.entries(quantities).reduce((itemSum, [itemId, qty]) => {
+        const item = items.find(i => i.id === itemId)
+        return item ? itemSum + (item.pricePerUnit * qty) : itemSum
+      }, 0)
+    }, 0)
+
+    const totalActiveAmount = ownActiveAmount + othersActiveAmount
+    const paidPercentage = totalAmount > 0 ? (totalPaidAmount / totalAmount) * 100 : 0
+    const activePercentage = totalAmount > 0 ? (totalActiveAmount / totalAmount) * 100 : 0
+    const totalCoveredPercentage = Math.min(100, paidPercentage + activePercentage)
+
+    // Trigger confetti when 100% is reached
+    if (totalCoveredPercentage >= 100 && !wasFullyAllocatedRef.current) {
+      wasFullyAllocatedRef.current = true
+      setShowSuccessMessage(true)
+      fireConfetti()
+
+      // Auto-hide success message after 10 seconds
+      setTimeout(() => {
+        setShowSuccessMessage(false)
+      }, 10000)
+    } else if (totalCoveredPercentage < 100) {
+      // Reset when below 100% again (for re-triggering)
+      wasFullyAllocatedRef.current = false
+    }
+  }, [selections, liveSelections, selectedItems, items, totalAmount, sessionId])
 
   // Calculate subtotal from selected items
   const subtotal = items.reduce((sum, item) => {
@@ -848,6 +935,34 @@ export default function SplitForm({
               Name ändern
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Success Message - 100% Completion */}
+      {showSuccessMessage && (
+        <div className="bg-gradient-to-r from-green-500 to-emerald-500 dark:from-green-600 dark:to-emerald-600 border-2 border-green-400 dark:border-green-500 rounded-xl p-5 mb-5 shadow-2xl relative overflow-hidden animate-bounce">
+          {/* Background decoration */}
+          <div className="absolute inset-0 bg-white dark:bg-white opacity-10 animate-pulse"></div>
+
+          {/* Content */}
+          <div className="relative z-10 text-center">
+            <div className="text-5xl mb-3 animate-pulse">🎉</div>
+            <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">
+              Alles aufgeteilt!
+            </h3>
+            <p className="text-sm sm:text-base text-white/90">
+              Vergiss nicht zu zahlen, falls du es nicht schon getan hast.
+            </p>
+          </div>
+
+          {/* Close button */}
+          <button
+            onClick={() => setShowSuccessMessage(false)}
+            className="absolute top-2 right-2 text-white/80 hover:text-white text-xl font-bold w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/20 transition-colors"
+            aria-label="Schließen"
+          >
+            ×
+          </button>
         </div>
       )}
 
