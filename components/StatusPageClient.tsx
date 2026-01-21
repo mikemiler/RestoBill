@@ -59,7 +59,7 @@ export default function StatusPageClient({
   const fireConfetti = () => {
     const duration = 3000
     const animationEnd = Date.now() + duration
-    const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 }
+    const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 }
 
     function randomInRange(min: number, max: number) {
       return Math.random() * (max - min) + min
