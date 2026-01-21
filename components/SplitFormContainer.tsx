@@ -1,9 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import SplitForm from './SplitForm'
+import CompletionMessage from './CompletionMessage'
 import { useRealtimeSubscription, useDebounce } from '@/lib/hooks'
 import { debugLog, debugError } from '@/lib/debug'
+import confetti from 'canvas-confetti'
 
 interface DatabaseSelection {
   id: string
@@ -12,8 +14,9 @@ interface DatabaseSelection {
   itemQuantities: Record<string, number>
   tipAmount: number
   paid: boolean
-  paymentMethod: 'PAYPAL' | 'CASH'
+  paymentMethod: 'PAYPAL' | 'CASH' | null
   status: 'SELECTING' | 'PAID'
+  sessionId?: string  // Optional - only present for live selections
   createdAt: string
 }
 
@@ -52,6 +55,39 @@ export default function SplitFormContainer({
   const [items, setItems] = useState<BillItem[]>(initialItems)
   const [itemRemainingQuantities, setItemRemainingQuantities] = useState<Record<string, number>>(initialRemainingQuantities)
   const [loading, setLoading] = useState(true)
+  const [showCompletionMessage, setShowCompletionMessage] = useState(false)
+  const hasShownCompletionRef = useRef(false) // Track if we've already shown completion
+
+  // Confetti animation
+  const fireConfetti = () => {
+    const duration = 3000
+    const animationEnd = Date.now() + duration
+    const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 }
+
+    function randomInRange(min: number, max: number) {
+      return Math.random() * (max - min) + min
+    }
+
+    const interval: NodeJS.Timeout = setInterval(function() {
+      const timeLeft = animationEnd - Date.now()
+
+      if (timeLeft <= 0) {
+        return clearInterval(interval)
+      }
+
+      const particleCount = 50 * (timeLeft / duration)
+      confetti({
+        ...defaults,
+        particleCount,
+        origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 }
+      })
+      confetti({
+        ...defaults,
+        particleCount,
+        origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 }
+      })
+    }, 250)
+  }
 
   // If selections are provided from parent, use them instead of fetching
   const useParentSelections = !!allSelectionsFromParent
@@ -191,6 +227,26 @@ export default function SplitFormContainer({
     })
 
     setItemRemainingQuantities(remaining)
+
+    // Check if all items are 100% selected (completion check)
+    const allItemsComplete = items.length > 0 && items.every(item => {
+      const claimedQty = claimed[item.id] || 0
+      return claimedQty >= item.quantity
+    })
+
+    // Fire confetti and show message only once when completion is reached
+    if (allItemsComplete && !hasShownCompletionRef.current) {
+      debugLog('[SplitFormContainer] 🎉 All items are 100% selected! Triggering confetti...')
+      hasShownCompletionRef.current = true
+      fireConfetti()
+      setShowCompletionMessage(true)
+    }
+
+    // Reset completion flag if items are no longer 100% complete
+    if (!allItemsComplete && hasShownCompletionRef.current) {
+      debugLog('[SplitFormContainer] Items no longer 100% complete, resetting flag')
+      hasShownCompletionRef.current = false
+    }
   }, [items, allSelections])
 
   // Debounced fetch functions to prevent race conditions from rapid updates
@@ -270,6 +326,11 @@ export default function SplitFormContainer({
         allSelections={allSelections}
         isOwner={isOwner}
       />
+
+      {/* Completion Message Modal */}
+      {showCompletionMessage && (
+        <CompletionMessage onDismiss={() => setShowCompletionMessage(false)} />
+      )}
     </div>
   )
 }

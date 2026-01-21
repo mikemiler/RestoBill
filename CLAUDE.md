@@ -23,26 +23,27 @@ This file should always represent the current state of the project.
 
 ## ⚠️ CRITICAL: GIT WORKFLOW ⚠️
 
-**!!!!! NEVER COMMIT OR PUSH CODE !!!!!**
+**Main/Master Branch Protection:**
+- ❌ **NEVER commit or push directly to main/master branch**
+- 🚫 **NEVER force push to main/master branch**
 
-**NEVER use git commit, git push, or any git commands that modify the repository!**
+**Feature Branch Workflow (Allowed):**
+- ✅ **ALLOWED:** Commit and push to feature branches (branches starting with `claude/`)
+- ✅ **ALLOWED:** Create pull requests from feature branches
+- ✅ **RECOMMENDED:** Follow the git safety protocol below
 
-- ❌ **FORBIDDEN:** `git commit`, `git push`, `git add`, `git merge`, `git rebase`
-- ✅ **ALLOWED:** `git status`, `git diff`, `git log` (read-only commands)
-- 👤 **USER ONLY:** All commits and pushes are done MANUALLY by the user
-- 🚫 **NO EXCEPTIONS:** Even for "small fixes" or "urgent deployments"
+**Git Safety Protocol:**
+- NEVER update git config
+- NEVER run destructive/irreversible git commands (like push --force, hard reset, etc) unless explicitly requested
+- NEVER skip hooks (--no-verify, --no-gpg-sign, etc) unless explicitly requested
+- Always use descriptive commit messages
+- Always push to the correct feature branch (matching session ID)
 
-**Why:**
-- User wants full control over git history
-- User reviews all changes before committing
-- User decides when and what to deploy
-- Prevents accidental deployments to production
-
-**If changes need to be deployed:**
-1. Tell the user what files were changed
-2. User will review changes
-3. User will commit and push manually
-4. You can suggest commit messages, but never execute them
+**Pull Request Workflow:**
+1. Commit changes to feature branch
+2. Push to remote feature branch
+3. Create PR using `gh pr create` with detailed description
+4. User reviews and merges PR manually
 
 ## Core Principle: KISS (Keep It Simple, Stupid)
 
