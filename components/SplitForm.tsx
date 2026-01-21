@@ -1505,13 +1505,13 @@ export default function SplitForm({
         <label className="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 sm:mb-3">
           Trinkgeld (optional)
         </label>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2 mb-2">
+        <div className="grid grid-cols-4 gap-1.5 sm:gap-2 mb-2">
           {[0, 7, 10, 15].map((percent) => (
             <button
               key={percent}
               type="button"
               onClick={() => handleTipChange(percent)}
-              className={`px-2.5 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+              className={`px-2.5 sm:px-3 py-2.5 sm:py-3 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
                 tipPercent === percent
                   ? 'bg-green-600 text-white dark:bg-green-500'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500'
@@ -1524,7 +1524,7 @@ export default function SplitForm({
         <button
           type="button"
           onClick={() => handleTipChange(-1)}
-          className={`w-full px-2.5 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors mb-2 ${
+          className={`w-full px-2.5 sm:px-3 py-2.5 sm:py-3 rounded-lg text-xs sm:text-sm font-medium transition-colors mb-2 ${
             tipPercent === -1
               ? 'bg-green-600 text-white dark:bg-green-500'
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500'
