@@ -87,7 +87,7 @@ export default function RestaurantFeedback({
   return (
     <div className="border border-gray-700 rounded-lg p-6 bg-gray-800/50">
       <h3 className="text-xl font-semibold mb-4 text-center">
-        Wie war deine Erfahrung?
+        Wie war deine Erfahrung im Restaurant?
       </h3>
 
       {/* Smiley Selection */}
@@ -174,7 +174,7 @@ export default function RestaurantFeedback({
       {selectedRating && selectedRating < 3 && (
         <div className="space-y-4">
           <p className="text-yellow-400 text-center font-medium">
-            Danke für dein Feedback. Was können wir verbessern?
+            Danke für dein Feedback. Was kann das Restaurant verbessern?
           </p>
           <textarea
             value={feedbackText}

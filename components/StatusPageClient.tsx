@@ -5,7 +5,7 @@ import { useRealtimeSubscription, useDebounce } from '@/lib/hooks'
 import { debugLog, debugError } from '@/lib/debug'
 import GuestSelectionsList from './GuestSelectionsList'
 import SplitFormContainer from './SplitFormContainer'
-import DonationBanner from './DonationBanner'
+// import DonationBanner from './DonationBanner' // TODO: Re-enable for usage-based model
 
 interface BillItem {
   id: string
@@ -253,8 +253,12 @@ export default function StatusPageClient({
         />
       </div>
 
-      {/* Donation Banner */}
-      <DonationBanner />
+      {/* TODO: Paddle Payment Integration (Usage-based model)
+          Currently disabled - Paddle approval pending for usage-based pricing model.
+          Will be re-enabled once Paddle approves usage-based payment structure.
+          Keep DonationBanner component and Paddle integration code for future use.
+      */}
+      {/* <DonationBanner /> */}
     </div>
   )
 }

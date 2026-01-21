@@ -28,7 +28,10 @@ export default function RootLayout({
           <Footer />
         </ThemeProvider>
 
-        {/* Paddle Checkout Script */}
+        {/* Paddle Checkout Script
+            TODO: Currently not used - waiting for Paddle approval for usage-based model.
+            Script remains for future integration once usage-based pricing is approved.
+        */}
         <Script
           src="https://cdn.paddle.com/paddle/v2/paddle.js"
           strategy="lazyOnload"

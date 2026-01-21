@@ -1,5 +1,19 @@
 'use client'
 
+/**
+ * DonationBanner Component
+ *
+ * STATUS: Currently disabled - waiting for Paddle approval for usage-based model
+ *
+ * This component was originally designed for donation-based payments but Paddle
+ * does not approve donation models. Will be re-enabled once we implement a
+ * usage-based pricing model (e.g., pay per bill or monthly subscription).
+ *
+ * Keep this component and all Paddle integration code for future use.
+ *
+ * TODO: Re-enable once usage-based pricing model is approved by Paddle
+ */
+
 import { useState } from 'react'
 
 // Declare Paddle global type
