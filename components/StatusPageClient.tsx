@@ -1,10 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRealtimeSubscription, useDebounce } from '@/lib/hooks'
 import { debugLog, debugError } from '@/lib/debug'
 import GuestSelectionsList from './GuestSelectionsList'
 import SplitFormContainer from './SplitFormContainer'
+import CompletionMessage from './CompletionMessage'
+import confetti from 'canvas-confetti'
 // import DonationBanner from './DonationBanner' // TODO: Re-enable for usage-based model
 
 interface BillItem {
@@ -15,8 +17,9 @@ interface BillItem {
   totalPrice: number
 }
 
-interface Selection {
+interface DatabaseSelection {
   id: string
+  billId: string
   friendName: string
   itemQuantities: Record<string, number>
   tipAmount: number
@@ -46,9 +49,42 @@ export default function StatusPageClient({
   itemRemainingQuantities: initialRemainingQuantities,
   totalBillAmount,
 }: StatusPageClientProps) {
-  const [selections, setSelections] = useState<Selection[]>([])
+  const [selections, setSelections] = useState<DatabaseSelection[]>([])
   const [items, setItems] = useState<BillItem[]>(initialItems)
   const [itemRemainingQuantities, setItemRemainingQuantities] = useState<Record<string, number>>(initialRemainingQuantities)
+  const [showCompletionMessage, setShowCompletionMessage] = useState(false)
+  const hasShownCompletionRef = useRef(false) // Track if we've already shown completion
+
+  // Confetti animation
+  const fireConfetti = () => {
+    const duration = 3000
+    const animationEnd = Date.now() + duration
+    const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 }
+
+    function randomInRange(min: number, max: number) {
+      return Math.random() * (max - min) + min
+    }
+
+    const interval: NodeJS.Timeout = setInterval(function() {
+      const timeLeft = animationEnd - Date.now()
+
+      if (timeLeft <= 0) {
+        return clearInterval(interval)
+      }
+
+      const particleCount = 50 * (timeLeft / duration)
+      confetti({
+        ...defaults,
+        particleCount,
+        origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 }
+      })
+      confetti({
+        ...defaults,
+        particleCount,
+        origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 }
+      })
+    }, 250)
+  }
 
   // Fetch items from API
   const fetchItems = async () => {
@@ -94,7 +130,7 @@ export default function StatusPageClient({
       // Filter out only completely empty selections with no useful data
       // CRITICAL: Submitted selections (with paymentMethod) must ALWAYS be shown!
       // Only apply strict filtering to live selections (paymentMethod=null)
-      const validSelections = allData.filter((s: Selection) => {
+      const validSelections = allData.filter((s: DatabaseSelection) => {
         // If selection has paymentMethod, it's submitted → ALWAYS show it!
         // Don't filter out submitted selections even if items/tip/name are empty
         const isSubmitted = !!s.paymentMethod
@@ -147,12 +183,12 @@ export default function StatusPageClient({
     // This allows the owner to freely change their own selection
     selections.forEach((selection) => {
       // Skip owner's own live selection (paymentMethod=null means still selecting)
-      const isOwnerLiveSelection = selection.paymentMethod === null &&
+      const isOwnerLiveDatabaseSelection = selection.paymentMethod === null &&
         ownerSessionId &&
         'sessionId' in selection &&
         (selection as any).sessionId === ownerSessionId
 
-      if (isOwnerLiveSelection) {
+      if (isOwnerLiveDatabaseSelection) {
         debugLog('[StatusPageClient DEBUG] Skipping owner\'s own live selection from claimed calculation')
         return
       }
@@ -179,10 +215,31 @@ export default function StatusPageClient({
       remaining
     })
     setItemRemainingQuantities(remaining)
+
+    // Check if all items are 100% selected (completion check)
+    const allItemsComplete = items.length > 0 && items.every(item => {
+      const claimedQty = claimed[item.id] || 0
+      return claimedQty >= item.quantity
+    })
+
+    // Fire confetti and show message only once when completion is reached
+    if (allItemsComplete && !hasShownCompletionRef.current) {
+      debugLog('[StatusPageClient] 🎉 All items are 100% selected! Triggering confetti...')
+      hasShownCompletionRef.current = true
+      fireConfetti()
+      setShowCompletionMessage(true)
+    }
+
+    // Reset completion flag if items are no longer 100% complete
+    if (!allItemsComplete && hasShownCompletionRef.current) {
+      debugLog('[StatusPageClient] Items no longer 100% complete, resetting flag')
+      hasShownCompletionRef.current = false
+    }
+
     debugLog('🔄 [StatusPageClient DEBUG] ===== RECALCULATE REMAINING QUANTITIES END =====')
   }, [items, selections])
 
-  // Realtime subscription for Selection changes and Item changes
+  // Realtime subscription for DatabaseSelection changes and Item changes
   // CRITICAL: Use unique channel suffix to avoid conflicts with SplitForm's subscription
   // Without this, Supabase Realtime will only deliver events to ONE subscription (the last one created)
   const { isConnected } = useRealtimeSubscription(billId, {
@@ -222,7 +279,7 @@ export default function StatusPageClient({
 
   return (
     <div>
-      {/* Guest Selections List */}
+      {/* Guest DatabaseSelections List */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 p-4 sm:p-5 md:p-6 mb-4 md:mb-6">
         <h2 className="text-lg sm:text-xl font-semibold mb-4 text-gray-800 dark:text-gray-100 flex items-center gap-2">
           👥 Gäste & Zahlungen
@@ -238,7 +295,7 @@ export default function StatusPageClient({
         />
       </div>
 
-      {/* Selection Form */}
+      {/* DatabaseSelection Form */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 p-4 sm:p-5 md:p-6 mb-4 md:mb-8">
         <SplitFormContainer
           billId={billId}
@@ -259,6 +316,11 @@ export default function StatusPageClient({
           Keep DonationBanner component and Paddle integration code for future use.
       */}
       {/* <DonationBanner /> */}
+
+      {/* Completion Message Modal */}
+      {showCompletionMessage && (
+        <CompletionMessage onDismiss={() => setShowCompletionMessage(false)} />
+      )}
     </div>
   )
 }
