@@ -103,17 +103,18 @@ export async function POST(
       throw updateError
     }
 
-    // Create bill items from analysis (with explicit UUIDs)
+    // Create bill items from analysis (with explicit UUIDs and position)
     const { error: itemsError } = await supabaseAdmin
       .from('BillItem')
       .insert(
-        analysis.items.map((item) => ({
+        analysis.items.map((item, index) => ({
           id: randomUUID(), // Explicitly generate UUID
           billId: billId,
           name: item.name,
           quantity: item.quantity,
           pricePerUnit: item.pricePerUnit,
           totalPrice: item.pricePerUnit * item.quantity,
+          position: index, // Preserve original order from receipt
         }))
       )
 

@@ -49,11 +49,10 @@ model BillItem {
   quantity     Int // z.B. 2
   pricePerUnit Float // z.B. 12.50
   totalPrice   Float // quantity * pricePerUnit
-
-  // Relations
-  selections Selection[]
+  position     Int @default(0) // Position auf der Rechnung (0 = erste Position)
 
   @@index([billId])
+  @@index([billId, position]) // Sortierung nach Position
 }
 
 enum PaymentMethod {
@@ -73,9 +72,6 @@ model Selection {
 
   sessionId  String // Required - unique browser session identifier
   friendName String // Display name
-
-  // Selected Items - Many-to-Many relationship (legacy, not used anymore)
-  items BillItem[]
 
   // Quantity multiplier for each item (0.5x, 1x, 2x etc)
   // Stored as JSON: {"itemId": quantity}

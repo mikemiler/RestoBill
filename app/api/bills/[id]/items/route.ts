@@ -14,7 +14,7 @@ export async function GET(
       .from('BillItem')
       .select('*')
       .eq('billId', params.id)
-      .order('name')
+      .order('position')
 
     if (error) {
       console.error('Error fetching items:', error)

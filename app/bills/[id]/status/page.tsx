@@ -39,9 +39,9 @@ export default async function BillStatusPage({
     itemRemainingQuantities[item.id] = item.quantity
   })
 
-  // Sort items by name
+  // Sort items by position (original receipt order)
   const sortedItems = bill.BillItem?.sort((a: any, b: any) =>
-    a.name.localeCompare(b.name)
+    a.position - b.position
   ) || []
 
   const headersList = await headers()

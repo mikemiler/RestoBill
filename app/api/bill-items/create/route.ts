@@ -57,6 +57,17 @@ export async function POST(request: NextRequest) {
     // Generate UUID for item
     const itemId = randomUUID()
 
+    // Get max position for this bill to append new item at the end
+    const { data: existingItems } = await supabaseAdmin
+      .from('BillItem')
+      .select('position')
+      .eq('billId', billId)
+      .order('position', { ascending: false })
+      .limit(1)
+
+    const maxPosition = existingItems?.[0]?.position ?? -1
+    const newPosition = maxPosition + 1
+
     // Create new bill item
     const { data: item, error } = await supabaseAdmin
       .from('BillItem')
@@ -66,7 +77,8 @@ export async function POST(request: NextRequest) {
         name: name.trim(),
         quantity,
         pricePerUnit,
-        totalPrice
+        totalPrice,
+        position: newPosition
       })
       .select()
       .single()

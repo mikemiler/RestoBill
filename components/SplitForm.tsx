@@ -885,7 +885,7 @@ export default function SplitForm({
           {/* Info Text */}
           <p className="text-xs text-center text-gray-500 dark:text-gray-400">
             Dein Name wird gespeichert, damit du ihn beim nächsten Mal nicht erneut eingeben musst.
-          </p>
+          </p> 
         </div>
       </div>
     )

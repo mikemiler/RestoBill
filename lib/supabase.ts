@@ -22,6 +22,7 @@ export interface BillItem {
   quantity: number
   pricePerUnit: number
   totalPrice: number
+  position: number
 }
 
 export interface Selection {

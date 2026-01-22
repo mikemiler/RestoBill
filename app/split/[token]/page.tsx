@@ -44,9 +44,9 @@ export default async function SplitBillPage({
     itemRemainingQuantities[item.id] = Math.max(0, item.quantity - totalClaimed)
   })
 
-  // Sort items by name
+  // Sort items by position (original receipt order)
   const sortedItems = bill.BillItem?.sort((a: any, b: any) =>
-    a.name.localeCompare(b.name)
+    a.position - b.position
   ) || []
 
   // Calculate total amount from items (consistent with status page)
