@@ -57,6 +57,7 @@ export default function SplitFormContainer({
   const [loading, setLoading] = useState(true)
   const [showCompletionMessage, setShowCompletionMessage] = useState(false)
   const hasShownCompletionRef = useRef(false) // Track if we've already shown completion
+  const completionTimeoutRef = useRef<NodeJS.Timeout | null>(null) // Timer for 1-second delay
 
   // Confetti animation
   const fireConfetti = () => {
@@ -166,24 +167,16 @@ export default function SplitFormContainer({
       const response = await fetch(`/api/bills/${billId}/live-selections`)
       const allData: DatabaseSelection[] = await response.json()
 
-      if (isOwner) {
-        // Owner sees ALL selections (status='SELECTING' regardless of paid flag)
-        // Used for calculating remaining quantities
-        debugLog('[SplitFormContainer] Owner selections fetched:', {
-          total: allData.length,
-          liveSelecting: allData.filter(s => !s.paymentMethod).length,
-          submitted: allData.filter(s => s.paymentMethod && !s.paid).length,
-          confirmed: allData.filter(s => s.paymentMethod && s.paid).length
-        })
-        setAllSelections(allData)
-      } else {
-        // Guest only sees submitted selections (paymentMethod !== null) - payment history
-        const submittedOnly = allData.filter(s => s.paymentMethod !== null)
-        debugLog('[SplitFormContainer] Guest selections fetched:', {
-          submitted: submittedOnly.length
-        })
-        setAllSelections(submittedOnly)
-      }
+      // CRITICAL FIX: Always use ALL selections (including live) for completion check
+      // This ensures confetti fires when items are 100% selected, even if not yet submitted
+      debugLog('[SplitFormContainer] All selections fetched (including live):', {
+        total: allData.length,
+        liveSelecting: allData.filter(s => !s.paymentMethod).length,
+        submitted: allData.filter(s => s.paymentMethod && !s.paid).length,
+        confirmed: allData.filter(s => s.paymentMethod && s.paid).length
+      })
+      setAllSelections(allData) // Always use ALL selections for completion check
+
       setLoading(false)
     } catch (error) {
       debugError('[SplitFormContainer] Error fetching selections:', error)
@@ -234,12 +227,44 @@ export default function SplitFormContainer({
       return claimedQty >= item.quantity
     })
 
-    // Fire confetti and show message only once when completion is reached
+    // Clear existing timeout if user changes selection
+    if (completionTimeoutRef.current) {
+      clearTimeout(completionTimeoutRef.current)
+      completionTimeoutRef.current = null
+    }
+
+    // Fire confetti with 1-second delay to avoid false positives
     if (allItemsComplete && !hasShownCompletionRef.current) {
-      debugLog('[SplitFormContainer] 🎉 All items are 100% selected! Triggering confetti...')
-      hasShownCompletionRef.current = true
-      fireConfetti()
-      setShowCompletionMessage(true)
+      debugLog('[SplitFormContainer] 🎉 All items are 100% selected! Waiting 1 second before triggering confetti...')
+
+      completionTimeoutRef.current = setTimeout(() => {
+        // Recalculate completion at timeout execution time (not from closure)
+        // This ensures we check current state, not state from 1 second ago
+        const currentClaimed: Record<string, number> = {}
+        allSelections.forEach((selection) => {
+          const itemQuantities = selection.itemQuantities as Record<string, number> | null
+          if (itemQuantities && typeof itemQuantities === 'object') {
+            Object.entries(itemQuantities).forEach(([itemId, quantity]) => {
+              const qty = typeof quantity === 'number' ? quantity : 0
+              currentClaimed[itemId] = (currentClaimed[itemId] || 0) + qty
+            })
+          }
+        })
+
+        const stillComplete = items.length > 0 && items.every(item => {
+          const claimedQty = currentClaimed[item.id] || 0
+          return claimedQty >= item.quantity
+        })
+
+        if (stillComplete) {
+          debugLog('[SplitFormContainer] ✅ Still 100% complete after 1 second - firing confetti!')
+          hasShownCompletionRef.current = true // Set flag only on success
+          fireConfetti()
+          setShowCompletionMessage(true)
+        } else {
+          debugLog('[SplitFormContainer] ❌ No longer complete after 1 second - cancelling confetti')
+        }
+      }, 1000)
     }
 
     // Reset completion flag if items are no longer 100% complete
@@ -300,6 +325,15 @@ export default function SplitFormContainer({
     // Enable debug logging in development
     debug: process.env.NODE_ENV === 'development'
   })
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (completionTimeoutRef.current) {
+        clearTimeout(completionTimeoutRef.current)
+      }
+    }
+  }, [])
 
   if (loading) {
     return (

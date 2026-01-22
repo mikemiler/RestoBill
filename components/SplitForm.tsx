@@ -78,8 +78,6 @@ export default function SplitForm({
   const [sessionId, setSessionId] = useState('')
   const [nameConfirmed, setNameConfirmed] = useState(false)
   const [selectedItems, setSelectedItems] = useState<Record<string, number>>({})
-  const [customQuantityMode, setCustomQuantityMode] = useState<Record<string, boolean>>({})
-  const [customQuantityInput, setCustomQuantityInput] = useState<Record<string, string>>({})
   const [tipPercent, setTipPercent] = useState(10)
   const [customTip, setCustomTip] = useState('')
   const [loading, setLoading] = useState(false)
@@ -104,6 +102,8 @@ export default function SplitForm({
     pricePerUnit: 10
   })
   const [isItemsExpanded, setIsItemsExpanded] = useState(true) // Collapsible for items list
+  const [expandedButtons, setExpandedButtons] = useState<Record<string, boolean>>({}) // Track which items have expanded quantity buttons
+  const [pulsingBadge, setPulsingBadge] = useState<string | null>(null) // Track which item badge should pulse
 
   // Track if we've restored selections yet
   const hasRestoredSelections = useRef(false)
@@ -598,9 +598,10 @@ export default function SplitForm({
       { value: 1/10, label: '1/10' },
     ]
 
-    // Check if quantity matches a common fraction (with small tolerance for floating point errors)
+    // Check if quantity matches a common fraction (with tolerance for floating point errors and toFixed(2) rounding)
     for (const fraction of fractions) {
-      if (Math.abs(quantity - fraction.value) < 0.001) {
+      // Use 0.01 tolerance to handle toFixed(2) rounding (e.g., 0.33 for 1/3 = 0.3333...)
+      if (Math.abs(quantity - fraction.value) < 0.01) {
         return fraction.label
       }
     }
@@ -609,21 +610,7 @@ export default function SplitForm({
     return (Math.round(quantity * 100) / 100).toString()
   }
 
-  // Generate all possible quantity options based on original item quantity
-  // Always returns the same number of options to prevent layout shifts
-  function getAllQuantityOptions(itemQuantity: number): number[] {
-    const options = [0]
-
-    // Add whole numbers up to original item quantity
-    const maxWholeNumber = Math.floor(itemQuantity)
-    for (let i = 1; i <= maxWholeNumber; i++) {
-      options.push(i)
-    }
-
-    return options
-  }
-
-  async function handleItemQuantityChange(itemId: string, quantity: number, closeCustomMode: boolean = false) {
+  async function handleItemQuantityChange(itemId: string, quantity: number) {
     // Calculate new selectedItems state
     let newSelectedItems: Record<string, number>
     if (quantity === 0) {
@@ -635,19 +622,9 @@ export default function SplitForm({
 
     setSelectedItems(newSelectedItems)
 
-    // Only close custom mode if explicitly requested (e.g., when clicking preset buttons 0x, 1x, 2x)
-    if (closeCustomMode && customQuantityMode[itemId]) {
-      setCustomQuantityMode((prev) => {
-        const newMode = { ...prev }
-        delete newMode[itemId]
-        return newMode
-      })
-      setCustomQuantityInput((prev) => {
-        const newInput = { ...prev }
-        delete newInput[itemId]
-        return newInput
-      })
-    }
+    // Trigger badge pulse animation
+    setPulsingBadge(itemId)
+    setTimeout(() => setPulsingBadge(null), 600) // Reset after animation (600ms)
 
     // Calculate subtotal with NEW selectedItems
     const newSubtotal = items.reduce((sum, item) => {
@@ -683,85 +660,6 @@ export default function SplitForm({
     }
   }
 
-  function handleCustomQuantityToggle(itemId: string) {
-    setCustomQuantityMode((prev) => {
-      const newMode = { ...prev }
-      if (newMode[itemId]) {
-        // Close custom mode (toggle off)
-        delete newMode[itemId]
-      } else {
-        // Open custom mode (toggle on)
-        newMode[itemId] = true
-      }
-      return newMode
-    })
-
-    // When opening custom mode, populate input with current selection (if any)
-    if (!customQuantityMode[itemId]) {
-      setCustomQuantityInput((prev) => ({
-        ...prev,
-        [itemId]: selectedItems[itemId] ? selectedItems[itemId].toString() : ''
-      }))
-    }
-  }
-
-  async function handleCustomQuantityInputChange(itemId: string, value: string) {
-    setCustomQuantityInput((prev) => ({ ...prev, [itemId]: value }))
-    const numValue = parseFloat(value)
-    const remainingQty = remainingQuantities[itemId]
-
-    let finalQuantity = 0
-    let newSelectedItems: Record<string, number>
-
-    if (!isNaN(numValue) && numValue > 0) {
-      // Limit to remaining quantity and round to 2 decimal places
-      const clampedValue = parseFloat(Math.min(numValue, remainingQty).toFixed(2))
-      newSelectedItems = { ...selectedItems, [itemId]: clampedValue }
-      setSelectedItems(newSelectedItems)
-      finalQuantity = clampedValue
-    } else if (value === '') {
-      const { [itemId]: _, ...rest } = selectedItems
-      newSelectedItems = rest
-      setSelectedItems(newSelectedItems)
-      finalQuantity = 0
-    } else {
-      newSelectedItems = selectedItems
-    }
-
-    // Calculate subtotal with NEW selectedItems
-    const newSubtotal = items.reduce((sum, item) => {
-      const qty = newSelectedItems[item.id] || 0
-      return sum + item.pricePerUnit * qty
-    }, 0)
-
-    // Calculate tip amount (including default 10%)
-    const calculatedTipAmount = tipPercent === -1
-      ? parseFloat(customTip) || 0
-      : (newSubtotal * tipPercent) / 100
-
-    // Update live selection WITH tipAmount
-    const currentSessionId = sessionId || getOrCreateSessionId()
-    const currentFriendName = friendName || localStorage.getItem('friendName') || 'Gast'
-    if (currentSessionId) {
-      try {
-        await fetch('/api/live-selections/update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            billId,
-            itemId,
-            sessionId: currentSessionId,
-            guestName: currentFriendName.trim(),
-            quantity: finalQuantity,
-            tipAmount: calculatedTipAmount // CRITICAL: Include tip amount (default 10%)
-          })
-        })
-      } catch (error) {
-        debugError('Error updating live selection:', error)
-      }
-    }
-  }
-
   // Cyclic row click handler: 0 → 1 → 2 → 3 → ... → max → 0
   function handleRowClick(itemId: string) {
     const remainingQty = remainingQuantities[itemId] ?? 0
@@ -773,7 +671,7 @@ export default function SplitForm({
     const maxQty = Math.floor(remainingQty)
     const nextQty = currentQty >= maxQty ? 0 : currentQty + 1
 
-    handleItemQuantityChange(itemId, nextQty, true)
+    handleItemQuantityChange(itemId, nextQty)
   }
 
   function handleTipChange(percent: number) {
@@ -966,8 +864,6 @@ export default function SplitForm({
             const remainingQty = remainingQuantities[item.id] ?? item.quantity
             // Live remaining quantity - accounts for current user's selection in real-time
             const liveRemainingQty = Math.max(0, remainingQty - (selectedItems[item.id] || 0))
-            // Always show all quantity options based on original item quantity to prevent layout shifts
-            const quantityOptions = getAllQuantityOptions(item.quantity)
 
             // Get live selections for this item from unified Selection table
             const currentSessionId = sessionId || getOrCreateSessionId()
@@ -1009,8 +905,6 @@ export default function SplitForm({
                     ? 'border-gray-200 dark:border-gray-600 dark:bg-gray-700/50'
                     : isFullyMarked && !isOverselected
                     ? 'border-green-500 dark:border-green-600 bg-green-50 dark:bg-green-900/20'
-                    : customQuantityMode[item.id]
-                    ? 'border-gray-200 dark:border-gray-600 dark:bg-gray-700/50'
                     : 'border-gray-200 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500 dark:bg-gray-700/50 cursor-pointer'
                 }`}
                 onClick={(e) => {
@@ -1019,8 +913,8 @@ export default function SplitForm({
                   if (target.tagName === 'BUTTON' || target.tagName === 'INPUT' || target.closest('button') || target.closest('input')) {
                     return
                   }
-                  // Don't trigger in custom quantity mode or when editing
-                  if (customQuantityMode[item.id] || isEditingThis) {
+                  // Don't trigger when editing
+                  if (isEditingThis) {
                     return
                   }
                   // Cycle through quantities: 0 → 1 → 2 → ... → max → 0
@@ -1160,8 +1054,17 @@ export default function SplitForm({
                         <div className={`absolute top-2 ${isOwner ? 'right-10' : 'right-2'} flex flex-col gap-1 items-end max-w-[50%]`}>
                           {visibleBadges.map((badge, idx) => {
                             if (badge.type === 'own') {
+                              const isPulsing = pulsingBadge === item.id
                               return (
-                                <div key={`own-${idx}`} className="bg-green-500 dark:bg-green-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
+                                <div
+                                  key={`own-${idx}`}
+                                  className={`bg-green-500 dark:bg-green-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                                    isPulsing ? 'animate-bounce-once' : ''
+                                  }`}
+                                  style={{
+                                    animation: isPulsing ? 'bounceOnce 0.6s ease-in-out' : 'none'
+                                  }}
+                                >
                                   <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
                                   <span className="font-medium">{friendName || 'Ich'}</span>
                                   <span className="opacity-90">({formatQuantity(badge.data.quantity)}×)</span>
@@ -1191,33 +1094,38 @@ export default function SplitForm({
 
                     <div className="mb-2">
                       <div className="flex items-center gap-2 mb-1">
-                        <h3 className={`font-medium text-sm sm:text-base ${
-                          selectedItems[item.id] > 0
-                            ? 'text-green-600 dark:text-green-400'
-                            : 'text-gray-900 dark:text-gray-100'
-                        }`}>
-                          {selectedItems[item.id] > 0 && (
-                            <span className="font-bold">{formatQuantity(selectedItems[item.id])}× </span>
-                          )}
+                        <h3 className="font-medium text-sm sm:text-base text-gray-900 dark:text-gray-100 truncate max-w-[60%] sm:max-w-[70%]">
                           {item.name}
                         </h3>
                       </div>
-                      <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-1">
-                        {item.quantity}x à {formatEUR(item.pricePerUnit)} ={' '}
+                      <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
+                        <span className="font-medium">Gesamt:</span> {item.quantity}x à {formatEUR(item.pricePerUnit)} ={' '}
                         {formatEUR(item.totalPrice)}
                       </p>
-                      <div className="text-xs sm:text-sm">
-                        <span className="text-gray-600 dark:text-gray-400">Dein Anteil: </span>
-                        <span className={`font-semibold ${
-                          selectedItems[item.id] > 0
-                            ? 'text-green-600 dark:text-green-400'
-                            : 'text-gray-500 dark:text-gray-500'
-                        }`}>
-                          {selectedItems[item.id] > 0
-                            ? formatEUR(item.pricePerUnit * selectedItems[item.id])
-                            : '—'
-                          }
-                        </span>
+
+                      <div className="mt-3 space-y-0">
+                        <div className="text-xs sm:text-sm">
+                          <span className="text-gray-600 dark:text-gray-400">Dein Anteil: </span>
+                          <span className={`font-semibold ${
+                            selectedItems[item.id] > 0
+                              ? 'text-green-600 dark:text-green-400'
+                              : 'text-gray-500 dark:text-gray-500'
+                          }`}>
+                            {selectedItems[item.id] > 0
+                              ? `${formatQuantity(selectedItems[item.id])}× (${formatEUR(item.pricePerUnit * selectedItems[item.id])})`
+                              : '—'
+                            }
+                          </span>
+                        </div>
+                        <div className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                          {isFullyMarked && !isOverselected ? (
+                            <span className="text-green-600 dark:text-green-400 font-medium italic">
+                              ✓ Vollständig aufgeteilt
+                            </span>
+                          ) : (
+                            <span>Noch offen: {formatQuantity(liveRemainingQty)}</span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </>
@@ -1242,175 +1150,122 @@ export default function SplitForm({
 
                 {!isEditingThis && (
                   <div className="space-y-2">
-                    {/* Status Info Line - always shown above buttons - fixed height to prevent layout shift */}
-                    <div className="h-[28px] flex items-center">
-                      {isFullyMarked && !isOverselected ? (
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-green-600 dark:text-green-400 text-sm leading-none">✓</span>
-                          <span className="text-xs sm:text-sm text-green-600 dark:text-green-400 font-medium italic leading-none">
-                            Vollständig aufgeteilt
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center">
-                          <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 leading-none">
-                            Noch offen: {formatQuantity(liveRemainingQty)}
-                          </span>
+                    {/* Quantity Selection Accordion */}
+                    <div className="border border-gray-200 dark:border-gray-600 rounded-lg overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedButtons(prev => ({
+                          ...prev,
+                          [item.id]: !prev[item.id]
+                        }))}
+                        className="w-full px-3 py-2.5 bg-gray-50 hover:bg-gray-100 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100 text-xs sm:text-sm font-medium transition-all flex items-center justify-between"
+                      >
+                        <span>Menge auswählen</span>
+                        <svg
+                          className={`w-4 h-4 transition-transform duration-200 ${expandedButtons[item.id] ? 'rotate-180' : ''}`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+
+                      {expandedButtons[item.id] && (
+                        <div className="p-3 space-y-3 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-600 animate-accordion-down">
+                          {/* Whole Numbers */}
+                          <div>
+                            <span className="text-xs text-gray-600 dark:text-gray-400 block mb-1.5">
+                              Ganze Portionen:
+                            </span>
+                            <div className="flex gap-1.5 flex-wrap">
+                              {Array.from({ length: Math.min(Math.floor(remainingQty) + 1, 11) }, (_, i) => i).map((qty) => (
+                                <button
+                                  key={qty}
+                                  type="button"
+                                  onClick={async () => {
+                                    await handleItemQuantityChange(item.id, qty)
+                                  }}
+                                  className={`px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+                                    selectedItems[item.id] === qty
+                                      ? 'bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 text-white'
+                                      : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-100'
+                                  }`}
+                                >
+                                  {qty}×
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Fractions */}
+                          <div>
+                            <span className="text-xs text-gray-600 dark:text-gray-400 block mb-1.5">
+                              Anteilige Portionen:
+                            </span>
+                            <div className="flex gap-1.5 flex-wrap">
+                              {[
+                                { label: '1/2', value: 1/2 },
+                                { label: '1/3', value: 1/3 },
+                                { label: '2/3', value: 2/3 },
+                                { label: '1/4', value: 1/4 },
+                                { label: '3/4', value: 3/4 },
+                                { label: '1/5', value: 1/5 },
+                                { label: '2/5', value: 2/5 },
+                                { label: '3/5', value: 3/5 },
+                                { label: '4/5', value: 4/5 },
+                                { label: '1/6', value: 1/6 },
+                              ].map((fraction) => {
+                                const actualValue = parseFloat(Math.min(fraction.value, remainingQty).toFixed(2))
+                                return (
+                                  <button
+                                    key={fraction.label}
+                                    type="button"
+                                    onClick={async () => {
+                                      await handleItemQuantityChange(item.id, actualValue)
+                                    }}
+                                    className="px-3 py-2 bg-purple-100 hover:bg-purple-200 dark:bg-purple-700 dark:hover:bg-purple-600 text-purple-700 dark:text-purple-100 rounded-lg text-xs sm:text-sm font-medium transition-colors"
+                                  >
+                                    {fraction.label}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Divide By Persons */}
+                          <div>
+                            <label className="text-xs text-gray-600 dark:text-gray-400 block mb-1.5">
+                              Geteilt durch Personen:
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                min="2"
+                                max="20"
+                                placeholder="z.B. 3"
+                                onChange={async (e) => {
+                                  const persons = parseInt(e.target.value)
+                                  if (!isNaN(persons) && persons > 1) {
+                                    // Calculate portion per person from original item quantity
+                                    const value = parseFloat(Math.min(item.quantity / persons, remainingQty).toFixed(2))
+
+                                    // Update selection with API call (triggers realtime update)
+                                    await handleItemQuantityChange(item.id, value)
+                                  }
+                                }}
+                                className="w-36 px-2.5 py-1.5 border border-gray-300 dark:border-gray-500 rounded-lg focus:ring-2 focus:ring-green-500 dark:focus:ring-green-400 focus:border-transparent text-xs dark:bg-gray-600 dark:text-gray-100"
+                              />
+                              {selectedItems[item.id] > 0 && (
+                                <span className="text-xs sm:text-sm font-semibold text-green-600 dark:text-green-400 whitespace-nowrap">
+                                  {formatEUR(item.pricePerUnit * selectedItems[item.id])}
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>
-
-                    {/* Quantity Buttons - always shown */}
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="flex gap-1.5 sm:gap-2 flex-wrap">
-                        {quantityOptions.map((qty) => {
-                          // Disable button if:
-                          // 1. Position is fully marked by others AND this is a selection button (qty > 0) AND user hasn't selected this item
-                          // 2. OR quantity exceeds what's currently available (remainingQty)
-                          const isDisabled =
-                            (isFullyMarked && !isOverselected && qty > 0 && selectedItems[item.id] === 0) ||
-                            (qty > 0 && qty > remainingQty)
-
-                          return (
-                            <button
-                              key={qty}
-                              type="button"
-                              onClick={() => handleItemQuantityChange(item.id, qty, true)}
-                              disabled={isDisabled}
-                              className={`px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg text-xs sm:text-sm font-medium transition-colors min-w-[3rem] ${
-                                selectedItems[item.id] === qty && !customQuantityMode[item.id]
-                                  ? 'bg-green-600 text-white dark:bg-green-500'
-                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed'
-                              }`}
-                            >
-                              {qty === 0 ? '✗' : `${qty}x`}
-                            </button>
-                          )
-                        })}
-                        <button
-                          type="button"
-                          onClick={() => handleCustomQuantityToggle(item.id)}
-                          disabled={
-                            (isFullyMarked && !isOverselected && selectedItems[item.id] === 0) ||
-                            remainingQty === 0
-                          }
-                          className={`px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
-                            customQuantityMode[item.id] || (selectedItems[item.id] > 0 && !quantityOptions.includes(selectedItems[item.id]))
-                              ? 'bg-green-600 text-white dark:bg-green-500'
-                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed'
-                          }`}
-                        >
-                          Anteilig
-                        </button>
-                      </div>
-                    </div>
-                    {customQuantityMode[item.id] && (
-                      <div className="space-y-2">
-                        {/* Fraction Buttons */}
-                        <div>
-                          <span className="text-xs text-gray-600 dark:text-gray-400 block mb-1.5">
-                            Schnellauswahl:
-                          </span>
-                          <div className="flex gap-1.5 flex-wrap">
-                            {[
-                              { label: '1/2', value: 1/2 },
-                              { label: '1/3', value: 1/3 },
-                              { label: '2/3', value: 2/3 },
-                              { label: '1/4', value: 1/4 },
-                              { label: '3/4', value: 3/4 },
-                              { label: '1/5', value: 1/5 },
-                              { label: '2/5', value: 2/5 },
-                              { label: '3/5', value: 3/5 },
-                              { label: '4/5', value: 4/5 },
-                              { label: '1/6', value: 1/6 },
-                              { label: '1/7', value: 1/7 },
-                              { label: '1/8', value: 1/8 },
-                              { label: '1/9', value: 1/9 },
-                              { label: '1/10', value: 1/10 },
-                            ].map((fraction) => {
-                              // Use fraction value directly (1/4 of 1 portion, not of total quantity)
-                              // Round to 2 decimal places
-                              const actualValue = parseFloat(Math.min(fraction.value, remainingQty).toFixed(2))
-                              return (
-                                <button
-                                  key={fraction.label}
-                                  type="button"
-                                  onClick={async () => {
-                                    // Update custom input display
-                                    setCustomQuantityInput((prev) => ({
-                                      ...prev,
-                                      [item.id]: actualValue.toString()
-                                    }))
-
-                                    // Update selection with API call (triggers realtime update)
-                                    await handleItemQuantityChange(item.id, actualValue)
-                                  }}
-                                  className="px-3 py-2 bg-purple-100 hover:bg-purple-200 dark:bg-purple-700 dark:hover:bg-purple-600 text-purple-700 dark:text-purple-100 rounded-lg text-xs sm:text-sm font-medium transition-colors"
-                                >
-                                  {fraction.label}
-                                </button>
-                              )
-                            })}
-                          </div>
-                        </div>
-
-                        {/* Divide By Input */}
-                        <div>
-                          <label className="text-xs text-gray-600 dark:text-gray-400 block mb-1.5">
-                            Oder teilen durch:
-                          </label>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="number"
-                              min="2"
-                              placeholder="Anzahl Personen"
-                              onChange={async (e) => {
-                                const persons = parseInt(e.target.value)
-                                if (!isNaN(persons) && persons > 1) {
-                                  // Round to 2 decimal places
-                                  const value = parseFloat(Math.min(item.quantity / persons, remainingQty).toFixed(2))
-
-                                  // Update custom input display
-                                  setCustomQuantityInput((prev) => ({
-                                    ...prev,
-                                    [item.id]: value.toString()
-                                  }))
-
-                                  // Update selection with API call (triggers realtime update)
-                                  await handleItemQuantityChange(item.id, value)
-                                }
-                              }}
-                              className="w-36 px-2.5 py-1.5 border border-gray-300 dark:border-gray-500 rounded-lg focus:ring-2 focus:ring-green-500 dark:focus:ring-green-400 focus:border-transparent text-xs dark:bg-gray-600 dark:text-gray-100"
-                            />
-                            <span className="text-xs text-gray-500 dark:text-gray-400">Personen</span>
-                          </div>
-                        </div>
-
-                        {/* Manual Input */}
-                        <div>
-                          <label className="text-xs text-gray-600 dark:text-gray-400 block mb-1.5">
-                            Oder eigene Menge:
-                          </label>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              max={remainingQty}
-                              value={customQuantityInput[item.id] || ''}
-                              onChange={(e) => handleCustomQuantityInputChange(item.id, e.target.value)}
-                              placeholder={`Max ${remainingQty}`}
-                              className="w-36 px-2.5 py-1.5 border border-gray-300 dark:border-gray-500 rounded-lg focus:ring-2 focus:ring-green-500 dark:focus:ring-green-400 focus:border-transparent text-xs dark:bg-gray-600 dark:text-gray-100"
-                            />
-                            {selectedItems[item.id] > 0 && (
-                              <span className="text-xs sm:text-sm font-semibold text-green-600 dark:text-green-400 whitespace-nowrap">
-                                {formatEUR(item.pricePerUnit * selectedItems[item.id])}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
               </div>

@@ -104,6 +104,35 @@ body {
   .animate-bounce-subtle {
     animation: bounce-subtle 0.6s ease-in-out;
   }
+
+  /* Single bounce animation for badge pulse */
+  @keyframes bounceOnce {
+    0% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.25);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  /* Accordion slide down animation */
+  @keyframes accordion-down {
+    from {
+      height: 0;
+      opacity: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+      opacity: 1;
+    }
+  }
+
+  .animate-accordion-down {
+    animation: accordion-down 0.2s ease-out;
+  }
 }
 
 input {
