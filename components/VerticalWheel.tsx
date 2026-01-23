@@ -6,6 +6,7 @@ interface VerticalWheelProps {
   min?: number
   max?: number
   label: string
+  disableIncrement?: boolean
 }
 
 export default function VerticalWheel({
@@ -13,7 +14,8 @@ export default function VerticalWheel({
   onChange,
   min = 1,
   max = 20,
-  label
+  label,
+  disableIncrement = false
 }: VerticalWheelProps) {
   return (
     <div className="flex flex-col items-center gap-3">
@@ -21,7 +23,8 @@ export default function VerticalWheel({
       <button
         type="button"
         onClick={() => onChange(Math.min(max, value + 1))}
-        className="w-12 h-12 rounded-full bg-blue-500 dark:bg-blue-600 hover:bg-blue-400 dark:hover:bg-blue-500 text-2xl text-white font-bold transition-all active:scale-95 flex items-center justify-center"
+        disabled={disableIncrement}
+        className="w-12 h-12 rounded-full bg-blue-500 dark:bg-blue-600 hover:bg-blue-400 dark:hover:bg-blue-500 text-2xl text-white font-bold transition-all active:scale-95 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
       >
         +
       </button>

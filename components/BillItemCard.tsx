@@ -264,22 +264,27 @@ export default function BillItemCard({
             e.stopPropagation()
             setShowBadges(!showBadges)
           }}
-          className="w-full mt-3 group"
+          className="w-full mt-3 group cursor-pointer"
         >
           <div className="relative">
-            <div className="h-6 bg-gray-700 dark:bg-gray-600 rounded-full overflow-hidden group-hover:opacity-80 transition-opacity">
-              <div
-                className={`h-full transition-all duration-500 ${
-                  isOverselected
-                    ? 'bg-gradient-to-r from-red-600 to-red-400 dark:from-red-700 dark:to-red-500'
-                    : isComplete
-                    ? 'bg-gradient-to-r from-emerald-600 to-emerald-400 dark:from-emerald-700 dark:to-emerald-500'
-                    : 'bg-gradient-to-r from-orange-600 to-orange-400 dark:from-orange-700 dark:to-orange-500'
-                }`}
-                style={{ width: `${Math.min(100, progress)}%` }}
-              />
+            {/* Background: Always orange (or red if overselected) - represents what's left to assign */}
+            <div className={`h-6 rounded-full overflow-hidden group-hover:opacity-90 group-hover:scale-[1.02] transition-all ${
+              isOverselected
+                ? 'bg-gradient-to-r from-red-600 to-red-400 dark:from-red-700 dark:to-red-500'
+                : 'bg-gradient-to-r from-orange-600 to-orange-400 dark:from-orange-700 dark:to-orange-500'
+            }`}>
+              {/* Foreground: Green progress - represents what's already assigned */}
+              {!isOverselected && (
+                <div
+                  className="h-full transition-all duration-500 bg-gradient-to-r from-emerald-600 to-emerald-400 dark:from-emerald-700 dark:to-emerald-500"
+                  style={{ width: `${Math.min(100, progress)}%` }}
+                />
+              )}
             </div>
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <span className={`absolute left-3 text-xs text-gray-300 transition-transform ${showBadges ? 'rotate-180' : ''}`}>
+                ▼
+              </span>
               <span className={`text-sm font-medium text-white`}>
                 {isOverselected ? (
                   `❗ Überbucht: ${formatQuantity(overselection)}× zu viel`
@@ -294,12 +299,9 @@ export default function BillItemCard({
         </button>
       </button>
 
-      {/* Accordion Body - Collapsible */}
-      <div className={`overflow-hidden transition-all duration-300 ${isOpen ? 'max-h-[2000px]' : 'max-h-0'}`}>
-        <div className="bg-gray-800 dark:bg-gray-800 p-4 pt-2">
-
-        {/* Expandable badge list */}
-        <div className={`overflow-hidden transition-all duration-300 ${showBadges ? 'max-h-64 mb-4' : 'max-h-0'}`}>
+      {/* Expandable badge list - Independent of main accordion */}
+      <div className={`overflow-hidden transition-all duration-300 bg-gray-800 dark:bg-gray-800 ${showBadges ? 'max-h-64' : 'max-h-0'}`}>
+        <div className="px-4 pb-4">
           <div className="bg-gray-900 dark:bg-gray-800 rounded-xl p-3 space-y-2">
             <div className="text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wide mb-2">Wer hatte das</div>
             {[
@@ -356,6 +358,11 @@ export default function BillItemCard({
             )}
           </div>
         </div>
+      </div>
+
+      {/* Accordion Body - Collapsible */}
+      <div className={`overflow-hidden transition-all duration-300 ${isOpen ? 'max-h-[2000px]' : 'max-h-0'}`}>
+        <div className="bg-gray-800 dark:bg-gray-800 p-4 pt-2">
 
         {/* Stepper */}
         <div className="flex items-center justify-center gap-6 mb-4">
@@ -383,7 +390,8 @@ export default function BillItemCard({
           <button
             type="button"
             onClick={handleIncrement}
-            className="w-16 h-16 rounded-full text-3xl text-white font-bold transition-all active:scale-95 bg-blue-500 hover:bg-blue-400 dark:bg-blue-600 dark:hover:bg-blue-500"
+            disabled={isComplete}
+            className="w-16 h-16 rounded-full text-3xl text-white font-bold transition-all active:scale-95 bg-blue-500 hover:bg-blue-400 dark:bg-blue-600 dark:hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             +
           </button>
@@ -416,6 +424,7 @@ export default function BillItemCard({
                 min={0}
                 max={denominator - 1}
                 label="Für mich"
+                disableIncrement={actualOpen < 1 / denominator}
               />
 
               <div className="flex flex-col items-center justify-center h-full">
@@ -436,6 +445,7 @@ export default function BillItemCard({
                 min={2}
                 max={30}
                 label="Personen"
+                disableIncrement={isComplete}
               />
             </div>
 
