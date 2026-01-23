@@ -42,6 +42,7 @@ export default function BillItemCard({
   onEdit,
   onDelete
 }: BillItemCardProps) {
+  const [isOpen, setIsOpen] = useState(false)
   const [showBadges, setShowBadges] = useState(false)
   const [showFraction, setShowFraction] = useState(false)
   const [numerator, setNumerator] = useState(1)
@@ -162,15 +163,16 @@ export default function BillItemCard({
 
   return (
     <div className="bg-white dark:bg-gray-900 rounded-2xl overflow-hidden shadow-lg border-2 border-gray-200 dark:border-gray-700">
-      {/* Header Section */}
-      <div className="bg-gray-800 dark:bg-gray-800 p-4 relative">
-        {/* Header with expandable avatars */}
-        <div className="flex justify-between items-start mb-4">
-          <div className="flex-1">
-            <div className="text-white font-medium text-lg pr-10">{item.name}</div>
-            <div className="text-gray-500 dark:text-gray-400 text-sm">
-              {item.quantity}× à {formatEUR(item.pricePerUnit)} = {formatEUR(item.totalPrice)}
-            </div>
+      {/* Accordion Header - Clickable */}
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full bg-gray-800 dark:bg-gray-800 p-4 hover:bg-gray-750 dark:hover:bg-gray-750 transition-colors relative"
+      >
+        <div className="flex items-start justify-between gap-4">
+          {/* Left: Name */}
+          <div className="flex-1 text-left">
+            <div className="text-white font-medium text-base pr-10 capitalize">{item.name.toLowerCase()}</div>
           </div>
 
           {/* Owner Menu Button */}
@@ -178,7 +180,10 @@ export default function BillItemCard({
             <div className="absolute top-2 right-2" onClick={(e) => e.stopPropagation()}>
               <button
                 type="button"
-                onClick={() => setShowMenu(!showMenu)}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setShowMenu(!showMenu)
+                }}
                 className="p-1.5 hover:bg-gray-700 dark:hover:bg-gray-600 rounded-lg transition-colors"
                 title="Aktionen"
               >
@@ -215,46 +220,88 @@ export default function BillItemCard({
             </div>
           )}
 
-          {/* Collapsible avatar stack */}
-          <button
-            type="button"
-            onClick={() => setShowBadges(!showBadges)}
-            className="flex items-center gap-2 group"
-          >
-            <div className="flex -space-x-3">
-              {assignedPeople.slice(0, 4).map((p, i) => (
-                <div
-                  key={p.name}
-                  className={`relative ${p.isMe ? 'ring-2 ring-emerald-400 dark:ring-emerald-500 rounded-full' : ''}`}
-                  style={{ zIndex: 10 - i }}
-                >
+          {/* Right: Badges + Chevron */}
+          <div className="flex items-center gap-2">
+            {/* Avatar stack */}
+            {assignedPeople.length > 0 && (
+              <div className="flex -space-x-3">
+                {assignedPeople.slice(0, 4).map((p, i) => (
                   <div
-                    className="w-10 h-10 rounded-full border-2 border-gray-800 dark:border-gray-700 flex items-center justify-center text-sm font-bold text-white"
-                    style={{ backgroundColor: p.color }}
+                    key={p.name}
+                    className={`relative ${p.isMe ? 'ring-2 ring-emerald-400 dark:ring-emerald-500 rounded-full' : ''}`}
+                    style={{ zIndex: 10 - i }}
                   >
-                    {p.name[0]}
+                    <div
+                      className="w-8 h-8 rounded-full border-2 border-gray-800 dark:border-gray-700 flex items-center justify-center text-xs font-bold text-white"
+                      style={{ backgroundColor: p.isMe ? p.color : '#6b7280' }}
+                    >
+                      {p.name[0]}
+                    </div>
+                    <div className="absolute -bottom-1 -right-1 bg-gray-900 dark:bg-gray-800 text-[9px] text-white px-1 rounded-full border border-gray-700 dark:border-gray-600 font-medium">
+                      {formatQuantity(p.amount)}
+                    </div>
                   </div>
-                  <div className="absolute -bottom-1 -right-1 bg-gray-900 dark:bg-gray-800 text-[10px] text-white px-1.5 rounded-full border border-gray-700 dark:border-gray-600 font-medium">
-                    {formatQuantity(p.amount)}
+                ))}
+                {assignedPeople.length > 4 && (
+                  <div className="w-8 h-8 rounded-full border-2 border-gray-800 dark:border-gray-700 bg-gray-700 dark:bg-gray-600 flex items-center justify-center text-xs text-gray-400 dark:text-gray-300">
+                    +{assignedPeople.length - 4}
                   </div>
-                </div>
-              ))}
-              {assignedPeople.length > 4 && (
-                <div className="w-10 h-10 rounded-full border-2 border-gray-800 dark:border-gray-700 bg-gray-700 dark:bg-gray-600 flex items-center justify-center text-sm text-gray-400 dark:text-gray-300">
-                  +{assignedPeople.length - 4}
-                </div>
-              )}
-            </div>
-            <div className={`text-gray-400 dark:text-gray-500 transition-transform ${showBadges ? 'rotate-180' : ''}`}>
+                )}
+              </div>
+            )}
+
+            {/* Chevron */}
+            <div className={`text-gray-400 dark:text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`}>
               ▼
             </div>
-          </button>
+          </div>
         </div>
+
+        {/* Progress bar in header - clickable to show "Wer hatte das" */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            setShowBadges(!showBadges)
+          }}
+          className="w-full mt-3 group"
+        >
+          <div className="relative">
+            <div className="h-6 bg-gray-700 dark:bg-gray-600 rounded-full overflow-hidden group-hover:opacity-80 transition-opacity">
+              <div
+                className={`h-full transition-all duration-500 ${
+                  isOverselected
+                    ? 'bg-gradient-to-r from-red-600 to-red-400 dark:from-red-700 dark:to-red-500'
+                    : isComplete
+                    ? 'bg-gradient-to-r from-emerald-600 to-emerald-400 dark:from-emerald-700 dark:to-emerald-500'
+                    : 'bg-gradient-to-r from-orange-600 to-orange-400 dark:from-orange-700 dark:to-orange-500'
+                }`}
+                style={{ width: `${Math.min(100, progress)}%` }}
+              />
+            </div>
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <span className={`text-sm font-medium text-white`}>
+                {isOverselected ? (
+                  `❗ Überbucht: ${formatQuantity(overselection)}× zu viel`
+                ) : isComplete ? (
+                  '✓ Vollständig aufgeteilt'
+                ) : (
+                  `Noch ${formatQuantity(actualOpen)}× offen`
+                )}
+              </span>
+            </div>
+          </div>
+        </button>
+      </button>
+
+      {/* Accordion Body - Collapsible */}
+      <div className={`overflow-hidden transition-all duration-300 ${isOpen ? 'max-h-[2000px]' : 'max-h-0'}`}>
+        <div className="bg-gray-800 dark:bg-gray-800 p-4 pt-2">
 
         {/* Expandable badge list */}
         <div className={`overflow-hidden transition-all duration-300 ${showBadges ? 'max-h-64 mb-4' : 'max-h-0'}`}>
           <div className="bg-gray-900 dark:bg-gray-800 rounded-xl p-3 space-y-2">
-            <div className="text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wide mb-2">Wer hatte was</div>
+            <div className="text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wide mb-2">Wer hatte das</div>
             {[
               { name: friendName, amount: myAmount, color: '#10b981', isMe: true },
               ...otherSelections.map((sel, idx) => ({
@@ -310,40 +357,6 @@ export default function BillItemCard({
           </div>
         </div>
 
-        {/* Progress bar with status */}
-        <div className="mb-6">
-          <div className="relative">
-            <div className="h-8 bg-gray-700 dark:bg-gray-600 rounded-full overflow-hidden">
-              <div
-                className={`h-full transition-all duration-500 ${
-                  isOverselected
-                    ? 'bg-gradient-to-r from-red-600 to-red-400 dark:from-red-700 dark:to-red-500'
-                    : isComplete
-                    ? 'bg-gradient-to-r from-emerald-600 to-emerald-400 dark:from-emerald-700 dark:to-emerald-500'
-                    : 'bg-gradient-to-r from-orange-600 to-orange-400 dark:from-orange-700 dark:to-orange-500'
-                }`}
-                style={{ width: `${Math.min(100, progress)}%` }}
-              />
-            </div>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className={`text-sm font-medium text-white`}>
-                {isOverselected ? (
-                  `❗ Überbucht: ${formatQuantity(overselection)}× zu viel`
-                ) : isComplete ? (
-                  '✓ Vollständig aufgeteilt'
-                ) : (
-                  `Noch ${formatQuantity(actualOpen)}× offen`
-                )}
-              </span>
-            </div>
-          </div>
-          <div className="flex justify-between text-xs text-gray-600 dark:text-gray-500 mt-1">
-            {Array.from({ length: Math.min(item.quantity + 1, 5) }, (_, i) => (
-              <span key={i}>{i}</span>
-            ))}
-          </div>
-        </div>
-
         {/* Stepper */}
         <div className="flex items-center justify-center gap-6 mb-4">
           <button
@@ -386,16 +399,12 @@ export default function BillItemCard({
               : 'bg-gray-700 dark:bg-gray-600 text-gray-300 dark:text-gray-400 hover:bg-gray-600 dark:hover:bg-gray-500 hover:text-white dark:hover:text-white'
           }`}
         >
-          {showFraction ? '▼' : '▶'} Anteilige Menge {isFractionalSelection && !showFraction ? `(${wholeNumber > 0 ? wholeNumber + ' + ' : ''}${formatQuantity(fractionalPart)}×)` : showFraction ? `(${numerator}/${denominator})` : ''}
+          {showFraction ? '▼' : '▶'} Anteilige Menge
         </button>
 
         {/* Vertical wheel sliders for fractions */}
         <div className={`overflow-hidden transition-all duration-300 ${showFraction ? 'max-h-[280px] mt-4' : 'max-h-0'}`}>
           <div className="bg-gray-900 dark:bg-gray-800 rounded-xl p-4 space-y-3">
-            <div className="text-center text-gray-400 dark:text-gray-500 text-xs">
-              {wholeNumber > 0 ? `${wholeNumber} ganze Portion${wholeNumber === 1 ? '' : 'en'} + Bruchteil` : 'Bruchteil auswählen (0 = kein Bruchteil)'}
-            </div>
-
             <div className="flex items-center justify-center gap-6">
               <VerticalWheel
                 value={numerator}
@@ -410,8 +419,7 @@ export default function BillItemCard({
               />
 
               <div className="flex flex-col items-center justify-center h-full">
-                <div className="text-4xl text-gray-500 dark:text-gray-400 font-light">/</div>
-                <div className="text-gray-600 dark:text-gray-500 text-xs mt-1">von</div>
+                <div className="text-4xl mt-6 text-gray-500 dark:text-gray-400 font-light">/</div>
               </div>
 
               <VerticalWheel
@@ -441,18 +449,8 @@ export default function BillItemCard({
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Result footer */}
-      <div className={`px-4 py-2 flex justify-between items-center ${
-        selectedQuantity > 0 ? 'bg-blue-500 dark:bg-blue-600' : 'bg-gray-700 dark:bg-gray-800'
-      }`}>
-        <div className="text-white/90 text-sm">
-          Mein Anteil:
-        </div>
-        <span className="text-2xl font-bold text-white">
-          {formatEUR(selectedQuantity * item.pricePerUnit)}
-        </span>
+      </div>
       </div>
     </div>
   )
