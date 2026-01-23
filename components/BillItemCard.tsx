@@ -307,34 +307,28 @@ export default function BillItemCard({
           </div>
         </div>
 
-        {/* Open indicator (always visible) */}
-        <div className="flex items-center justify-center mb-4">
-          {isComplete ? (
-            <div className="flex items-center gap-2 px-4 py-1.5 bg-emerald-500/20 border border-emerald-500/50 rounded-full">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 dark:bg-emerald-400" />
-              <span className="text-emerald-400 dark:text-emerald-500 text-sm font-medium">Vollständig verteilt</span>
+        {/* Progress bar with status */}
+        <div className="mb-6">
+          <div className="relative">
+            <div className="h-8 bg-gray-700 dark:bg-gray-600 rounded-full overflow-hidden">
+              <div
+                className={`h-full transition-all duration-500 ${
+                  isComplete
+                    ? 'bg-gradient-to-r from-emerald-600 to-emerald-400 dark:from-emerald-700 dark:to-emerald-500'
+                    : 'bg-gradient-to-r from-blue-600 to-blue-400 dark:from-blue-700 dark:to-blue-500'
+                }`}
+                style={{ width: `${progress}%` }}
+              />
             </div>
-          ) : (
-            <div className="flex items-center gap-2 px-4 py-1.5 bg-amber-500/20 border border-amber-500/50 rounded-full">
-              <div className="w-2 h-2 rounded-full bg-amber-500 dark:bg-amber-400 animate-pulse" />
-              <span className="text-amber-400 dark:text-amber-500 text-sm font-medium">
-                Noch {formatQuantity(actualOpen)}× offen
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className={`text-sm font-medium ${isComplete ? 'text-white' : 'text-white'}`}>
+                {isComplete ? (
+                  '✓ Vollständig aufgeteilt'
+                ) : (
+                  `Noch ${formatQuantity(actualOpen)}× offen`
+                )}
               </span>
             </div>
-          )}
-        </div>
-
-        {/* Progress bar */}
-        <div className="mb-6">
-          <div className="h-3 bg-gray-700 dark:bg-gray-600 rounded-full overflow-hidden">
-            <div
-              className={`h-full transition-all duration-500 ${
-                isComplete
-                  ? 'bg-gradient-to-r from-emerald-600 to-emerald-400 dark:from-emerald-700 dark:to-emerald-500'
-                  : 'bg-gradient-to-r from-blue-600 to-blue-400 dark:from-blue-700 dark:to-blue-500'
-              }`}
-              style={{ width: `${progress}%` }}
-            />
           </div>
           <div className="flex justify-between text-xs text-gray-600 dark:text-gray-500 mt-1">
             {Array.from({ length: Math.min(item.quantity + 1, 5) }, (_, i) => (
@@ -386,7 +380,7 @@ export default function BillItemCard({
           className={`w-full py-3 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2 ${
             showFraction || isFractionalSelection
               ? 'bg-purple-500/20 text-purple-400 dark:text-purple-500 border border-purple-500 dark:border-purple-400'
-              : 'bg-gray-700 dark:bg-gray-600 text-gray-400 dark:text-gray-500 hover:bg-gray-600 dark:hover:bg-gray-500'
+              : 'bg-gray-700 dark:bg-gray-600 text-gray-300 dark:text-gray-400 hover:bg-gray-600 dark:hover:bg-gray-500 hover:text-white dark:hover:text-white'
           }`}
         >
           {showFraction ? '▼' : '▶'} Anteilige Menge {isFractionalSelection && !showFraction ? `(${wholeNumber > 0 ? wholeNumber + ' + ' : ''}${formatQuantity(fractionalPart)}×)` : showFraction ? `(${numerator}/${denominator})` : ''}
@@ -447,23 +441,11 @@ export default function BillItemCard({
       </div>
 
       {/* Result footer */}
-      <div className={`px-4 py-2.5 flex justify-between items-center ${
+      <div className={`px-4 py-2 flex justify-between items-center ${
         isComplete ? 'bg-emerald-500 dark:bg-emerald-600' : 'bg-blue-500 dark:bg-blue-600'
       }`}>
-        <div className="text-white/90">
-          <div className="text-xs opacity-80 mb-0.5">Mein Anteil:</div>
-          <div className="text-lg font-bold">
-            {selectedQuantity === 0 ? (
-              '0×'
-            ) : isFractionalSelection ? (
-              <>
-                {wholeNumber > 0 && `${wholeNumber} + `}
-                <span className="text-white/90">{formatQuantity(fractionalPart)}×</span>
-              </>
-            ) : (
-              `${wholeNumber}×`
-            )}
-          </div>
+        <div className="text-white/90 text-sm">
+          Mein Anteil:
         </div>
         <span className="text-2xl font-bold text-white">
           {formatEUR(selectedQuantity * item.pricePerUnit)}
