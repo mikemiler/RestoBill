@@ -289,9 +289,11 @@ export default function BillItemCard({
             )}
           </div>
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <span className={`absolute left-3 text-xs text-gray-300 transition-transform ${showBadges ? 'rotate-180' : ''}`}>
-              ▼
-            </span>
+            {isOpen && (
+              <span className={`absolute left-3 text-xs text-gray-300 transition-transform ${showBadges ? 'rotate-180' : ''}`}>
+                ▼
+              </span>
+            )}
             <span className={`text-sm font-medium text-white`}>
               {isOverselected ? (
                 `❗ Überbucht: ${formatQuantity(overselection)}× zu viel`
