@@ -87,9 +87,12 @@ export default function BillItemCard({
   const totalAssigned = myAmount + othersTotal
   const actualOpen = Math.max(0, item.quantity - totalAssigned)
   const isComplete = actualOpen <= 0
+  const isOverselected = totalAssigned > item.quantity
+  const overselection = Math.max(0, totalAssigned - item.quantity)
 
   // Progress percentage
   const progress = Math.min(100, (totalAssigned / item.quantity) * 100)
+  const overProgress = isOverselected ? ((totalAssigned - item.quantity) / item.quantity) * 100 : 0
 
   // Detect if current selection is a fraction
   const isFractionalSelection = fractionalPart > 0.01
@@ -313,16 +316,20 @@ export default function BillItemCard({
             <div className="h-8 bg-gray-700 dark:bg-gray-600 rounded-full overflow-hidden">
               <div
                 className={`h-full transition-all duration-500 ${
-                  isComplete
+                  isOverselected
+                    ? 'bg-gradient-to-r from-red-600 to-red-400 dark:from-red-700 dark:to-red-500'
+                    : isComplete
                     ? 'bg-gradient-to-r from-emerald-600 to-emerald-400 dark:from-emerald-700 dark:to-emerald-500'
-                    : 'bg-gradient-to-r from-blue-600 to-blue-400 dark:from-blue-700 dark:to-blue-500'
+                    : 'bg-gradient-to-r from-orange-600 to-orange-400 dark:from-orange-700 dark:to-orange-500'
                 }`}
-                style={{ width: `${progress}%` }}
+                style={{ width: `${Math.min(100, progress)}%` }}
               />
             </div>
             <div className="absolute inset-0 flex items-center justify-center">
-              <span className={`text-sm font-medium ${isComplete ? 'text-white' : 'text-white'}`}>
-                {isComplete ? (
+              <span className={`text-sm font-medium text-white`}>
+                {isOverselected ? (
+                  `❗ Überbucht: ${formatQuantity(overselection)}× zu viel`
+                ) : isComplete ? (
                   '✓ Vollständig aufgeteilt'
                 ) : (
                   `Noch ${formatQuantity(actualOpen)}× offen`
@@ -363,11 +370,7 @@ export default function BillItemCard({
           <button
             type="button"
             onClick={handleIncrement}
-            className={`w-16 h-16 rounded-full text-3xl text-white font-bold transition-all active:scale-95 ${
-              isComplete
-                ? 'bg-emerald-500 hover:bg-emerald-400 dark:bg-emerald-600 dark:hover:bg-emerald-500'
-                : 'bg-blue-500 hover:bg-blue-400 dark:bg-blue-600 dark:hover:bg-blue-500'
-            }`}
+            className="w-16 h-16 rounded-full text-3xl text-white font-bold transition-all active:scale-95 bg-blue-500 hover:bg-blue-400 dark:bg-blue-600 dark:hover:bg-blue-500"
           >
             +
           </button>
@@ -442,7 +445,7 @@ export default function BillItemCard({
 
       {/* Result footer */}
       <div className={`px-4 py-2 flex justify-between items-center ${
-        isComplete ? 'bg-emerald-500 dark:bg-emerald-600' : 'bg-blue-500 dark:bg-blue-600'
+        selectedQuantity > 0 ? 'bg-blue-500 dark:bg-blue-600' : 'bg-gray-700 dark:bg-gray-800'
       }`}>
         <div className="text-white/90 text-sm">
           Mein Anteil:
