@@ -74,6 +74,9 @@ export default function SplitForm({
   allSelections,
   isOwner = false,
 }: SplitFormProps) {
+  // DIAGNOSTIC: Verify component is rendering
+  console.log('🚀 [SplitForm] Component rendering/re-rendering')
+
   const router = useRouter()
   const [friendName, setFriendName] = useState('')
   const [sessionId, setSessionId] = useState('')
@@ -105,16 +108,140 @@ export default function SplitForm({
   const [isItemsExpanded, setIsItemsExpanded] = useState(true) // Collapsible for items list
   const [expandedButtons, setExpandedButtons] = useState<Record<string, boolean>>({}) // Track which items have expanded quantity buttons
   const [pulsingBadge, setPulsingBadge] = useState<string | null>(null) // Track which item badge should pulse
-  const [isBottomBarExpanded, setIsBottomBarExpanded] = useState(false) // Expandable bottom summary bar
+  const [isBottomBarExpanded, setIsBottomBarExpanded] = useState(false) // Expandable bottom summary bar - initially collapsed
+  const [showBottomBarSummary, setShowBottomBarSummary] = useState(true) // Show summary in bottom bar (vs. in page flow)
 
   // Track if we've restored selections yet
   const hasRestoredSelections = useRef(false)
+
+  // Ref for the anchor point where summary appears in normal flow
+  const summaryAnchorRef = useRef<HTMLDivElement>(null)
 
   // Initialize sessionId on mount
   useEffect(() => {
     const sid = getOrCreateSessionId()
     setSessionId(sid)
   }, [])
+
+  // IntersectionObserver to switch summary from bottom bar to page flow
+  // IMPORTANT: Runs after nameConfirmed changes (when main form is rendered)
+  useEffect(() => {
+    console.log('🔵 [SplitForm] IntersectionObserver useEffect RUNNING', {
+      nameConfirmed,
+      isOwner,
+      showingWelcomeScreen: !isOwner && !nameConfirmed
+    })
+
+    // Skip if showing welcome screen (anchor element not in DOM yet)
+    if (!isOwner && !nameConfirmed) {
+      console.log('⏭️ [SplitForm] Skipping observer setup - welcome screen is showing')
+      return
+    }
+
+    console.log('[SplitForm] summaryAnchorRef:', summaryAnchorRef)
+    console.log('[SplitForm] summaryAnchorRef.current:', summaryAnchorRef.current)
+
+    const anchorElement = summaryAnchorRef.current
+
+    if (!anchorElement) {
+      console.error('❌ [SplitForm] summaryAnchorRef.current is NULL - cannot observe!')
+      console.log('[SplitForm] This might be a timing issue - trying with timeout...')
+
+      // Try again after a short delay to ensure DOM is ready
+      const timeoutId = setTimeout(() => {
+        const retryElement = summaryAnchorRef.current
+        if (!retryElement) {
+          console.error('❌ [SplitForm] Retry failed - anchor element still NULL')
+          return
+        }
+
+        console.log('✅ [SplitForm] Retry successful! Setting up observer')
+        const retryObserver = new IntersectionObserver(
+          ([entry]) => {
+            console.log('⚡⚡⚡ [SplitForm] IntersectionObserver CALLBACK FIRED:', {
+              isIntersecting: entry.isIntersecting,
+              intersectionRatio: entry.intersectionRatio,
+              boundingTop: entry.boundingClientRect.top,
+              willShowBottomBar: !entry.isIntersecting,
+              willShowInPage: entry.isIntersecting
+            })
+
+            // Only show bottom bar when scrolling UP (anchor becomes invisible from below)
+            // When isIntersecting = false AND top < 0, user scrolled past anchor going down → hide bar
+            // When isIntersecting = true, anchor is visible → hide bar (show in page)
+            if (entry.isIntersecting) {
+              // Anchor visible → Hide bottom bar (show in page flow)
+              setShowBottomBarSummary(false)
+            } else if (entry.boundingClientRect.top < 0) {
+              // Anchor above viewport (scrolled past going down) → Keep bar hidden
+              setShowBottomBarSummary(false)
+            } else {
+              // Anchor below viewport (scrolling back up) → Show bar
+              setShowBottomBarSummary(true)
+            }
+          },
+          { threshold: 0, rootMargin: '0px' }
+        )
+        retryObserver.observe(retryElement)
+      }, 100)
+
+      return () => clearTimeout(timeoutId)
+    }
+
+    console.log('✅ [SplitForm] Anchor element found! Setting up IntersectionObserver')
+    console.log('[SplitForm] Anchor element details:', {
+      tagName: anchorElement.tagName,
+      className: anchorElement.className,
+      offsetHeight: anchorElement.offsetHeight,
+      offsetTop: anchorElement.offsetTop,
+      boundingRect: anchorElement.getBoundingClientRect()
+    })
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        console.log('⚡⚡⚡ [SplitForm] IntersectionObserver CALLBACK FIRED:', {
+          isIntersecting: entry.isIntersecting,
+          intersectionRatio: entry.intersectionRatio,
+          boundingTop: entry.boundingClientRect.top,
+          boundingClientRect: entry.boundingClientRect,
+          willShowBottomBar: !entry.isIntersecting && entry.boundingClientRect.top >= 0,
+          willShowInPage: entry.isIntersecting
+        })
+
+        // Smart scroll-direction aware logic:
+        // - When anchor visible → hide bottom bar (show in page)
+        // - When anchor above viewport (top < 0) → keep bar hidden (user scrolled past)
+        // - When anchor below viewport (top > 0) → show bar (user scrolling back up)
+        if (entry.isIntersecting) {
+          // Anchor visible → Hide bottom bar (show in page flow)
+          console.log('📍 Anchor visible - hiding bottom bar')
+          setShowBottomBarSummary(false)
+        } else if (entry.boundingClientRect.top < 0) {
+          // Anchor above viewport (scrolled past going down) → Keep bar hidden
+          console.log('⬇️ Scrolled past anchor - keeping bar hidden')
+          setShowBottomBarSummary(false)
+        } else {
+          // Anchor below viewport (scrolling back up) → Show bar
+          console.log('⬆️ Scrolling back up - showing bar')
+          setShowBottomBarSummary(true)
+        }
+      },
+      {
+        threshold: 0,
+        rootMargin: '0px' // No margin for now - trigger when anchor enters viewport
+      }
+    )
+
+    console.log('📡 [SplitForm] Starting observation on anchor element')
+    observer.observe(anchorElement)
+    console.log('✅ [SplitForm] Observer.observe() called successfully')
+
+    return () => {
+      console.log('🧹 [SplitForm] Cleanup: Unobserving and disconnecting observer')
+      observer.unobserve(anchorElement)
+      observer.disconnect()
+    }
+  }, [nameConfirmed, isOwner])
 
   // DEBUG: Track items prop changes
   useEffect(() => {
@@ -1101,25 +1228,19 @@ export default function SplitForm({
         )}
       </div>
 
-      {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-3 py-2.5 sm:px-4 sm:py-3 rounded-lg text-xs sm:text-sm">
-          {error}
-        </div>
-      )}
+      {/* Anchor point for IntersectionObserver - invisible */}
+      <div ref={summaryAnchorRef} className="h-1 w-full" />
 
-      {/* Add bottom padding to prevent content from being hidden behind fixed bar */}
-      <div className="h-24"></div>
-
-      {/* Expandable Fixed Bottom Bar - Summary & Payment */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-gray-800 border-t-2 border-gray-200 dark:border-gray-600 shadow-lg">
-        {/* Expandable Details Section */}
-        <div className={`overflow-hidden transition-all duration-300 ${isBottomBarExpanded ? 'max-h-[600px]' : 'max-h-0'}`}>
-          <div className="px-4 sm:px-5 md:px-6 py-3 space-y-3 max-h-[600px] overflow-y-auto">
+      {/* Summary in normal page flow (visible when scrolled down) */}
+      <div className={`transition-all duration-300 ${
+        showBottomBarSummary ? 'opacity-0 max-h-0 overflow-hidden' : 'opacity-100 max-h-[500px]'
+      }`}>
+          <div className="border-t dark:border-gray-600 pt-3 sm:pt-4 space-y-1.5 sm:space-y-2 mb-4">
             {/* Selected Items Details */}
             {Object.keys(selectedItems).length > 0 && (
               <div className="space-y-1.5 pb-2 border-b dark:border-gray-600">
                 <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                  📋 Deine Positionen:
+                  Deine Positionen:
                 </div>
                 {items
                   .filter(item => selectedItems[item.id] > 0)
@@ -1172,146 +1293,229 @@ export default function SplitForm({
                 <span className="text-green-600 dark:text-green-400">{formatEUR(total)}</span>
               </div>
             </div>
-
-            {/* Payment Info - Only for Guests with selection */}
-            {!isOwner && total > 0 && (
-              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 space-y-3">
-                <div className="flex items-start gap-2">
-                  <span className="text-blue-600 dark:text-blue-400 text-lg">ℹ️</span>
-                  <div className="flex-1 space-y-3">
-                    <p className="text-xs sm:text-sm text-blue-800 dark:text-blue-300">
-                      <span className="font-semibold">{payerName}</span> bezahlt die Gesamtrechnung. Bezahle deinen Anteil ({formatEUR(total)}) direkt an <span className="font-semibold">{payerName}</span>:
-                    </p>
-
-                    {/* PayPal Payment Flow */}
-                    {paypalHandle && (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-base">💳</span>
-                          <h4 className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-gray-100">
-                            Per PayPal bezahlen:
-                          </h4>
-                        </div>
-
-                        {/* Step 1: Copy Amount Button */}
-                        <button
-                          onClick={async () => {
-                            try {
-                              await navigator.clipboard.writeText(formatAmountForPayPal(total))
-                              setAmountCopied(true)
-                            } catch (error) {
-                              console.error('Failed to copy amount:', error)
-                            }
-                          }}
-                          className={`w-full ${
-                            amountCopied
-                              ? 'bg-green-600 dark:bg-green-500 hover:bg-green-700 dark:hover:bg-green-600'
-                              : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600'
-                          } text-gray-900 dark:text-gray-100 font-semibold py-2.5 px-4 rounded-lg transition-colors text-xs sm:text-sm flex items-center justify-center gap-2`}
-                        >
-                          {amountCopied ? (
-                            <>
-                              <span>✓</span>
-                              <span>Betrag kopiert ({formatAmountForPayPal(total)} €)</span>
-                            </>
-                          ) : (
-                            <>
-                              <span>📋</span>
-                              <span>Betrag kopieren ({formatAmountForPayPal(total)} €)</span>
-                            </>
-                          )}
-                        </button>
-
-                        {/* Step 2: Open PayPal Button */}
-                        <button
-                          onClick={() => {
-                            if (!amountCopied) return
-                            const paypalUrl = generatePayPalUrlWithoutAmount(paypalHandle)
-                            window.open(paypalUrl, '_blank', 'noopener,noreferrer')
-                          }}
-                          disabled={!amountCopied}
-                          className={`w-full ${
-                            amountCopied
-                              ? 'bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 cursor-pointer'
-                              : 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed opacity-50'
-                          } text-white font-semibold py-2.5 px-4 rounded-lg transition-colors text-xs sm:text-sm flex items-center justify-center gap-2`}
-                        >
-                          <span>💳</span>
-                          <span>PayPal öffnen & Betrag einfügen</span>
-                        </button>
-
-                        {!amountCopied && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                            ⬆️ Kopiere erst den Betrag, dann öffne PayPal
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Cash Payment Option */}
-                    <div className="pt-2 border-t border-blue-200 dark:border-blue-800">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-base">💵</span>
-                        <h4 className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-gray-100">
-                          Bar bezahlen
-                        </h4>
-                      </div>
-                      <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 ml-6">
-                        Gib {payerName} das Geld Bar.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
-        {/* Compact Header - Always Visible (Clickable to Expand) */}
-        <button
-          onClick={() => setIsBottomBarExpanded(!isBottomBarExpanded)}
-          className="w-full px-4 sm:px-5 md:px-6 py-2.5 sm:py-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-        >
-          <div className="space-y-2">
-            {/* Chevron + Title */}
-            <div className="flex items-center justify-center gap-2">
-              <span className={`text-gray-400 transition-transform text-sm ${isBottomBarExpanded ? 'rotate-180' : ''}`}>
-                ▲
-              </span>
-              <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                Deine Auswahl: {formatEUR(total)}
-              </span>
-              <span className={`text-gray-400 transition-transform text-sm ${isBottomBarExpanded ? 'rotate-180' : ''}`}>
-                ▲
-              </span>
-            </div>
+      {/* Payment Info - In normal content flow (appears when scrolling down) */}
+      {!isOwner && total > 0 && (
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 sm:p-4 space-y-3">
+          <div className="flex items-start gap-2">
+            <span className="text-blue-600 dark:text-blue-400 text-lg">ℹ️</span>
+            <div className="flex-1 space-y-3">
+              <p className="text-xs sm:text-sm text-blue-800 dark:text-blue-300">
+                <span className="font-semibold">{payerName}</span> bezahlt die Gesamtrechnung. Bezahle deinen Anteil ({formatEUR(total)}) direkt an <span className="font-semibold">{payerName}</span>:
+              </p>
 
-            {/* Progress Bar with Status Text */}
-            <div className="relative w-full bg-gray-200 dark:bg-gray-700 rounded-full h-6 overflow-hidden shadow-inner">
-              <div
-                className={`h-full transition-all duration-500 ${
-                  totalCoveredPercentage >= 99.9
-                    ? 'bg-gradient-to-r from-green-500 to-green-600 dark:from-green-600 dark:to-green-700'
-                    : 'bg-gradient-to-r from-blue-500 to-blue-600 dark:from-blue-600 dark:to-blue-700'
-                }`}
-                style={{ width: `${totalCoveredPercentage}%` }}
-              />
-              {/* Status Text Overlay */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-xs sm:text-sm font-bold text-white drop-shadow-md">
-                  {Math.abs(remainingAmount) < 0.01 && Math.abs(totalAmount - totalPaidAmount) < 0.01
-                    ? '✓ Fertig aufgeteilt!'
-                    : Math.abs(remainingAmount) < 0.01
-                    ? '✓ Vollständig aufgeteilt!'
-                    : remainingAmount > 0
-                    ? `Noch offen: ${formatEUR(Math.round(remainingAmount * 100) / 100)} / ${formatEUR(totalAmount)}`
-                    : `❗ Überbucht: ${formatEUR(Math.round(Math.abs(remainingAmount) * 100) / 100)}`
-                  }
-                </span>
+              {/* PayPal Payment Flow */}
+              {paypalHandle && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-base">💳</span>
+                    <h4 className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-gray-100">
+                      Per PayPal bezahlen:
+                    </h4>
+                  </div>
+
+                  {/* Step 1: Copy Amount Button */}
+                  <button
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(formatAmountForPayPal(total))
+                        setAmountCopied(true)
+                      } catch (error) {
+                        console.error('Failed to copy amount:', error)
+                      }
+                    }}
+                    className={`w-full ${
+                      amountCopied
+                        ? 'bg-green-600 dark:bg-green-500 hover:bg-green-700 dark:hover:bg-green-600'
+                        : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600'
+                    } text-gray-900 dark:text-gray-100 font-semibold py-2.5 px-4 rounded-lg transition-colors text-xs sm:text-sm flex items-center justify-center gap-2`}
+                  >
+                    {amountCopied ? (
+                      <>
+                        <span>✓</span>
+                        <span>Betrag kopiert ({formatAmountForPayPal(total)} €)</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>📋</span>
+                        <span>Betrag kopieren ({formatAmountForPayPal(total)} €)</span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* Step 2: Open PayPal Button */}
+                  <button
+                    onClick={() => {
+                      if (!amountCopied) return
+                      const paypalUrl = generatePayPalUrlWithoutAmount(paypalHandle)
+                      window.open(paypalUrl, '_blank', 'noopener,noreferrer')
+                    }}
+                    disabled={!amountCopied}
+                    className={`w-full ${
+                      amountCopied
+                        ? 'bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 cursor-pointer'
+                        : 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed opacity-50'
+                    } text-white font-semibold py-2.5 px-4 rounded-lg transition-colors text-xs sm:text-sm flex items-center justify-center gap-2`}
+                  >
+                    <span>💳</span>
+                    <span>PayPal öffnen & Betrag einfügen</span>
+                  </button>
+
+                  {!amountCopied && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                      ⬆️ Kopiere erst den Betrag, dann öffne PayPal
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Cash Payment Option */}
+              <div className="pt-2 border-t border-blue-200 dark:border-blue-800">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-base">💵</span>
+                  <h4 className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-gray-100">
+                    Bar bezahlen
+                  </h4>
+                </div>
+                <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 ml-6">
+                  Gib {payerName} das Geld Bar.
+                </p>
               </div>
             </div>
           </div>
-        </button>
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-3 py-2.5 sm:px-4 sm:py-3 rounded-lg text-xs sm:text-sm">
+          {error}
+        </div>
+      )}
+
+      {/* Add bottom padding to prevent content from being hidden behind fixed bar */}
+      <div className="h-24 sm:h-32"></div>
+
+      {/* Fixed Bottom Bar - TWO SECTIONS */}
+      <div className="fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-gray-800 border-t-2 border-gray-200 dark:border-gray-600 shadow-lg pb-safe pb-4">
+
+        {/* SECTION 1: Personal Selection (expandable, hides when scrolled down) */}
+        <div className={`transition-all duration-300 border-b border-gray-200 dark:border-gray-600 ${
+          showBottomBarSummary ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0 overflow-hidden'
+        }`}>
+          {/* Expandable Details Section */}
+          <div className={`overflow-hidden transition-all duration-300 ${isBottomBarExpanded ? 'max-h-[400px]' : 'max-h-0'}`}>
+            <div className="px-4 sm:px-5 md:px-6 py-3 space-y-3 max-h-[400px] overflow-y-auto">
+              {/* Selected Items Details */}
+              {Object.keys(selectedItems).length > 0 && (
+                <div className="space-y-1.5 pb-2 border-b dark:border-gray-600">
+                  <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                    Deine Positionen:
+                  </div>
+                  {items
+                    .filter(item => selectedItems[item.id] > 0)
+                    .map((item) => {
+                      const quantity = selectedItems[item.id]
+                      const itemTotal = item.pricePerUnit * quantity
+                      // Format quantity as fraction or decimal
+                      const formatQuantity = (qty: number): string => {
+                        if (qty % 1 === 0) return qty.toString()
+                        for (let den = 2; den <= 30; den++) {
+                          for (let num = 1; num < den; num++) {
+                            const fracValue = num / den
+                            if (Math.abs(qty - fracValue) < 0.01) {
+                              const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b)
+                              const divisor = gcd(num, den)
+                              return `${num / divisor}/${den / divisor}`
+                            }
+                          }
+                        }
+                        return qty.toFixed(2)
+                      }
+                      return (
+                        <div key={item.id} className="flex justify-between text-xs sm:text-sm">
+                          <span className="text-gray-600 dark:text-gray-400">
+                            {formatQuantity(quantity)}× {item.name}
+                          </span>
+                          <span className="font-medium text-gray-900 dark:text-gray-200">
+                            {formatEUR(itemTotal)}
+                          </span>
+                        </div>
+                      )
+                    })}
+                </div>
+              )}
+
+              {/* Summary */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs sm:text-sm">
+                  <span className="text-gray-600 dark:text-gray-400">Zwischensumme:</span>
+                  <span className="font-medium text-gray-900 dark:text-gray-200">{formatEUR(subtotal)}</span>
+                </div>
+                {tipAmount > 0 && (
+                  <div className="flex justify-between text-xs sm:text-sm">
+                    <span className="text-gray-600 dark:text-gray-400">Trinkgeld:</span>
+                    <span className="font-medium text-gray-900 dark:text-gray-200">{formatEUR(tipAmount)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-base sm:text-lg font-bold pt-1 border-t dark:border-gray-600">
+                  <span className="text-gray-900 dark:text-gray-100">Gesamt:</span>
+                  <span className="text-green-600 dark:text-green-400">{formatEUR(total)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Compact Header - Always Visible (Clickable to Expand) */}
+          <button
+            onClick={() => setIsBottomBarExpanded(!isBottomBarExpanded)}
+            className="w-full px-4 sm:px-5 md:px-6 py-2.5 sm:py-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+          >
+            <div className="space-y-2">
+              {/* Chevron + Title */}
+              <div className="flex items-center justify-center gap-2">
+                <span className={`text-gray-400 transition-transform text-base ${isBottomBarExpanded ? 'rotate-180' : ''}`}>
+                  ▲
+                </span>
+                <span className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">
+                  Deine Auswahl: {formatEUR(total)}
+                </span>
+                <span className={`text-gray-400 transition-transform text-base ${isBottomBarExpanded ? 'rotate-180' : ''}`}>
+                  ▲
+                </span>
+              </div>
+            </div>
+          </button>
+        </div>
+
+        {/* SECTION 2: Overall Bill Status (ALWAYS visible) */}
+        <div className="px-4 sm:px-5 md:px-6 py-2.5 sm:py-3">
+          {/* Progress Bar with Overall Status */}
+          <div className="relative w-full bg-gray-200 dark:bg-gray-700 rounded-full h-7 sm:h-8 overflow-hidden shadow-inner">
+            <div
+              className={`h-full transition-all duration-500 ${
+                totalCoveredPercentage >= 99.9
+                  ? 'bg-gradient-to-r from-green-500 to-green-600 dark:from-green-600 dark:to-green-700'
+                  : 'bg-gradient-to-r from-blue-500 to-blue-600 dark:from-blue-600 dark:to-blue-700'
+              }`}
+              style={{ width: `${totalCoveredPercentage}%` }}
+            />
+            {/* Status Text Overlay */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-sm sm:text-base font-bold text-white drop-shadow-md">
+                {Math.abs(remainingAmount) < 0.01 && Math.abs(totalAmount - totalPaidAmount) < 0.01
+                  ? '✓ Fertig aufgeteilt!'
+                  : Math.abs(remainingAmount) < 0.01
+                  ? '✓ Vollständig aufgeteilt!'
+                  : remainingAmount > 0
+                  ? `Noch offen: ${formatEUR(Math.round(remainingAmount * 100) / 100)} / ${formatEUR(totalAmount)}`
+                  : `❗ Überbucht: ${formatEUR(Math.round(Math.abs(remainingAmount) * 100) / 100)}`
+                }
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )

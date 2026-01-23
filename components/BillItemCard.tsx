@@ -87,8 +87,8 @@ export default function BillItemCard({
   const othersTotal = otherSelections.reduce((sum, sel) => sum + sel.quantity, 0)
   const totalAssigned = myAmount + othersTotal
   const actualOpen = Math.max(0, item.quantity - totalAssigned)
-  const isComplete = actualOpen <= 0
   const isOverselected = totalAssigned > item.quantity
+  const isComplete = totalAssigned === item.quantity && !isOverselected
   const overselection = Math.max(0, totalAssigned - item.quantity)
 
   // Progress percentage
@@ -256,47 +256,53 @@ export default function BillItemCard({
             </div>
           </div>
         </div>
+      </button>
 
-        {/* Progress bar in header - clickable to show "Wer hatte das" */}
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
+      {/* Progress bar - separate button (not nested) */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          if (isOpen) {
+            // Accordion is open → toggle badges
             setShowBadges(!showBadges)
-          }}
-          className="w-full mt-3 group cursor-pointer"
-        >
-          <div className="relative">
-            {/* Background: Always orange (or red if overselected) - represents what's left to assign */}
-            <div className={`h-6 rounded-full overflow-hidden group-hover:opacity-90 group-hover:scale-[1.02] transition-all ${
-              isOverselected
-                ? 'bg-gradient-to-r from-red-600 to-red-400 dark:from-red-700 dark:to-red-500'
-                : 'bg-gradient-to-r from-orange-600 to-orange-400 dark:from-orange-700 dark:to-orange-500'
-            }`}>
-              {/* Foreground: Green progress - represents what's already assigned */}
-              {!isOverselected && (
-                <div
-                  className="h-full transition-all duration-500 bg-gradient-to-r from-emerald-600 to-emerald-400 dark:from-emerald-700 dark:to-emerald-500"
-                  style={{ width: `${Math.min(100, progress)}%` }}
-                />
-              )}
-            </div>
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <span className={`absolute left-3 text-xs text-gray-300 transition-transform ${showBadges ? 'rotate-180' : ''}`}>
-                ▼
-              </span>
-              <span className={`text-sm font-medium text-white`}>
-                {isOverselected ? (
-                  `❗ Überbucht: ${formatQuantity(overselection)}× zu viel`
-                ) : isComplete ? (
-                  '✓ Vollständig aufgeteilt'
-                ) : (
-                  `Noch ${formatQuantity(actualOpen)}× offen`
-                )}
-              </span>
-            </div>
+          } else {
+            // Accordion is closed → open it
+            setIsOpen(true)
+          }
+        }}
+        className="w-full bg-gray-800 dark:bg-gray-800 px-4 pb-4 hover:bg-gray-750 dark:hover:bg-gray-750 transition-colors group cursor-pointer"
+      >
+        <div className="relative mt-3">
+          {/* Background: Always orange (or red if overselected) - represents what's left to assign */}
+          <div className={`${isOpen ? 'h-8' : 'h-6'} rounded-full overflow-hidden group-hover:opacity-90 group-hover:scale-[1.02] transition-all ${
+            isOverselected
+              ? 'bg-gradient-to-r from-red-600 to-red-400 dark:from-red-700 dark:to-red-500'
+              : 'bg-gradient-to-r from-orange-600 to-orange-400 dark:from-orange-700 dark:to-orange-500'
+          }`}>
+            {/* Foreground: Green progress - represents what's already assigned */}
+            {!isOverselected && (
+              <div
+                className="h-full transition-all duration-500 bg-gradient-to-r from-emerald-600 to-emerald-400 dark:from-emerald-700 dark:to-emerald-500"
+                style={{ width: `${Math.min(100, progress)}%` }}
+              />
+            )}
           </div>
-        </button>
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <span className={`absolute left-3 text-xs text-gray-300 transition-transform ${showBadges ? 'rotate-180' : ''}`}>
+              ▼
+            </span>
+            <span className={`text-sm font-medium text-white`}>
+              {isOverselected ? (
+                `❗ Überbucht: ${formatQuantity(overselection)}× zu viel`
+              ) : isComplete ? (
+                '✓ Vollständig aufgeteilt'
+              ) : (
+                `Noch ${formatQuantity(actualOpen)}× offen`
+              )}
+            </span>
+          </div>
+        </div>
       </button>
 
       {/* Expandable badge list - Independent of main accordion */}
