@@ -582,30 +582,51 @@ export default function SplitForm({
 
   // Format quantity as fraction if applicable
   function formatQuantity(quantity: number): string {
-    if (quantity % 1 === 0) return quantity.toString()
+    const fractions = [
+      { value: 1/2, label: '1/2' },
+      { value: 1/3, label: '1/3' },
+      { value: 2/3, label: '2/3' },
+      { value: 1/4, label: '1/4' },
+      { value: 3/4, label: '3/4' },
+      { value: 1/5, label: '1/5' },
+      { value: 2/5, label: '2/5' },
+      { value: 3/5, label: '3/5' },
+      { value: 4/5, label: '4/5' },
+      { value: 1/6, label: '1/6' },
+      { value: 1/7, label: '1/7' },
+      { value: 1/8, label: '1/8' },
+      { value: 1/9, label: '1/9' },
+      { value: 1/10, label: '1/10' },
+    ]
 
-    // Try to find the simplest fraction representation
-    // Check all denominators from 2 to 30 (matches VerticalWheel max)
-    for (let den = 2; den <= 30; den++) {
-      for (let num = 1; num < den; num++) {
-        const fracValue = num / den
-        if (Math.abs(quantity - fracValue) < 0.01) {
-          // Found a matching fraction - check if it's in simplest form
-          const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b)
-          const divisor = gcd(num, den)
-          const simpleNum = num / divisor
-          const simpleDen = den / divisor
-          return `${simpleNum}/${simpleDen}`
-        }
+    // Check if quantity matches a common fraction (with tolerance for floating point errors and toFixed(2) rounding)
+    for (const fraction of fractions) {
+      // Use 0.01 tolerance to handle toFixed(2) rounding (e.g., 0.33 for 1/3 = 0.3333...)
+      if (Math.abs(quantity - fraction.value) < 0.01) {
+        return fraction.label
       }
     }
 
-    // Fallback to decimal if no fraction found (should rarely happen)
+    // Return as decimal if not a common fraction (rounded to 2 decimal places for display only)
     return (Math.round(quantity * 100) / 100).toString()
   }
 
-  // Update live selection in database (will be debounced)
-  async function updateLiveSelectionQuantity(itemId: string, quantity: number, newSelectedItems: Record<string, number>) {
+  async function handleItemQuantityChange(itemId: string, quantity: number) {
+    // Calculate new selectedItems state
+    let newSelectedItems: Record<string, number>
+    if (quantity === 0) {
+      const { [itemId]: _, ...rest } = selectedItems
+      newSelectedItems = rest
+    } else {
+      newSelectedItems = { ...selectedItems, [itemId]: quantity }
+    }
+
+    setSelectedItems(newSelectedItems)
+
+    // Trigger badge pulse animation
+    setPulsingBadge(itemId)
+    setTimeout(() => setPulsingBadge(null), 600) // Reset after animation (600ms)
+
     // Calculate subtotal with NEW selectedItems
     const newSubtotal = items.reduce((sum, item) => {
       const qty = newSelectedItems[item.id] || 0
@@ -638,32 +659,6 @@ export default function SplitForm({
         debugError('Error updating live selection:', error)
       }
     }
-  }
-
-  // Debounced version (waits 1000ms after last change)
-  const debouncedQuantityUpdate = useDebounce((itemId: string, quantity: number, newSelectedItems: Record<string, number>) => {
-    updateLiveSelectionQuantity(itemId, quantity, newSelectedItems)
-  }, 1000)
-
-  function handleItemQuantityChange(itemId: string, quantity: number) {
-    // Calculate new selectedItems state
-    let newSelectedItems: Record<string, number>
-    if (quantity === 0) {
-      const { [itemId]: _, ...rest } = selectedItems
-      newSelectedItems = rest
-    } else {
-      newSelectedItems = { ...selectedItems, [itemId]: quantity }
-    }
-
-    // Update local state immediately (for instant UI feedback)
-    setSelectedItems(newSelectedItems)
-
-    // Trigger badge pulse animation
-    setPulsingBadge(itemId)
-    setTimeout(() => setPulsingBadge(null), 600) // Reset after animation (600ms)
-
-    // Debounced database update (1 second delay)
-    debouncedQuantityUpdate(itemId, quantity, newSelectedItems)
   }
 
   // Cyclic row click handler: 0 → 1 → 2 → 3 → ... → max → 0
@@ -964,6 +959,382 @@ export default function SplitForm({
                 onEdit={() => startEditItem(item)}
                 onDelete={() => deleteItem(item.id)}
               />
+            )
+          })}
+        </div>
+
+          {/* Add New Item (Owner only) */}
+          {isOwner && (
+                  isOverselected
+                    ? 'border-red-500 dark:border-red-600 bg-red-50 dark:bg-red-900/20'
+                    : isEditingThis
+                    ? 'border-gray-200 dark:border-gray-600 dark:bg-gray-700/50'
+                    : isFullyMarked && !isOverselected
+                    ? 'border-green-500 dark:border-green-600 bg-green-50 dark:bg-green-900/20'
+                    : 'border-gray-200 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500 dark:bg-gray-700/50 cursor-pointer'
+                }`}
+                onClick={(e) => {
+                  // Don't trigger if clicking on interactive elements (buttons, inputs)
+                  const target = e.target as HTMLElement
+                  if (target.tagName === 'BUTTON' || target.tagName === 'INPUT' || target.closest('button') || target.closest('input')) {
+                    return
+                  }
+                  // Don't trigger when editing
+                  if (isEditingThis) {
+                    return
+                  }
+                  // Cycle through quantities: 0 → 1 → 2 → ... → max → 0
+                  handleRowClick(item.id)
+                }}
+              >
+                {isEditingThis && editForm ? (
+                  // Edit Mode
+                  <div className="space-y-3">
+                    <h3 className="font-medium text-gray-900 dark:text-gray-100 text-sm">Position bearbeiten</h3>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Bezeichnung
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.name}
+                        onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                        className="w-full px-2.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 focus:border-transparent dark:bg-gray-700 dark:text-gray-100"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Anzahl
+                        </label>
+                        <input
+                          type="number"
+                          step="0.25"
+                          min="0.25"
+                          value={editForm.quantity}
+                          onChange={(e) => setEditForm({ ...editForm, quantity: parseFloat(e.target.value) || 0 })}
+                          className="w-full px-2.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 focus:border-transparent dark:bg-gray-700 dark:text-gray-100"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Preis/Einheit
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={editForm.pricePerUnit}
+                          onChange={(e) => setEditForm({ ...editForm, pricePerUnit: parseFloat(e.target.value) || 0 })}
+                          className="w-full px-2.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 focus:border-transparent dark:bg-gray-700 dark:text-gray-100"
+                        />
+                      </div>
+                    </div>
+                    <div className="text-xs text-gray-600 dark:text-gray-300">
+                      Gesamtpreis: {formatEUR(editForm.quantity * editForm.pricePerUnit)}
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => saveEditItem(item.id)}
+                        disabled={loading}
+                        className="flex-1 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 dark:bg-purple-500 dark:hover:bg-purple-600 dark:disabled:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+                      >
+                        {loading ? 'Speichern...' : 'Speichern'}
+                      </button>
+                      <button
+                        onClick={cancelEditItem}
+                        disabled={loading}
+                        className="flex-1 px-3 py-1.5 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 dark:bg-gray-600 dark:hover:bg-gray-500 dark:disabled:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg text-sm font-medium transition-colors"
+                      >
+                        Abbrechen
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Menu Button (Owner only) */}
+                    {isOwner && (
+                      <div className="absolute top-2 right-2 z-10" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setOpenMenuItemId(openMenuItemId === item.id ? null : item.id)
+                          }}
+                          className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                          title="Aktionen"
+                        >
+                          <svg className="w-5 h-5 text-gray-600 dark:text-gray-300" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                          </svg>
+                        </button>
+                        {openMenuItemId === item.id && (
+                          <div className="absolute right-0 mt-1 w-40 bg-white dark:bg-gray-700 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 overflow-hidden z-20">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                startEditItem(item)
+                              }}
+                              className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                            >
+                              ✏️ Bearbeiten
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                deleteItem(item.id)
+                              }}
+                              className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                            >
+                              🗑️ Löschen
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Selection Badges (Live + Paid) */}
+                    {(() => {
+                      // Build all badges array
+                      const allBadges: Array<{ type: 'own' | 'live' | 'paid', data: any }> = []
+
+                      // Add own selection badge
+                      if (selectedItems[item.id] > 0) {
+                        allBadges.push({ type: 'own', data: { quantity: selectedItems[item.id] } })
+                      }
+
+                      // Add other guests' live selections
+                      othersSelecting.forEach(user => {
+                        allBadges.push({ type: 'live', data: user })
+                      })
+
+                      // Note: Paid selections badges removed - no longer showing "Bereits bezahlt"
+
+                      if (allBadges.length === 0) return null
+
+                      const MAX_VISIBLE = 3
+                      const showMore = allBadges.length > 4
+                      const visibleBadges = showMore ? allBadges.slice(0, MAX_VISIBLE) : allBadges
+                      const remainingCount = allBadges.length - MAX_VISIBLE
+
+                      return (
+                        <div className={`absolute top-2 ${isOwner ? 'right-10' : 'right-2'} flex flex-col gap-1 items-end max-w-[50%]`}>
+                          {visibleBadges.map((badge, idx) => {
+                            if (badge.type === 'own') {
+                              const isPulsing = pulsingBadge === item.id
+                              return (
+                                <div
+                                  key={`own-${idx}`}
+                                  className={`bg-green-500 dark:bg-green-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                                    isPulsing ? 'animate-bounce-once' : ''
+                                  }`}
+                                  style={{
+                                    animation: isPulsing ? 'bounceOnce 0.6s ease-in-out' : 'none'
+                                  }}
+                                >
+                                  <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                                  <span className="font-medium">{friendName || 'Ich'}</span>
+                                  <span className="opacity-90">({formatQuantity(badge.data.quantity)}×)</span>
+                                </div>
+                              )
+                            } else if (badge.type === 'live') {
+                              return (
+                                <div key={`live-${idx}`} className="bg-gray-500 dark:bg-gray-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                                  <span className="font-medium">{badge.data.guestName}</span>
+                                  <span className="opacity-90">({formatQuantity(badge.data.quantity)}×)</span>
+                                </div>
+                              )
+                            }
+                            // Note: 'paid' badge type removed - no longer showing "Bereits bezahlt"
+                            return null
+                          })}
+
+                          {showMore && (
+                            <div className="bg-gray-500 dark:bg-gray-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
+                              <span className="font-medium">+{remainingCount} weitere</span>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
+
+                    <div className="mb-2">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="font-medium text-sm sm:text-base text-gray-900 dark:text-gray-100 truncate max-w-[60%] sm:max-w-[70%]">
+                          {item.name}
+                        </h3>
+                      </div>
+                      <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
+                        <span className="font-medium">Gesamt:</span> {item.quantity}x à {formatEUR(item.pricePerUnit)} ={' '}
+                        {formatEUR(item.totalPrice)}
+                      </p>
+
+                      <div className="mt-3 space-y-0">
+                        <div className="text-xs sm:text-sm">
+                          <span className="text-gray-600 dark:text-gray-400">Dein Anteil: </span>
+                          <span className={`font-semibold ${
+                            selectedItems[item.id] > 0
+                              ? 'text-green-600 dark:text-green-400'
+                              : 'text-gray-500 dark:text-gray-500'
+                          }`}>
+                            {selectedItems[item.id] > 0
+                              ? `${formatQuantity(selectedItems[item.id])}× (${formatEUR(item.pricePerUnit * selectedItems[item.id])})`
+                              : '—'
+                            }
+                          </span>
+                        </div>
+                        <div className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                          {isFullyMarked && !isOverselected ? (
+                            <span className="text-green-600 dark:text-green-400 font-medium italic">
+                              ✓ Vollständig aufgeteilt
+                            </span>
+                          ) : (
+                            <span>Noch offen: {formatQuantity(liveRemainingQty)}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Overselection Warning */}
+                {!isEditingThis && isOverselected && (
+                  <div className="mb-3 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <span className="text-red-600 dark:text-red-400 text-sm">⚠️</span>
+                      <div className="flex-1">
+                        <p className="text-xs sm:text-sm text-red-700 dark:text-red-400 font-medium">
+                          Zu viel ausgewählt!
+                        </p>
+                        <p className="text-xs text-red-600 dark:text-red-500 mt-0.5">
+                          {totalClaimed}x insgesamt ausgewählt, aber nur {item.quantity}x verfügbar.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {!isEditingThis && (
+                  <div className="space-y-2">
+                    {/* Quantity Selection Accordion */}
+                    <div className="border border-gray-200 dark:border-gray-600 rounded-lg overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedButtons(prev => ({
+                          ...prev,
+                          [item.id]: !prev[item.id]
+                        }))}
+                        className="w-full px-3 py-2.5 bg-gray-50 hover:bg-gray-100 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100 text-xs sm:text-sm font-medium transition-all flex items-center justify-between"
+                      >
+                        <span>Menge auswählen</span>
+                        <svg
+                          className={`w-4 h-4 transition-transform duration-200 ${expandedButtons[item.id] ? 'rotate-180' : ''}`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+
+                      {expandedButtons[item.id] && (
+                        <div className="p-3 space-y-3 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-600 animate-accordion-down">
+                          {/* Whole Numbers */}
+                          <div>
+                            <span className="text-xs text-gray-600 dark:text-gray-400 block mb-1.5">
+                              Ganze Portionen:
+                            </span>
+                            <div className="flex gap-1.5 flex-wrap">
+                              {Array.from({ length: Math.min(Math.floor(remainingQty) + 1, 11) }, (_, i) => i).map((qty) => (
+                                <button
+                                  key={qty}
+                                  type="button"
+                                  onClick={async () => {
+                                    await handleItemQuantityChange(item.id, qty)
+                                  }}
+                                  className={`px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+                                    selectedItems[item.id] === qty
+                                      ? 'bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 text-white'
+                                      : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-100'
+                                  }`}
+                                >
+                                  {qty}×
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Fractions */}
+                          <div>
+                            <span className="text-xs text-gray-600 dark:text-gray-400 block mb-1.5">
+                              Anteilige Portionen:
+                            </span>
+                            <div className="flex gap-1.5 flex-wrap">
+                              {[
+                                { label: '1/2', value: 1/2 },
+                                { label: '1/3', value: 1/3 },
+                                { label: '2/3', value: 2/3 },
+                                { label: '1/4', value: 1/4 },
+                                { label: '3/4', value: 3/4 },
+                                { label: '1/5', value: 1/5 },
+                                { label: '2/5', value: 2/5 },
+                                { label: '3/5', value: 3/5 },
+                                { label: '4/5', value: 4/5 },
+                                { label: '1/6', value: 1/6 },
+                              ].map((fraction) => {
+                                const actualValue = parseFloat(Math.min(fraction.value, remainingQty).toFixed(2))
+                                return (
+                                  <button
+                                    key={fraction.label}
+                                    type="button"
+                                    onClick={async () => {
+                                      await handleItemQuantityChange(item.id, actualValue)
+                                    }}
+                                    className="px-3 py-2 bg-purple-100 hover:bg-purple-200 dark:bg-purple-700 dark:hover:bg-purple-600 text-purple-700 dark:text-purple-100 rounded-lg text-xs sm:text-sm font-medium transition-colors"
+                                  >
+                                    {fraction.label}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Divide By Persons */}
+                          <div>
+                            <label className="text-xs text-gray-600 dark:text-gray-400 block mb-1.5">
+                              Geteilt durch Personen:
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                min="2"
+                                max="20"
+                                placeholder="z.B. 3"
+                                onChange={async (e) => {
+                                  const persons = parseInt(e.target.value)
+                                  if (!isNaN(persons) && persons > 1) {
+                                    // Calculate portion per person from original item quantity
+                                    const value = parseFloat(Math.min(item.quantity / persons, remainingQty).toFixed(2))
+
+                                    // Update selection with API call (triggers realtime update)
+                                    await handleItemQuantityChange(item.id, value)
+                                  }
+                                }}
+                                className="w-36 px-2.5 py-1.5 border border-gray-300 dark:border-gray-500 rounded-lg focus:ring-2 focus:ring-green-500 dark:focus:ring-green-400 focus:border-transparent text-xs dark:bg-gray-600 dark:text-gray-100"
+                              />
+                              {selectedItems[item.id] > 0 && (
+                                <span className="text-xs sm:text-sm font-semibold text-green-600 dark:text-green-400 whitespace-nowrap">
+                                  {formatEUR(item.pricePerUnit * selectedItems[item.id])}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             )
           })}
         </div>

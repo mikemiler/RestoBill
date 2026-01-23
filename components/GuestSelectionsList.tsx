@@ -36,6 +36,30 @@ export default function GuestSelectionsList({
   const [loadingSelectionId, setLoadingSelectionId] = useState<string | null>(null)
   const [expandedSelections, setExpandedSelections] = useState<Record<string, boolean>>({})
 
+  // Format quantity as fraction if applicable
+  function formatQuantity(quantity: number): string {
+    if (quantity % 1 === 0) return quantity.toString()
+
+    // Try to find the simplest fraction representation
+    // Check all denominators from 2 to 30
+    for (let den = 2; den <= 30; den++) {
+      for (let num = 1; num < den; num++) {
+        const fracValue = num / den
+        if (Math.abs(quantity - fracValue) < 0.01) {
+          // Found a matching fraction - check if it's in simplest form
+          const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b)
+          const divisor = gcd(num, den)
+          const simpleNum = num / divisor
+          const simpleDen = den / divisor
+          return `${simpleNum}/${simpleDen}`
+        }
+      }
+    }
+
+    // Fallback to decimal if no fraction found
+    return (Math.round(quantity * 100) / 100).toString()
+  }
+
   // Calculate summary data (memoized for performance)
   const summaryData = useMemo(() => {
     console.log('🔢 [GuestSelectionsList] Recalculating summary data:', {
@@ -358,7 +382,7 @@ export default function GuestSelectionsList({
                   className="flex justify-between items-center text-sm text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/50 rounded px-2 py-1.5"
                 >
                   <span>
-                    {item.name} <span className="text-gray-500 dark:text-gray-400">({item.quantity}x)</span>
+                    {item.name} <span className="text-gray-500 dark:text-gray-400">({formatQuantity(item.quantity)}×)</span>
                   </span>
                   <span className="font-medium">{formatEUR(item.total)}</span>
                 </div>
