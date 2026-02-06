@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { LanguageProvider } from "@/lib/i18n";
 import Footer from "@/components/Footer";
 
 export const metadata: Metadata = {
@@ -19,13 +20,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="de" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <body className="antialiased flex flex-col min-h-screen">
         <ThemeProvider>
-          <div className="flex-grow">
-            {children}
-          </div>
-          <Footer />
+          <LanguageProvider>
+            <div className="flex-grow">
+              {children}
+            </div>
+            <Footer />
+          </LanguageProvider>
         </ThemeProvider>
 
         {/* Paddle Checkout Script

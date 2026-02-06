@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useTranslation, interpolate } from '@/lib/i18n'
 
 interface EditableGuestNameProps {
   initialName: string
@@ -15,6 +16,7 @@ export default function EditableGuestName({
   const [guestName, setGuestName] = useState(initialName)
   const [editValue, setEditValue] = useState(initialName)
   const [error, setError] = useState('')
+  const { t } = useTranslation()
 
   // Update local state when initialName changes
   useEffect(() => {
@@ -24,7 +26,7 @@ export default function EditableGuestName({
 
   const handleSave = () => {
     if (!editValue.trim()) {
-      setError('Name darf nicht leer sein')
+      setError(t.editableName.nameEmpty)
       return
     }
 
@@ -55,7 +57,7 @@ export default function EditableGuestName({
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
             className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 focus:border-transparent dark:bg-gray-700 dark:text-gray-100 text-sm"
-            placeholder="Dein Name"
+            placeholder={t.editableName.namePlaceholder}
             autoFocus
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
@@ -88,12 +90,12 @@ export default function EditableGuestName({
   return (
     <div className="inline-flex items-center gap-2">
       <span className="text-sm sm:text-base text-gray-600 dark:text-gray-300">
-        Du bist: {guestName}
+        {interpolate(t.editableName.youAre, { name: guestName })}
       </span>
       <button
         onClick={() => setIsEditing(true)}
         className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
-        title="Namen bearbeiten"
+        title={t.editableName.editTitle}
       >
         <svg
           className="w-4 h-4 text-gray-500 dark:text-gray-400"

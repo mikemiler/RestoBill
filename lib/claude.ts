@@ -15,7 +15,7 @@ export interface BillAnalysisResult {
   items: BillItemExtracted[]
   restaurantName?: string
   totalAmount?: number
-  restaurantAddress?: string // Vollständige Adresse vom Beleg
+  restaurantAddress?: string // Full address from the receipt
 }
 
 /**
@@ -26,17 +26,18 @@ export interface BillAnalysisResult {
 export async function analyzeBillImage(
   imageUrl: string
 ): Promise<BillAnalysisResult> {
-  const prompt = `Analysiere diese Restaurant-Rechnung und extrahiere ALLE Positionen.
+  const prompt = `Analyze this restaurant receipt and extract ALL line items.
 
-WICHTIG:
-- Extrahiere JEDE einzelne Position auf der Rechnung
-- Wenn eine Position mehrfach vorkommt, gib die Anzahl an
-- Berechne den Preis pro Stück (pricePerUnit = totalPrice / quantity)
-- Ignoriere Summen, Zwischensummen, MwSt, Service Charges
-- Extrahiere nur die eigentlichen Speisen und Getränke
-- Extrahiere auch die VOLLSTÄNDIGE ADRESSE des Restaurants (falls auf dem Beleg sichtbar)
+IMPORTANT:
+- Receipts can be in any language. Extract item names in the original language of the receipt.
+- Extract EVERY individual item on the receipt
+- If an item appears multiple times, indicate the quantity
+- Calculate the price per unit (pricePerUnit = totalPrice / quantity)
+- Ignore totals, subtotals, VAT, service charges
+- Extract only the actual food and drink items
+- Also extract the FULL ADDRESS of the restaurant (if visible on the receipt)
 
-Gib die Antwort als JSON zurück im folgenden Format:
+Return the response as JSON in the following format:
 {
   "items": [
     {
@@ -46,11 +47,11 @@ Gib die Antwort als JSON zurück im folgenden Format:
     }
   ],
   "restaurantName": "Restaurant Name (optional)",
-  "totalAmount": 45.00 (optional, Gesamtsumme falls erkennbar),
-  "restaurantAddress": "Vollständige Adresse inkl. Straße, PLZ, Stadt (optional, NUR wenn auf Beleg sichtbar)"
+  "totalAmount": 45.00 (optional, total amount if recognizable),
+  "restaurantAddress": "Full address including street, postal code, city (optional, ONLY if visible on receipt)"
 }
 
-Antworte NUR mit dem JSON-Objekt, ohne zusätzlichen Text.`
+Respond ONLY with the JSON object, without any additional text.`
 
   try {
     // Validate URL to prevent SSRF attacks
@@ -170,6 +171,6 @@ Antworte NUR mit dem JSON-Objekt, ohne zusätzlichen Text.`
     return result
   } catch (error) {
     console.error('Error analyzing bill image:', error)
-    throw new Error('Fehler beim Analysieren der Rechnung')
+    throw new Error('Error analyzing bill image')
   }
 }

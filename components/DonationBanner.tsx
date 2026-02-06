@@ -15,6 +15,7 @@
  */
 
 import { useState } from 'react'
+import { useTranslation } from '@/lib/i18n'
 
 // Declare Paddle global type
 declare global {
@@ -28,6 +29,7 @@ declare global {
 }
 
 export default function DonationBanner() {
+  const { t } = useTranslation()
   const [customAmount, setCustomAmount] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -47,7 +49,7 @@ export default function DonationBanner() {
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Fehler beim Erstellen der Zahlung')
+        throw new Error(data.error || t.donation.errorCreating)
       }
 
       // Open Paddle Checkout
@@ -56,11 +58,11 @@ export default function DonationBanner() {
           transactionId: data.transactionId,
         })
       } else {
-        throw new Error('Paddle ist nicht geladen')
+        throw new Error(t.donation.errorPaddle)
       }
     } catch (err) {
       console.error('Donation error:', err)
-      setError(err instanceof Error ? err.message : 'Ein Fehler ist aufgetreten')
+      setError(err instanceof Error ? err.message : t.common.genericError)
     } finally {
       setLoading(false)
     }
@@ -69,11 +71,11 @@ export default function DonationBanner() {
   function handleCustomAmount() {
     const amount = parseFloat(customAmount)
     if (isNaN(amount) || amount < 1) {
-      setError('Bitte gib einen Betrag von mindestens €1 ein')
+      setError(t.donation.minAmount)
       return
     }
     if (amount > 500) {
-      setError('Maximalbetrag ist €500')
+      setError(t.donation.maxAmount)
       return
     }
     handleDonation(amount)
@@ -82,11 +84,9 @@ export default function DonationBanner() {
   return (
     <div className="donation-banner">
       <div className="donation-content">
-        <h3 className="donation-heading">Unterstütze WerHatteWas</h3>
+        <h3 className="donation-heading">{t.donation.heading}</h3>
         <p className="donation-text">
-          💝 Diese App ist gratis, aber um meine KI-Kosten und Server-Kosten zu
-          decken, würde ich mich über einen Beitrag zur Unterstützung freuen –
-          auch wenn dieser nur 1 € ist.
+          {t.donation.text}
         </p>
 
         {/* Quick amount buttons */}
@@ -124,7 +124,7 @@ export default function DonationBanner() {
         {/* Custom amount input */}
         <div className="mb-3">
           <label htmlFor="customAmount" className="block text-sm text-gray-300 mb-2">
-            Eigener Betrag:
+            {t.donation.customAmountLabel}
           </label>
           <input
             id="customAmount"
@@ -134,7 +134,7 @@ export default function DonationBanner() {
             step="1"
             value={customAmount}
             onChange={(e) => setCustomAmount(e.target.value)}
-            placeholder="z.B. 3"
+            placeholder={t.donation.customAmountPlaceholder}
             disabled={loading}
             className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 mb-2"
           />
@@ -143,7 +143,7 @@ export default function DonationBanner() {
             disabled={loading || !customAmount}
             className="w-full py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-500 text-white rounded-lg transition-colors"
           >
-            {loading ? 'Lädt...' : 'Unterstützen'}
+            {loading ? t.donation.loadingButton : t.donation.supportButton}
           </button>
         </div>
 
@@ -154,7 +154,7 @@ export default function DonationBanner() {
 
         {/* Payment methods info */}
         <p className="text-xs text-gray-400">
-          💳 Zahlung via PayPal, Google Pay, Apple Pay oder Kreditkarte
+          {t.donation.paymentMethods}
         </p>
       </div>
     </div>

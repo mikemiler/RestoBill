@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Image from 'next/image'
+import { useTranslation } from '@/lib/i18n'
 
 interface CollapsibleReceiptProps {
   imageUrl: string
@@ -10,6 +11,7 @@ interface CollapsibleReceiptProps {
 
 export default function CollapsibleReceipt({ imageUrl, restaurantName }: CollapsibleReceiptProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const { t } = useTranslation()
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30">
@@ -18,7 +20,7 @@ export default function CollapsibleReceipt({ imageUrl, restaurantName }: Collaps
         className="w-full px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors rounded-lg"
       >
         <h2 className="text-lg sm:text-xl font-semibold text-gray-800 dark:text-gray-100">
-          📸 Rechnung
+          {t.receipt.label}
           {restaurantName && (
             <span className="text-sm sm:text-base font-normal text-gray-600 dark:text-gray-300 ml-2">
               📍 {restaurantName}
@@ -47,7 +49,7 @@ export default function CollapsibleReceipt({ imageUrl, restaurantName }: Collaps
           <div className="relative aspect-[3/4] w-full">
             <Image
               src={imageUrl}
-              alt="Rechnung"
+              alt={t.receipt.imageAlt}
               fill
               className="object-contain rounded-lg"
             />

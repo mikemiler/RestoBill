@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { formatEUR } from '@/lib/utils'
+import { useTranslation, interpolate } from '@/lib/i18n'
 import VerticalWheel from './VerticalWheel'
 
 interface BillItem {
@@ -42,6 +43,7 @@ export default function BillItemCard({
   onEdit,
   onDelete
 }: BillItemCardProps) {
+  const { t } = useTranslation()
   const [isOpen, setIsOpen] = useState(false)
   const [showBadges, setShowBadges] = useState(false)
   const [showFraction, setShowFraction] = useState(false)
@@ -185,7 +187,7 @@ export default function BillItemCard({
                   setShowMenu(!showMenu)
                 }}
                 className="p-1.5 hover:bg-gray-700 dark:hover:bg-gray-600 rounded-lg transition-colors"
-                title="Aktionen"
+                title={t.billItemCard.actionsMenu}
               >
                 <svg className="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
                   <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
@@ -202,7 +204,7 @@ export default function BillItemCard({
                     }}
                     className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
                   >
-                    ✏️ Bearbeiten
+                    {t.billItemCard.editButton}
                   </button>
                   <button
                     type="button"
@@ -213,7 +215,7 @@ export default function BillItemCard({
                     }}
                     className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                   >
-                    🗑️ Löschen
+                    {t.billItemCard.deleteButton}
                   </button>
                 </div>
               )}
@@ -296,11 +298,11 @@ export default function BillItemCard({
             )}
             <span className={`text-sm font-medium text-white`}>
               {isOverselected ? (
-                `❗ Überbucht: ${formatQuantity(overselection)}× zu viel`
+                interpolate(t.billItemCard.overbooked, { amount: formatQuantity(overselection) })
               ) : isComplete ? (
-                '✓ Vollständig aufgeteilt'
+                t.billItemCard.completelyDivided
               ) : (
-                `Noch ${formatQuantity(actualOpen)}× offen`
+                interpolate(t.billItemCard.stillOpen, { amount: formatQuantity(actualOpen) })
               )}
             </span>
           </div>
@@ -311,7 +313,7 @@ export default function BillItemCard({
       <div className={`overflow-hidden transition-all duration-300 bg-gray-800 dark:bg-gray-800 ${showBadges ? 'max-h-64' : 'max-h-0'}`}>
         <div className="px-4 pb-4">
           <div className="bg-gray-900 dark:bg-gray-800 rounded-xl p-3 space-y-2">
-            <div className="text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wide mb-2">Wer hatte das</div>
+            <div className="text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wide mb-2">{t.billItemCard.whoHadThis}</div>
             {[
               { name: friendName, amount: myAmount, color: '#10b981', isMe: true },
               ...otherSelections.map((sel, idx) => ({
@@ -336,7 +338,7 @@ export default function BillItemCard({
                   </div>
                   <span className={`font-medium ${p.amount > 0 ? 'text-white' : 'text-gray-500 dark:text-gray-400'}`}>
                     {p.name}
-                    {p.isMe && <span className="text-emerald-400 dark:text-emerald-500 text-xs ml-2">(Du)</span>}
+                    {p.isMe && <span className="text-emerald-400 dark:text-emerald-500 text-xs ml-2">{t.billItemCard.youLabel}</span>}
                   </span>
                 </div>
                 <div className="flex items-center gap-3">
@@ -357,7 +359,7 @@ export default function BillItemCard({
                   <div className="w-8 h-8 rounded-full bg-gray-600 dark:bg-gray-700 flex items-center justify-center text-sm text-gray-400 dark:text-gray-500">
                     ?
                   </div>
-                  <span className="font-medium text-amber-400 dark:text-amber-500">Noch offen</span>
+                  <span className="font-medium text-amber-400 dark:text-amber-500">{t.billItemCard.stillOpenLabel}</span>
                 </div>
                 <span className="font-bold text-amber-400 dark:text-amber-500">
                   {formatQuantity(actualOpen)}×
@@ -415,7 +417,7 @@ export default function BillItemCard({
               : 'bg-gray-700 dark:bg-gray-600 text-gray-300 dark:text-gray-400 hover:bg-gray-600 dark:hover:bg-gray-500 hover:text-white dark:hover:text-white'
           }`}
         >
-          {showFraction ? '▼' : '▶'} Anteilige Menge
+          {showFraction ? t.billItemCard.fractionalAmountToggleOpen : t.billItemCard.fractionalAmountToggle}
         </button>
 
         {/* Vertical wheel sliders for fractions */}
@@ -431,7 +433,7 @@ export default function BillItemCard({
                 }}
                 min={0}
                 max={denominator - 1}
-                label="Für mich"
+                label={t.billItemCard.forMe}
                 disableIncrement={actualOpen < 1 / denominator}
               />
 
@@ -452,7 +454,7 @@ export default function BillItemCard({
                 }}
                 min={2}
                 max={30}
-                label="Personen"
+                label={t.billItemCard.people}
                 disableIncrement={isComplete}
               />
             </div>
@@ -460,9 +462,13 @@ export default function BillItemCard({
             {/* Fraction preview */}
             <div className="text-center text-purple-400 dark:text-purple-500 text-sm font-medium">
               {numerator === 0 ? (
-                wholeNumber > 0 ? `= ${wholeNumber}× (keine Bruchteile)` : '= 0× (nichts ausgewählt)'
+                wholeNumber > 0 ? interpolate(t.billItemCard.noFractions, { count: wholeNumber }) : t.billItemCard.nothingSelected
               ) : (
-                `= ${wholeNumber > 0 ? `${wholeNumber} + ` : ''}${numerator}/${denominator}× (${((numerator / denominator) * 100).toFixed(1)}% einer Portion)`
+                interpolate(t.billItemCard.fractionPreview, {
+                  whole: wholeNumber > 0 ? `${wholeNumber} + ` : '',
+                  fraction: `${numerator}/${denominator}`,
+                  percent: ((numerator / denominator) * 100).toFixed(1)
+                })
               )}
             </div>
           </div>

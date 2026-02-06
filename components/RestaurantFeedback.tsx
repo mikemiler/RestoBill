@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { getOrCreateSessionId } from '@/lib/sessionStorage'
+import { useTranslation, interpolate } from '@/lib/i18n'
 
 interface RestaurantFeedbackProps {
   billId: string
@@ -19,6 +20,7 @@ export default function RestaurantFeedback({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [sessionId, setSessionId] = useState<string>('')
+  const { t } = useTranslation()
 
   useEffect(() => {
     setSessionId(getOrCreateSessionId())
@@ -36,7 +38,7 @@ export default function RestaurantFeedback({
 
   const saveFeedback = async (rating: number, text: string | null) => {
     if (!sessionId) {
-      alert('Session wird geladen, bitte versuche es in einem Moment erneut.')
+      alert(t.feedback.sessionLoading)
       return
     }
 
@@ -62,14 +64,14 @@ export default function RestaurantFeedback({
 
       if (!response.ok) {
         console.error('API error:', data)
-        alert(`Fehler: ${data.error || 'Unbekannter Fehler'}`)
+        alert(`${t.common.error}: ${data.error || t.feedback.errorUnknown}`)
         return
       }
 
       setIsSubmitted(true)
     } catch (error) {
-      console.error('Fehler beim Speichern des Feedbacks:', error)
-      alert('Fehler beim Speichern des Feedbacks. Bitte versuche es erneut.')
+      console.error('Error saving feedback:', error)
+      alert(t.feedback.errorSaving)
     } finally {
       setIsSubmitting(false)
     }
@@ -77,7 +79,7 @@ export default function RestaurantFeedback({
 
   const handleSubmitFeedback = async () => {
     if (!selectedRating || (selectedRating < 3 && !feedbackText.trim())) {
-      alert('Bitte gib dein Feedback ein')
+      alert(t.feedback.enterFeedback)
       return
     }
 
@@ -87,43 +89,40 @@ export default function RestaurantFeedback({
   return (
     <div className="border border-gray-700 rounded-lg p-6 bg-gray-800/50">
       <h3 className="text-xl font-semibold mb-4 text-center">
-        Wie war deine Erfahrung im Restaurant?
+        {t.feedback.title}
       </h3>
 
       {/* Smiley Selection */}
       <div className="flex justify-center gap-6 mb-6">
-        {/* Schlecht */}
         <button
           onClick={() => handleRatingSelect(1)}
           className={`text-6xl transition-all hover:scale-110 ${
             selectedRating === 1 ? 'scale-125' : 'opacity-50 hover:opacity-100'
           }`}
           disabled={isSubmitting}
-          title="Schlecht"
+          title={t.feedback.bad}
         >
           🤮
         </button>
 
-        {/* Mittel */}
         <button
           onClick={() => handleRatingSelect(2)}
           className={`text-6xl transition-all hover:scale-110 ${
             selectedRating === 2 ? 'scale-125' : 'opacity-50 hover:opacity-100'
           }`}
           disabled={isSubmitting}
-          title="Mittel"
+          title={t.feedback.medium}
         >
           😐
         </button>
 
-        {/* Top */}
         <button
           onClick={() => handleRatingSelect(3)}
           className={`text-6xl transition-all hover:scale-110 ${
             selectedRating === 3 ? 'scale-125' : 'opacity-50 hover:opacity-100'
           }`}
           disabled={isSubmitting}
-          title="Top"
+          title={t.feedback.top}
         >
           🤩
         </button>
@@ -133,11 +132,11 @@ export default function RestaurantFeedback({
       {selectedRating === 3 && reviewUrl && (
         <div className="text-center space-y-3">
           <p className="text-green-400 font-medium">
-            Danke für deine positive Bewertung!
+            {t.feedback.thanksPositive}
           </p>
           <div className="space-y-2">
             <p className="text-gray-300 text-sm">
-              Hilf {restaurantName || 'dem Restaurant'} und hinterlasse eine Bewertung
+              {interpolate(t.feedback.helpReview, { restaurant: restaurantName || 'Restaurant' })}
             </p>
             <a
               href={reviewUrl}
@@ -145,12 +144,12 @@ export default function RestaurantFeedback({
               rel="noopener noreferrer"
               className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
             >
-              Google Maps Bewertung
+              {t.feedback.googleReview}
             </a>
           </div>
           {isSubmitted && (
             <p className="text-sm text-gray-400">
-              Vielen Dank für dein Feedback!
+              {t.feedback.thanksFeedback}
             </p>
           )}
         </div>
@@ -160,11 +159,11 @@ export default function RestaurantFeedback({
       {selectedRating === 3 && !reviewUrl && (
         <div className="text-center">
           <p className="text-green-400 font-medium">
-            Danke für deine positive Bewertung!
+            {t.feedback.thanksPositive}
           </p>
           {isSubmitted && (
             <p className="text-sm text-gray-400 mt-2">
-              Vielen Dank für dein Feedback!
+              {t.feedback.thanksFeedback}
             </p>
           )}
         </div>
@@ -174,12 +173,12 @@ export default function RestaurantFeedback({
       {selectedRating && selectedRating < 3 && (
         <div className="space-y-4">
           <p className="text-yellow-400 text-center font-medium">
-            Danke für dein Feedback. Was kann das Restaurant verbessern?
+            {t.feedback.whatCanImprove}
           </p>
           <textarea
             value={feedbackText}
             onChange={(e) => setFeedbackText(e.target.value)}
-            placeholder="Dein persönliches Feedback an das Restaurant..."
+            placeholder={t.feedback.feedbackPlaceholder}
             className="w-full bg-gray-900 border border-gray-700 rounded-lg p-4 text-white min-h-[120px] resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
             disabled={isSubmitting || isSubmitted}
           />
@@ -189,11 +188,11 @@ export default function RestaurantFeedback({
               disabled={isSubmitting || !feedbackText.trim()}
               className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold py-3 px-6 rounded-lg transition-colors"
             >
-              {isSubmitting ? 'Wird gesendet...' : 'Feedback senden'}
+              {isSubmitting ? t.feedback.sending : t.feedback.sendFeedback}
             </button>
           ) : (
             <p className="text-green-400 text-center font-medium">
-              ✓ Vielen Dank für dein Feedback! Wir werden es an das Restaurant weiterleiten.
+              {t.feedback.feedbackSent}
             </p>
           )}
         </div>

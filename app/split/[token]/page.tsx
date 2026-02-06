@@ -2,6 +2,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { notFound } from 'next/navigation'
 import Image from 'next/image'
 import SplitFormContainer from '@/components/SplitFormContainer'
+import SplitPageHeader from '@/components/SplitPageHeader'
 import CollapsibleReceipt from '@/components/CollapsibleReceipt'
 import RestaurantFeedback from '@/components/RestaurantFeedback'
 
@@ -65,13 +66,7 @@ export default async function SplitBillPage({
               className="app-logo md:w-[60px] md:h-[60px]"
             />
           </div>
-          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-gray-50 mb-1 md:mb-2">
-            Rechnung teilen
-          </h1>
-          <p className="text-sm sm:text-base text-gray-600 dark:text-gray-300">
-            Von {bill.payerName}
-            {bill.restaurantName && ` • ${bill.restaurantName}`}
-          </p>
+          <SplitPageHeader payerName={bill.payerName} restaurantName={bill.restaurantName} />
         </div>
 
         {/* Receipt Image - Collapsible */}

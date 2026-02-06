@@ -4,9 +4,11 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { resizeImage } from '@/lib/imageProcessing'
+import { useTranslation, interpolate } from '@/lib/i18n'
 
 export default function CreateBillPage() {
   const router = useRouter()
+  const { t } = useTranslation()
   const [analyzing, setAnalyzing] = useState(false)
   const [analysisComplete, setAnalysisComplete] = useState(false)
   const [billId, setBillId] = useState<string | null>(null)
@@ -32,14 +34,14 @@ export default function CreateBillPage() {
     // Validate file
     const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/heic', 'image/webp']
     if (!allowedTypes.includes(selectedFile.type)) {
-      setError('Nur JPG, PNG, WebP und HEIC Dateien sind erlaubt')
+      setError(t.create.fileTypeError)
       return
     }
 
     const maxSizeMB = 10
     const maxBytes = maxSizeMB * 1024 * 1024
     if (selectedFile.size > maxBytes) {
-      setError(`Datei zu groß. Maximum: ${maxSizeMB}MB`)
+      setError(interpolate(t.create.fileTooLarge, { maxSize: String(maxSizeMB) }))
       return
     }
 
@@ -57,7 +59,7 @@ export default function CreateBillPage() {
   // Step 1: Start analysis (create bill + upload image)
   async function handleAnalyze() {
     if (!file) {
-      setError('Bitte wähle eine Rechnung aus')
+      setError(t.create.selectReceipt)
       return
     }
 
@@ -95,7 +97,7 @@ export default function CreateBillPage() {
       // CRITICAL: Abort if still too large
       if (compressedFile.size > 4.5 * 1024 * 1024) {
         throw new Error(
-          `Bild ist auch nach Komprimierung zu groß (${(compressedFile.size / 1024 / 1024).toFixed(2)}MB). Bitte verwende ein kleineres Bild.`
+          interpolate(t.create.imageTooLargeAfterCompress, { size: (compressedFile.size / 1024 / 1024).toFixed(2) })
         )
       }
 
@@ -114,7 +116,7 @@ export default function CreateBillPage() {
       const createData = await createResponse.json()
 
       if (!createResponse.ok) {
-        throw new Error(createData.error || 'Fehler beim Erstellen der Rechnung')
+        throw new Error(createData.error || t.create.errorCreating)
       }
 
       const newBillId = createData.billId
@@ -136,7 +138,7 @@ export default function CreateBillPage() {
       const uploadData = await uploadResponse.json()
 
       if (!uploadResponse.ok) {
-        throw new Error(uploadData.error || 'Fehler beim Hochladen')
+        throw new Error(uploadData.error || t.create.errorUploading)
       }
 
       console.log('✅ Analysis complete!')
@@ -144,7 +146,7 @@ export default function CreateBillPage() {
       setAnalysisComplete(true)
     } catch (err) {
       console.error('=== ANALYZE ERROR ===', err)
-      setError(err instanceof Error ? err.message : 'Ein Fehler ist aufgetreten')
+      setError(err instanceof Error ? err.message : t.common.genericError)
       setBillId(null)
     } finally {
       setAnalyzing(false)
@@ -156,12 +158,12 @@ export default function CreateBillPage() {
     e.preventDefault()
 
     if (!billId || !analysisComplete) {
-      setError('Bitte warte, bis die Analyse abgeschlossen ist')
+      setError(t.create.waitForAnalysis)
       return
     }
 
     if (!payerName.trim()) {
-      setError('Bitte gib deinen Namen ein')
+      setError(t.create.enterName)
       return
     }
 
@@ -169,7 +171,7 @@ export default function CreateBillPage() {
     if (paypalHandle.trim()) {
       const handleRegex = /^[A-Za-z0-9_-]+$/
       if (!handleRegex.test(paypalHandle)) {
-        setError('PayPal Username darf nur Buchstaben, Zahlen, _ und - enthalten')
+        setError(t.create.paypalValidation)
         return
       }
     }
@@ -197,13 +199,13 @@ export default function CreateBillPage() {
 
       if (!updateResponse.ok) {
         const data = await updateResponse.json()
-        throw new Error(data.error || 'Fehler beim Speichern der Daten')
+        throw new Error(data.error || t.create.errorSaving)
       }
 
       // Redirect to status page
       router.push(`/bills/${billId}/status`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ein Fehler ist aufgetreten')
+      setError(err instanceof Error ? err.message : t.common.genericError)
     }
   }
 
@@ -227,17 +229,17 @@ export default function CreateBillPage() {
             />
           </div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-50 mb-2">
-            Neue Rechnung teilen
+            {t.create.title}
           </h1>
           <p className="text-gray-600 dark:text-gray-300">
-            Lade deine Rechnung hoch und gib deine Daten ein
+            {t.create.subtitle}
           </p>
         </div>
 
         {/* Upload Section */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 p-8">
           <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-50 mb-4">
-            1. Rechnung hochladen
+            {t.create.uploadHeading}
           </h2>
 
           {!preview ? (
@@ -266,7 +268,7 @@ export default function CreateBillPage() {
                     d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
                   />
                 </svg>
-                <span>Foto aufnehmen</span>
+                <span>{t.create.takePhoto}</span>
                 <input
                   id="camera-upload"
                   type="file"
@@ -285,7 +287,7 @@ export default function CreateBillPage() {
                 </div>
                 <div className="relative flex justify-center text-sm">
                   <span className="px-2 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400">
-                    oder
+                    {t.create.or}
                   </span>
                 </div>
               </div>
@@ -310,10 +312,10 @@ export default function CreateBillPage() {
                     />
                   </svg>
                   <p className="mb-2 text-sm text-gray-700 dark:text-gray-300">
-                    <span className="font-semibold">Datei auswählen</span>
+                    <span className="font-semibold">{t.create.selectFile}</span>
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    JPG, PNG, WebP oder HEIC (max. 10MB)
+                    {t.create.fileTypes}
                   </p>
                 </div>
                 <input
@@ -345,7 +347,7 @@ export default function CreateBillPage() {
                     }}
                     className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700 text-white px-3 py-1 rounded-lg text-sm"
                   >
-                    Andere Datei
+                    {t.create.otherFile}
                   </button>
                 )}
               </div>
@@ -357,14 +359,14 @@ export default function CreateBillPage() {
                 disabled={analyzing || analysisComplete}
                 className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 dark:bg-blue-500 dark:hover:bg-blue-600 dark:disabled:bg-gray-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
               >
-                {analyzing ? 'Analyse läuft...' : analysisComplete ? 'Analyse abgeschlossen' : 'Rechnung analysieren'}
+                {analyzing ? t.create.analyzing : analysisComplete ? t.create.analysisComplete : t.create.analyzeButton}
               </button>
             </div>
           )}
 
           <div className="mt-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
             <p className="text-xs text-yellow-800 dark:text-yellow-300">
-              <strong>Tipp:</strong> Fotografiere die gesamte Rechnung mit guter Beleuchtung
+              <strong>Tipp:</strong> {t.create.photoTip}
             </p>
           </div>
         </div>
@@ -376,10 +378,10 @@ export default function CreateBillPage() {
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 p-8">
               <div className="mb-6">
                 <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-50 mb-2">
-                  2. Deine Daten
+                  {t.create.yourDataHeading}
                 </h2>
                 <p className="text-sm text-blue-600 dark:text-blue-400">
-                  Während wir deine Rechnung analysieren, gib schon mal deinen Namen ein, damit die anderen Gäste wissen, wen sie bezahlen.
+                  {t.create.whileAnalyzing}
                 </p>
               </div>
 
@@ -389,7 +391,7 @@ export default function CreateBillPage() {
                     htmlFor="payerName"
                     className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
                   >
-                    Dein Name
+                    {t.create.yourName}
                   </label>
                   <input
                     type="text"
@@ -397,7 +399,7 @@ export default function CreateBillPage() {
                     name="payerName"
                     value={payerName}
                     onChange={(e) => setPayerName(e.target.value)}
-                    placeholder="Max Mustermann"
+                    placeholder={t.create.namePlaceholder}
                     required
                     className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-400"
                   />
@@ -408,10 +410,10 @@ export default function CreateBillPage() {
                     htmlFor="paypalHandle"
                     className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
                   >
-                    PayPal Username <span className="text-gray-500 dark:text-gray-400 font-normal">(optional)</span>
+                    {t.create.paypalLabel} <span className="text-gray-500 dark:text-gray-400 font-normal">{t.create.paypalOptional}</span>
                   </label>
                   <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
-                    Wenn du deinen PayPal-Namen eingibst, können dich andere Gäste direkt per Link bezahlen. Das ist optional. <strong>Hinweis:</strong> Der Link kann später nicht mehr geändert werden.
+                    {t.create.paypalHint}
                   </p>
                   <div className="flex items-stretch">
                     <span className="px-2 sm:px-3 py-3 bg-gray-100 dark:bg-gray-600 border border-r-0 border-gray-300 dark:border-gray-500 rounded-l-lg text-gray-600 dark:text-gray-200 text-xs sm:text-sm flex items-center whitespace-nowrap">
@@ -425,7 +427,7 @@ export default function CreateBillPage() {
                       onChange={(e) => setPaypalHandle(e.target.value)}
                       placeholder="username"
                       pattern="[A-Za-z0-9_-]+"
-                      title="Nur Buchstaben, Zahlen, _ und - erlaubt"
+                      title={t.create.titleAttr}
                       className="flex-1 min-w-0 px-3 sm:px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-r-lg focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-400 text-sm sm:text-base"
                     />
                   </div>
@@ -435,7 +437,7 @@ export default function CreateBillPage() {
                         <div className="flex items-center justify-between bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
                           <div className="min-w-0 flex-1">
                             <p className="text-xs text-green-700 dark:text-green-400 font-medium mb-1">
-                              Zahlungen gehen an:
+                              {t.create.paypalPaymentsGoTo}
                             </p>
                             <p className="text-sm font-semibold text-green-800 dark:text-green-300 break-all">
                               paypal.me/{paypalHandle.trim()}
@@ -446,16 +448,16 @@ export default function CreateBillPage() {
                             onClick={handleTestPayPalLink}
                             className="ml-2 flex-shrink-0 px-3 py-1.5 bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 text-white text-xs font-medium rounded-lg transition-colors"
                           >
-                            Testen
+                            {t.create.paypalTest}
                           </button>
                         </div>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
-                          Klicke auf "Testen", um zu überprüfen, ob der PayPal-Account existiert
+                          {t.create.paypalTestHint}
                         </p>
                       </div>
                     ) : (
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Wenn du PayPal-Zahlungen empfangen möchtest, gib deinen PayPal-Username ein. Ansonsten ist nur Barzahlung verfügbar.
+                        {t.create.paypalCashOnly}
                       </p>
                     )}
                   </div>
@@ -478,10 +480,10 @@ export default function CreateBillPage() {
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 dark:border-blue-400"></div>
                   <div>
                     <p className="font-semibold text-blue-900 dark:text-blue-300">
-                      KI analysiert deine Rechnung...
+                      {t.create.aiAnalyzing}
                     </p>
                     <p className="text-sm text-blue-700 dark:text-blue-400">
-                      Bitte warten, das dauert nur einen Moment
+                      {t.create.pleaseWait}
                     </p>
                   </div>
                 </div>
@@ -500,12 +502,12 @@ export default function CreateBillPage() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  Analyse läuft...
+                  {t.create.analyzing}
                 </span>
               ) : !payerName.trim() ? (
-                'Bitte Namen eingeben'
+                t.create.enterName
               ) : (
-                'Weiter'
+                t.create.submit
               )}
             </button>
           </form>
@@ -516,26 +518,17 @@ export default function CreateBillPage() {
             href="/"
             className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
           >
-            ← Zurück zur Startseite
+            {t.create.backToHome}
           </a>
         </div>
 
         {!preview && (
           <div className="mt-8 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
             <h3 className="font-semibold text-blue-900 dark:text-blue-300 mb-2">
-              💡 Tipp: PayPal.me einrichten
+              {t.create.paypalSetupTitle}
             </h3>
             <p className="text-sm text-blue-800 dark:text-blue-300">
-              Gehe zu{' '}
-              <a
-                href="https://www.paypal.me"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline"
-              >
-                paypal.me
-              </a>{' '}
-              und erstelle deinen persönlichen PayPal.me Link, falls noch nicht vorhanden.
+              {t.create.paypalSetupText}
             </p>
           </div>
         )}

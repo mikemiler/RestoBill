@@ -4,10 +4,12 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { getAllBills, deleteBill, type SavedBill } from '@/lib/billStorage'
 import { formatEUR } from '@/lib/utils'
+import { useTranslation } from '@/lib/i18n'
 
 export default function BillsList() {
   const [bills, setBills] = useState<SavedBill[]>([])
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const { t, language } = useTranslation()
 
   useEffect(() => {
     setBills(getAllBills())
@@ -21,7 +23,10 @@ export default function BillsList() {
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
-    return new Intl.DateTimeFormat('de-DE', {
+    const localeMap: Record<string, string> = {
+      de: 'de-DE', en: 'en-US', es: 'es-ES', fr: 'fr-FR', it: 'it-IT', pt: 'pt-PT'
+    }
+    return new Intl.DateTimeFormat(localeMap[language] || 'de-DE', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -36,7 +41,7 @@ export default function BillsList() {
 
   return (
     <div className="bills-history">
-      <h2>Gespeicherte Rechnungen</h2>
+      <h2>{t.billsList.savedBills}</h2>
       <div className="bills-list">
         {bills.map((bill) => (
           <div key={bill.id} className="bill-card">
@@ -50,16 +55,16 @@ export default function BillsList() {
                 </div>
                 <div className="bill-amounts">
                   <div className="amount-row">
-                    <span className="amount-label">Gesamt:</span>
+                    <span className="amount-label">{t.billsList.total}</span>
                     <span className="amount-value">{formatEUR(bill.totalAmount)}</span>
                   </div>
                   <div className="amount-row">
-                    <span className="amount-label">Bezahlt:</span>
+                    <span className="amount-label">{t.billsList.paid}</span>
                     <span className="amount-value paid">{formatEUR(bill.paidAmount)}</span>
                   </div>
                   {bill.paidAmount < bill.totalAmount && (
                     <div className="amount-row outstanding">
-                      <span className="amount-label">Ausstehend:</span>
+                      <span className="amount-label">{t.billsList.outstanding}</span>
                       <span className="amount-value">{formatEUR(bill.totalAmount - bill.paidAmount)}</span>
                     </div>
                   )}
@@ -72,25 +77,25 @@ export default function BillsList() {
                 setDeleteConfirmId(bill.id)
               }}
               className="delete-btn"
-              aria-label="Rechnung löschen"
+              aria-label={t.billsList.deleteBillLabel}
             >
               ×
             </button>
             {deleteConfirmId === bill.id && (
               <div className="delete-confirm">
-                <p>Rechnung wirklich löschen?</p>
+                <p>{t.billsList.deleteConfirm}</p>
                 <div className="delete-confirm-buttons">
                   <button
                     onClick={() => handleDelete(bill.id)}
                     className="confirm-yes"
                   >
-                    Ja
+                    {t.common.yes}
                   </button>
                   <button
                     onClick={() => setDeleteConfirmId(null)}
                     className="confirm-no"
                   >
-                    Nein
+                    {t.common.no}
                   </button>
                 </div>
               </div>

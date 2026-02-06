@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRealtimeSubscription, useDebounce } from '@/lib/hooks'
+import { useTranslation } from '@/lib/i18n'
 import { debugLog, debugError } from '@/lib/debug'
 import GuestSelectionsList from './GuestSelectionsList'
 import SplitFormContainer from './SplitFormContainer'
@@ -49,6 +50,7 @@ export default function StatusPageClient({
   itemRemainingQuantities: initialRemainingQuantities,
   totalBillAmount,
 }: StatusPageClientProps) {
+  const { t } = useTranslation()
   const [selections, setSelections] = useState<DatabaseSelection[]>([])
   const [items, setItems] = useState<BillItem[]>(initialItems)
   const [itemRemainingQuantities, setItemRemainingQuantities] = useState<Record<string, number>>(initialRemainingQuantities)
@@ -282,9 +284,9 @@ export default function StatusPageClient({
       {/* Guest DatabaseSelections List */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 p-4 sm:p-5 md:p-6 mb-4 md:mb-6">
         <h2 className="text-lg sm:text-xl font-semibold mb-4 text-gray-800 dark:text-gray-100 flex items-center gap-2">
-          👥 Gäste & Zahlungen
+          {t.statusPage.guestsAndPayments}
           {isConnected && (
-            <span className="text-xs text-green-600 dark:text-green-400 font-normal">● Live</span>
+            <span className="text-xs text-green-600 dark:text-green-400 font-normal">{t.statusPage.liveStatus}</span>
           )}
         </h2>
         <GuestSelectionsList

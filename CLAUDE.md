@@ -15,7 +15,7 @@ This file should always represent the current state of the project.
 
 ## Project Overview
 
-**RestoBill** is a German-language web application for splitting restaurant bills. Users upload a receipt photo, Claude Vision API analyzes items automatically, and friends select their items via a shareable link to pay through PayPal or cash. After payment, guests are encouraged to leave Google reviews for the restaurant.
+**RestoBill** is a multilingual web application for splitting restaurant bills, supporting 6 languages (DE, EN, ES, FR, IT, PT). Users upload a receipt photo, Claude Vision API analyzes items automatically, and friends select their items via a shareable link to pay through PayPal or cash. After payment, guests are encouraged to leave Google reviews for the restaurant.
 
 **Tech Stack:** Next.js 14 (App Router), TypeScript, Prisma, Supabase (PostgreSQL + Storage), Claude Vision API, Google Places API (New), Tailwind CSS
 
@@ -231,7 +231,8 @@ All routes follow RESTful patterns:
 - Functions: `uploadBillImage()`, `getBillImageUrl()`
 
 **lib/claude.ts**
-- `analyzeBillImage()` - Sends image to Claude Vision API with German prompt
+- `analyzeBillImage()` - Sends image to Claude Vision API with English prompt
+- Supports receipts in any language (item names extracted in original language)
 - Extracts: items array, restaurantName, totalAmount, restaurantAddress
 - Validates URLs (SSRF prevention) and clamps values
 
@@ -260,6 +261,16 @@ All routes follow RESTful patterns:
 - Functions: `getOrCreateSessionId()`, `getSessionId()`, `clearSessionId()`
 - Generates UUID v4 per browser (persists across page reloads)
 - Used for ActiveSelection tracking (prevents duplicate entries from same browser)
+
+**lib/i18n/** (Internationalization)
+- Custom lightweight i18n system (no external library)
+- `types.ts` - `Language` type, `LANGUAGES` config array, `Translations` interface (type-safe)
+- `translations/de.ts` through `translations/pt.ts` - Translation files for 6 languages (DE, EN, ES, FR, IT, PT)
+- `LanguageProvider.tsx` - React Context provider with dynamic imports (only active language loaded)
+- `index.ts` - Barrel export with `useTranslation()` hook and `interpolate()` helper
+- Language detection priority: URL `?lang=xx` > localStorage > browser language > `de`
+- German translations loaded statically (default), others via dynamic `import()` for code splitting
+- All translation files implement `Translations` interface (TypeScript enforces completeness)
 
 **lib/broadcast.ts**
 - Utilities for sending Supabase Realtime broadcasts
@@ -306,8 +317,11 @@ All routes follow RESTful patterns:
 - `StatusPageClient` - Status dashboard container (removed PaymentOverview, uses GuestSelectionsList)
 - `EditableGuestName` - Editable guest name component (localStorage only, for guests)
 - `EditablePayerName` - Editable payer name component (DB + localStorage, for owner)
+- `SplitPageHeader` - i18n wrapper for split page heading/subtitle (used by server page)
+- `StatusPageHeader` - i18n wrapper for status page heading (used by server page)
+- `ShareSectionText` - i18n wrappers for share section labels (ShareSectionHeading, ShareSectionDescription, QRCodeDescription)
 
-**Pattern:** Minimize client components. Use server components for static/data-heavy pages.
+**Pattern:** Minimize client components. Use server components for static/data-heavy pages. For i18n in server components, extract translatable text into small client wrapper components.
 
 ## Important Patterns & Conventions
 
@@ -326,11 +340,17 @@ All routes follow RESTful patterns:
 - Supports: 0 (not selected), 0.5 (half), 1 (full), 2+ (multiple), custom fractions
 - Calculate total: `item.pricePerUnit * multiplier` summed across items
 
-### 4. Language & Localization
-- All UI text in German
-- Error messages in German
-- Currency format: EUR with German locale (`de-DE`)
-- PayPal URLs include `locale.x=de_DE`
+### 4. Internationalization (i18n)
+- **6 languages supported:** German (DE), English (EN), Spanish (ES), French (FR), Italian (IT), Portuguese (PT)
+- Custom lightweight i18n: React Context + TypeScript objects, no external library
+- All UI strings use `useTranslation()` hook: `const { t, language, setLanguage } = useTranslation()`
+- Dynamic strings use `interpolate()`: `interpolate(t.splitForm.paymentInfo, { payerName })`
+- Language selector in Footer component (inline links on desktop, dropdown on mobile)
+- Language detection: URL `?lang=xx` > localStorage > browser language > `de` fallback
+- Server components delegate translatable text to small client wrapper components
+- Currency format: always EUR with `de-DE` locale (German receipts)
+- **Not translated (intentional):** page metadata (SEO), API error messages (server-side), currency formatting
+- **Adding a new language:** Create `lib/i18n/translations/xx.ts` implementing `Translations` interface, add to `LANGUAGES` array in `types.ts`
 
 ### 5. Edit Protection
 - **REMOVED** - Owner can always edit/delete items, even if selections exist
@@ -1061,7 +1081,8 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 ### Modifying Claude Vision Prompt
 - Edit `lib/claude.ts` → `analyzeBillImage()`
-- Prompt is in German (keep consistent)
+- Prompt is in English, supports receipts in any language
+- Item names are extracted in the original receipt language
 - Always validate extracted values (clamp, sanitize)
 - Return structured `BillAnalysisResult`
 
@@ -1352,15 +1373,29 @@ components/
 ├── BillAutoSave.tsx                   # Auto-save functionality
 ├── CopyButton.tsx                     # Copy to clipboard button
 ├── RefreshButton.tsx                  # Refresh data button
-└── ThemeProvider.tsx                  # Enforces dark mode globally
+├── ThemeProvider.tsx                  # Enforces dark mode globally
+├── SplitPageHeader.tsx               # i18n wrapper for split page heading
+├── StatusPageHeader.tsx              # i18n wrapper for status page heading
+└── ShareSectionText.tsx              # i18n wrappers for share section labels
 
 lib/
+├── i18n/
+│   ├── types.ts                       # Language type, LANGUAGES config, Translations interface
+│   ├── translations/
+│   │   ├── de.ts                     # German (default, statically imported)
+│   │   ├── en.ts                     # English
+│   │   ├── es.ts                     # Spanish
+│   │   ├── fr.ts                     # French
+│   │   ├── it.ts                     # Italian
+│   │   └── pt.ts                     # Portuguese
+│   ├── LanguageProvider.tsx          # React Context with dynamic imports
+│   └── index.ts                       # Barrel export + useTranslation + interpolate
 ├── hooks/
 │   ├── useRealtimeSubscription.ts    # Centralized Supabase Realtime hook
 │   └── index.ts                       # Hooks barrel export
 ├── prisma.ts                          # Database client (singleton)
 ├── supabase.ts                        # Storage client (admin + anon)
-├── claude.ts                          # Vision API integration
+├── claude.ts                          # Vision API integration (English prompt)
 ├── utils.ts                           # Helpers (formatEUR, sanitize, etc.)
 ├── billStorage.ts                     # Bill history localStorage utils
 └── sessionStorage.ts                  # Session ID management (browser tracking)

@@ -7,6 +7,7 @@ import { formatEUR, generatePayPalUrlWithoutAmount, formatAmountForPayPal } from
 import { getOrCreateSessionId } from '@/lib/sessionStorage'
 import { useRealtimeSubscription, useDebounce } from '@/lib/hooks'
 import { debugLog, debugError } from '@/lib/debug'
+import { useTranslation, interpolate } from '@/lib/i18n'
 import EditableGuestName from './EditableGuestName'
 import EditablePayerName from './EditablePayerName'
 import BillItemCard from './BillItemCard'
@@ -77,6 +78,7 @@ export default function SplitForm({
   // DIAGNOSTIC: Verify component is rendering
   console.log('🚀 [SplitForm] Component rendering/re-rendering')
 
+  const { t } = useTranslation()
   const router = useRouter()
   const [friendName, setFriendName] = useState('')
   const [sessionId, setSessionId] = useState('')
@@ -630,20 +632,20 @@ export default function SplitForm({
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Fehler beim Speichern')
+        throw new Error(data.error || t.splitForm.errorSave)
       }
 
       setEditingItemId(null)
       setEditForm(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ein Fehler ist aufgetreten')
+      setError(err instanceof Error ? err.message : t.common.genericError)
     } finally {
       setLoading(false)
     }
   }
 
   async function deleteItem(itemId: string) {
-    if (!confirm('Möchtest du diese Position wirklich löschen?')) {
+    if (!confirm(t.splitForm.confirmDelete)) {
       return
     }
 
@@ -659,10 +661,10 @@ export default function SplitForm({
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Fehler beim Löschen')
+        throw new Error(data.error || t.splitForm.errorDelete)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ein Fehler ist aufgetreten')
+      setError(err instanceof Error ? err.message : t.common.genericError)
     } finally {
       setLoading(false)
     }
@@ -687,7 +689,7 @@ export default function SplitForm({
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Fehler beim Erstellen')
+        throw new Error(data.error || t.splitForm.errorCreate)
       }
 
       setAddingNew(false)
@@ -702,7 +704,7 @@ export default function SplitForm({
         })
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ein Fehler ist aufgetreten')
+      setError(err instanceof Error ? err.message : t.common.genericError)
     } finally {
       setLoading(false)
     }
@@ -747,7 +749,7 @@ export default function SplitForm({
 
     // Update live selection WITH tipAmount
     const currentSessionId = sessionId || getOrCreateSessionId()
-    const currentFriendName = friendName || localStorage.getItem('friendName') || 'Gast'
+    const currentFriendName = friendName || localStorage.getItem('friendName') || t.splitForm.guestDefault
     if (currentSessionId) {
       try {
         await fetch('/api/live-selections/update', {
@@ -824,7 +826,7 @@ export default function SplitForm({
   // Update live selection tip (debounced to prevent API spam)
   const updateLiveSelectionTip = async (tipAmount: number) => {
     const currentSessionId = sessionId || getOrCreateSessionId()
-    const currentFriendName = friendName || localStorage.getItem('friendName') || 'Gast'
+    const currentFriendName = friendName || localStorage.getItem('friendName') || t.splitForm.guestDefault
 
     if (!currentSessionId) return
 
@@ -858,10 +860,10 @@ export default function SplitForm({
           <div className="text-center space-y-3">
             <div className="text-5xl">🍽️</div>
             <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">
-              Rechnung teilen
+              {t.splitForm.welcomeTitle}
             </h2>
             <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400">
-              <span className="font-semibold text-green-600 dark:text-green-400">{payerName}</span> lädt dich ein, die Rechnung zu teilen
+              {interpolate(t.splitForm.welcomeSubtitle, { payerName })}
             </p>
           </div>
 
@@ -871,7 +873,7 @@ export default function SplitForm({
               htmlFor="friendName"
               className="block text-sm font-medium text-gray-700 dark:text-gray-300"
             >
-              Bitte gib deinen Namen ein:
+              {t.splitForm.welcomeInputLabel}
             </label>
             <input
               type="text"
@@ -883,7 +885,7 @@ export default function SplitForm({
                   setNameConfirmed(true)
                 }
               }}
-              placeholder="Max Mustermann"
+              placeholder={t.splitForm.welcomePlaceholder}
               autoFocus
               required
               className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:focus:ring-green-400 focus:border-transparent text-base dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-400"
@@ -902,7 +904,7 @@ export default function SplitForm({
             type="button"
             onClick={() => {
               if (!friendName.trim()) {
-                setError('Bitte gib deinen Namen ein')
+                setError(t.splitForm.welcomeErrorEmpty)
                 return
               }
               setError('')
@@ -911,13 +913,13 @@ export default function SplitForm({
             disabled={!friendName.trim()}
             className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 dark:bg-green-500 dark:hover:bg-green-600 dark:disabled:bg-gray-600 text-white font-semibold py-3.5 px-6 rounded-lg transition-colors text-base flex items-center justify-center gap-2"
           >
-            Weiter →
+            {t.splitForm.welcomeContinue}
           </button>
 
           {/* Info Text */}
           <p className="text-xs text-center text-gray-500 dark:text-gray-400">
-            Dein Name wird gespeichert, damit du ihn beim nächsten Mal nicht erneut eingeben musst.
-          </p> 
+            {t.splitForm.welcomeInfo}
+          </p>
         </div>
       </div>
     )
@@ -989,7 +991,7 @@ export default function SplitForm({
 
       <div>
         <label className="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 sm:mb-3">
-          Was hattest du?
+          {t.splitForm.itemsLabel}
         </label>
         <div className="space-y-4">
           {items.map((item) => {
@@ -1014,10 +1016,10 @@ export default function SplitForm({
               return (
                 <div key={item.id} className="border-2 border-purple-300 dark:border-purple-600 rounded-lg p-3 bg-white dark:bg-gray-800">
                   <div className="space-y-3">
-                    <h3 className="font-medium text-gray-900 dark:text-gray-100 text-sm">Position bearbeiten</h3>
+                    <h3 className="font-medium text-gray-900 dark:text-gray-100 text-sm">{t.splitForm.editFormTitle}</h3>
                     <div>
                       <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Bezeichnung
+                        {t.splitForm.nameLabel}
                       </label>
                       <input
                         type="text"
@@ -1029,7 +1031,7 @@ export default function SplitForm({
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Anzahl
+                          {t.splitForm.quantityLabel}
                         </label>
                         <input
                           type="number"
@@ -1042,7 +1044,7 @@ export default function SplitForm({
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Preis/Einheit
+                          {t.splitForm.pricePerUnitLabel}
                         </label>
                         <input
                           type="number"
@@ -1055,7 +1057,7 @@ export default function SplitForm({
                       </div>
                     </div>
                     <div className="text-xs text-gray-600 dark:text-gray-300">
-                      Gesamtpreis: {formatEUR(editForm.quantity * editForm.pricePerUnit)}
+                      {interpolate(t.splitForm.totalPriceLabel, { amount: formatEUR(editForm.quantity * editForm.pricePerUnit) })}
                     </div>
                     <div className="flex gap-2">
                       <button
@@ -1063,14 +1065,14 @@ export default function SplitForm({
                         disabled={loading}
                         className="flex-1 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 dark:bg-purple-500 dark:hover:bg-purple-600 dark:disabled:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
                       >
-                        {loading ? 'Speichern...' : 'Speichern'}
+                        {loading ? t.common.saving : t.common.save}
                       </button>
                       <button
                         onClick={cancelEditItem}
                         disabled={loading}
                         className="flex-1 px-3 py-1.5 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 dark:bg-gray-600 dark:hover:bg-gray-500 dark:disabled:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg text-sm font-medium transition-colors"
                       >
-                        Abbrechen
+                        {t.common.cancel}
                       </button>
                     </div>
                   </div>
@@ -1100,24 +1102,24 @@ export default function SplitForm({
           {isOwner && (
             addingNew ? (
               <div className="border-2 border-dashed border-purple-300 dark:border-purple-600 rounded-lg p-3 bg-purple-50 dark:bg-purple-900/20">
-                <h3 className="font-medium text-gray-900 dark:text-gray-100 text-sm mb-3">Neue Position hinzufügen</h3>
+                <h3 className="font-medium text-gray-900 dark:text-gray-100 text-sm mb-3">{t.splitForm.addNewButton}</h3>
                 <div className="space-y-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Bezeichnung
+                      {t.splitForm.nameLabel}
                     </label>
                     <input
                       type="text"
                       value={newItemForm.name}
                       onChange={(e) => setNewItemForm({ ...newItemForm, name: e.target.value })}
-                      placeholder="z.B. Pizza Margherita"
+                      placeholder={t.splitForm.namePlaceholder}
                       className="w-full px-2.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 focus:border-transparent dark:bg-gray-700 dark:text-gray-100"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Anzahl
+                        {t.splitForm.quantityLabel}
                       </label>
                       <input
                         type="number"
@@ -1130,7 +1132,7 @@ export default function SplitForm({
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Preis pro Einheit
+                        {t.splitForm.pricePerUnitLabelAlt}
                       </label>
                       <input
                         type="number"
@@ -1143,7 +1145,7 @@ export default function SplitForm({
                     </div>
                   </div>
                   <div className="text-xs text-gray-600 dark:text-gray-300">
-                    Gesamtpreis: {formatEUR(newItemForm.quantity * newItemForm.pricePerUnit)}
+                    {interpolate(t.splitForm.totalPriceLabel, { amount: formatEUR(newItemForm.quantity * newItemForm.pricePerUnit) })}
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -1151,7 +1153,7 @@ export default function SplitForm({
                       disabled={loading || !newItemForm.name.trim() || newItemForm.quantity < 1 || newItemForm.pricePerUnit < 0.01}
                       className="flex-1 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 dark:bg-purple-500 dark:hover:bg-purple-600 dark:disabled:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
                     >
-                      {loading ? 'Hinzufügen...' : 'Hinzufügen'}
+                      {loading ? t.common.adding : t.common.add}
                     </button>
                     <button
                       onClick={() => {
@@ -1162,7 +1164,7 @@ export default function SplitForm({
                       disabled={loading}
                       className="flex-1 px-3 py-1.5 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 dark:bg-gray-600 dark:hover:bg-gray-500 dark:disabled:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg text-sm font-medium transition-colors"
                     >
-                      Abbrechen
+                      {t.common.cancel}
                     </button>
                   </div>
                 </div>
@@ -1172,7 +1174,7 @@ export default function SplitForm({
                 onClick={() => setAddingNew(true)}
                 className="w-full border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-3 text-gray-600 dark:text-gray-300 hover:border-purple-400 dark:hover:border-purple-500 hover:text-purple-600 dark:hover:text-purple-400 transition-colors text-sm font-medium"
               >
-                + Neue Position hinzufügen
+                {t.splitForm.addNewItemButton}
               </button>
             )
           )}
@@ -1181,7 +1183,7 @@ export default function SplitForm({
       {/* Tip Calculator */}
       <div>
         <label className="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 sm:mb-3">
-          Trinkgeld (optional)
+          {t.splitForm.tipLabel}
         </label>
         <div className="grid grid-cols-4 gap-1.5 sm:gap-2 mb-2">
           {[0, 7, 10, 15].map((percent) => (
@@ -1208,7 +1210,7 @@ export default function SplitForm({
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500'
           }`}
         >
-          Eigener Betrag
+          {t.splitForm.customAmount}
         </button>
         {tipPercent === -1 && (
           <input
@@ -1222,7 +1224,7 @@ export default function SplitForm({
               const newTipAmount = parseFloat(e.target.value) || 0
               debouncedTipUpdate(newTipAmount)
             }}
-            placeholder="0.00"
+            placeholder={t.splitForm.tipPlaceholder}
             className="w-full px-3 sm:px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:focus:ring-green-400 focus:border-transparent text-sm sm:text-base dark:bg-gray-700 dark:text-gray-100"
           />
         )}
@@ -1240,7 +1242,7 @@ export default function SplitForm({
             {Object.keys(selectedItems).length > 0 && (
               <div className="space-y-1.5 pb-2 border-b dark:border-gray-600">
                 <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                  Deine Positionen:
+                  {t.splitForm.yourItemsLabel}
                 </div>
                 {items
                   .filter(item => selectedItems[item.id] > 0)
@@ -1279,17 +1281,17 @@ export default function SplitForm({
             {/* Summary */}
             <div className="space-y-1.5">
               <div className="flex justify-between text-xs sm:text-sm">
-                <span className="text-gray-600 dark:text-gray-400">Zwischensumme:</span>
+                <span className="text-gray-600 dark:text-gray-400">{t.splitForm.subtotalLabel}</span>
                 <span className="font-medium text-gray-900 dark:text-gray-200">{formatEUR(subtotal)}</span>
               </div>
               {tipAmount > 0 && (
                 <div className="flex justify-between text-xs sm:text-sm">
-                  <span className="text-gray-600 dark:text-gray-400">Trinkgeld:</span>
+                  <span className="text-gray-600 dark:text-gray-400">{t.splitForm.tipAmountLabel}</span>
                   <span className="font-medium text-gray-900 dark:text-gray-200">{formatEUR(tipAmount)}</span>
                 </div>
               )}
               <div className="flex justify-between text-base sm:text-lg font-bold pt-1 border-t dark:border-gray-600">
-                <span className="text-gray-900 dark:text-gray-100">Gesamt:</span>
+                <span className="text-gray-900 dark:text-gray-100">{t.splitForm.totalLabel}</span>
                 <span className="text-green-600 dark:text-green-400">{formatEUR(total)}</span>
               </div>
             </div>
@@ -1303,7 +1305,7 @@ export default function SplitForm({
             <span className="text-blue-600 dark:text-blue-400 text-lg">ℹ️</span>
             <div className="flex-1 space-y-3">
               <p className="text-xs sm:text-sm text-blue-800 dark:text-blue-300">
-                <span className="font-semibold">{payerName}</span> bezahlt die Gesamtrechnung. Bezahle deinen Anteil ({formatEUR(total)}) direkt an <span className="font-semibold">{payerName}</span>:
+                {interpolate(t.splitForm.paymentInstruction, { payerName, amount: formatEUR(total) })}
               </p>
 
               {/* PayPal Payment Flow */}
@@ -1312,7 +1314,7 @@ export default function SplitForm({
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-base">💳</span>
                     <h4 className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-gray-100">
-                      Per PayPal bezahlen:
+                      {t.splitForm.paypalHeader}
                     </h4>
                   </div>
 
@@ -1335,12 +1337,12 @@ export default function SplitForm({
                     {amountCopied ? (
                       <>
                         <span>✓</span>
-                        <span>Betrag kopiert ({formatAmountForPayPal(total)} €)</span>
+                        <span>{interpolate(t.splitForm.amountCopied, { amount: formatAmountForPayPal(total) })}</span>
                       </>
                     ) : (
                       <>
                         <span>📋</span>
-                        <span>Betrag kopieren ({formatAmountForPayPal(total)} €)</span>
+                        <span>{interpolate(t.splitForm.copyAmount, { amount: formatAmountForPayPal(total) })}</span>
                       </>
                     )}
                   </button>
@@ -1360,12 +1362,12 @@ export default function SplitForm({
                     } text-white font-semibold py-2.5 px-4 rounded-lg transition-colors text-xs sm:text-sm flex items-center justify-center gap-2`}
                   >
                     <span>💳</span>
-                    <span>PayPal öffnen & Betrag einfügen</span>
+                    <span>{t.splitForm.openPaypal}</span>
                   </button>
 
                   {!amountCopied && (
                     <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                      ⬆️ Kopiere erst den Betrag, dann öffne PayPal
+                      {t.splitForm.copyFirstHint}
                     </p>
                   )}
                 </div>
@@ -1376,11 +1378,11 @@ export default function SplitForm({
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-base">💵</span>
                   <h4 className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-gray-100">
-                    Bar bezahlen
+                    {t.splitForm.cashHeader}
                   </h4>
                 </div>
                 <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 ml-6">
-                  Gib {payerName} das Geld Bar.
+                  {interpolate(t.splitForm.cashInstruction, { payerName })}
                 </p>
               </div>
             </div>
@@ -1395,7 +1397,6 @@ export default function SplitForm({
       )}
 
       {/* Add bottom padding to prevent content from being hidden behind fixed bar */}
-      <div className="h-24 sm:h-32"></div>
 
       {/* Fixed Bottom Bar - TWO SECTIONS */}
       <div className="fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-gray-800 border-t-2 border-gray-200 dark:border-gray-600 shadow-lg pb-safe pb-4">
@@ -1411,7 +1412,7 @@ export default function SplitForm({
               {Object.keys(selectedItems).length > 0 && (
                 <div className="space-y-1.5 pb-2 border-b dark:border-gray-600">
                   <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                    Deine Positionen:
+                    {t.splitForm.yourItemsLabel}
                   </div>
                   {items
                     .filter(item => selectedItems[item.id] > 0)
@@ -1450,17 +1451,17 @@ export default function SplitForm({
               {/* Summary */}
               <div className="space-y-1.5">
                 <div className="flex justify-between text-xs sm:text-sm">
-                  <span className="text-gray-600 dark:text-gray-400">Zwischensumme:</span>
+                  <span className="text-gray-600 dark:text-gray-400">{t.splitForm.subtotalLabel}</span>
                   <span className="font-medium text-gray-900 dark:text-gray-200">{formatEUR(subtotal)}</span>
                 </div>
                 {tipAmount > 0 && (
                   <div className="flex justify-between text-xs sm:text-sm">
-                    <span className="text-gray-600 dark:text-gray-400">Trinkgeld:</span>
+                    <span className="text-gray-600 dark:text-gray-400">{t.splitForm.tipAmountLabel}</span>
                     <span className="font-medium text-gray-900 dark:text-gray-200">{formatEUR(tipAmount)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-base sm:text-lg font-bold pt-1 border-t dark:border-gray-600">
-                  <span className="text-gray-900 dark:text-gray-100">Gesamt:</span>
+                  <span className="text-gray-900 dark:text-gray-100">{t.splitForm.totalLabel}</span>
                   <span className="text-green-600 dark:text-green-400">{formatEUR(total)}</span>
                 </div>
               </div>
@@ -1479,7 +1480,7 @@ export default function SplitForm({
                   ▲
                 </span>
                 <span className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">
-                  Deine Auswahl: {formatEUR(total)}
+                  {interpolate(t.splitForm.selectionTotal, { amount: formatEUR(total) })}
                 </span>
                 <span className={`text-gray-400 transition-transform text-base ${isBottomBarExpanded ? 'rotate-180' : ''}`}>
                   ▲
@@ -1505,12 +1506,12 @@ export default function SplitForm({
             <div className="absolute inset-0 flex items-center justify-center">
               <span className="text-sm sm:text-base font-bold text-white drop-shadow-md">
                 {Math.abs(remainingAmount) < 0.01 && Math.abs(totalAmount - totalPaidAmount) < 0.01
-                  ? '✓ Fertig aufgeteilt!'
+                  ? t.splitForm.progressComplete
                   : Math.abs(remainingAmount) < 0.01
-                  ? '✓ Vollständig aufgeteilt!'
+                  ? t.splitForm.progressFullyAllocated
                   : remainingAmount > 0
-                  ? `Noch offen: ${formatEUR(Math.round(remainingAmount * 100) / 100)} / ${formatEUR(totalAmount)}`
-                  : `❗ Überbucht: ${formatEUR(Math.round(Math.abs(remainingAmount) * 100) / 100)}`
+                  ? interpolate(t.splitForm.progressRemaining, { remaining: formatEUR(Math.round(remainingAmount * 100) / 100), total: formatEUR(totalAmount) })
+                  : interpolate(t.splitForm.progressOverbooked, { amount: formatEUR(Math.round(Math.abs(remainingAmount) * 100) / 100) })
                 }
               </span>
             </div>

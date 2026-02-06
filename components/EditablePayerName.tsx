@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useTranslation, interpolate } from '@/lib/i18n'
 
 interface EditablePayerNameProps {
   billId: string
@@ -18,10 +19,11 @@ export default function EditablePayerName({
   const [editValue, setEditValue] = useState(initialName)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const { t } = useTranslation()
 
   const handleSave = async () => {
     if (!editValue.trim()) {
-      setError('Name darf nicht leer sein')
+      setError(t.editableName.nameEmpty)
       return
     }
 
@@ -42,7 +44,7 @@ export default function EditablePayerName({
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Fehler beim Speichern')
+        throw new Error(data.error || t.editableName.errorSaving)
       }
 
       setPayerName(data.payerName)
@@ -56,7 +58,7 @@ export default function EditablePayerName({
         onNameChange(data.payerName)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ein Fehler ist aufgetreten')
+      setError(err instanceof Error ? err.message : t.common.genericError)
     } finally {
       setLoading(false)
     }
@@ -77,7 +79,7 @@ export default function EditablePayerName({
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
             className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 focus:border-transparent dark:bg-gray-700 dark:text-gray-100 text-sm"
-            placeholder="Dein Name"
+            placeholder={t.editableName.namePlaceholder}
             autoFocus
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
@@ -112,12 +114,12 @@ export default function EditablePayerName({
   return (
     <div className="inline-flex items-center gap-2">
       <span className="text-sm sm:text-base text-gray-600 dark:text-gray-300">
-        Für mich: {payerName}
+        {interpolate(t.editableName.forMe, { name: payerName })}
       </span>
       <button
         onClick={() => setIsEditing(true)}
         className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
-        title="Namen bearbeiten"
+        title={t.editableName.editTitle}
       >
         <svg
           className="w-4 h-4 text-gray-500 dark:text-gray-400"

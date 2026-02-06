@@ -8,6 +8,8 @@ import BillAutoSave from '@/components/BillAutoSave'
 import CopyButton from '@/components/CopyButton'
 import QRCode from '@/components/QRCode'
 import StatusPageClient from '@/components/StatusPageClient'
+import StatusPageHeader from '@/components/StatusPageHeader'
+import { ShareSectionHeading, ShareSectionDescription, QRCodeDescription } from '@/components/ShareSectionText'
 import WhatsAppShareButton from '@/components/WhatsAppShareButton'
 import RestaurantFeedback from '@/components/RestaurantFeedback'
 
@@ -77,24 +79,13 @@ export default async function BillStatusPage({
                 className="app-logo md:w-[60px] md:h-[60px]"
               />
             </div>
-            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-gray-50 mb-1 md:mb-2">
-              Deine Rechnung
-            </h1>
-            {bill.restaurantName && (
-              <p className="text-sm sm:text-base text-gray-600 dark:text-gray-300">
-                {bill.restaurantName}
-              </p>
-            )}
+            <StatusPageHeader restaurantName={bill.restaurantName} />
           </div>
 
           {/* Share Link */}
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/30 p-4 sm:p-5 md:p-6 mb-4 md:mb-6">
-            <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-gray-800 dark:text-gray-100">
-              Link teilen
-            </h2>
-            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-300 mb-3 sm:mb-4">
-              Teile diesen Link mit deinen Freunden, damit sie ihre Positionen auswählen können
-            </p>
+            <ShareSectionHeading />
+            <ShareSectionDescription />
             <div className="flex items-center space-x-2 mb-4">
               <input
                 type="text"
@@ -112,9 +103,7 @@ export default async function BillStatusPage({
               />
             </div>
             <div className="share-qr-section">
-              <p className="text-sm text-gray-600 dark:text-gray-300 mb-3 text-center">
-                Oder lasse deine Freunde den QR-Code scannen
-              </p>
+              <QRCodeDescription />
               <div className="share-qr-wrapper">
                 <QRCode value={shareUrl} size={180} />
               </div>

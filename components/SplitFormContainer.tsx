@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import SplitForm from './SplitForm'
 import CompletionMessage from './CompletionMessage'
 import { useRealtimeSubscription, useDebounce } from '@/lib/hooks'
+import { useTranslation } from '@/lib/i18n'
 import { debugLog, debugError } from '@/lib/debug'
 import confetti from 'canvas-confetti'
 
@@ -51,6 +52,7 @@ export default function SplitFormContainer({
   allSelectionsFromParent,
   isOwner = false,
 }: SplitFormContainerProps) {
+  const { t } = useTranslation()
   const [allSelections, setAllSelections] = useState<DatabaseSelection[]>(allSelectionsFromParent || [])
   const [items, setItems] = useState<BillItem[]>(initialItems)
   const [itemRemainingQuantities, setItemRemainingQuantities] = useState<Record<string, number>>(initialRemainingQuantities)
@@ -339,7 +341,7 @@ export default function SplitFormContainer({
     return (
       <div className="text-center py-8">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto"></div>
-        <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">Lade Selections...</p>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">{t.container.loadingSelections}</p>
       </div>
     )
   }
@@ -347,7 +349,7 @@ export default function SplitFormContainer({
   return (
     <div>
       <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-gray-800 dark:text-gray-100">
-        Deine Auswahl
+        {t.container.yourSelection}
       </h2>
       <SplitForm
         billId={billId}
