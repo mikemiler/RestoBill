@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { sanitizeInput, getBaseUrl } from '@/lib/utils'
+import { sanitizeInput } from '@/lib/utils'
 import { notifyFeedbackReceived } from '@/lib/slack'
 import { randomUUID } from 'crypto'
 
@@ -128,6 +128,7 @@ export async function POST(req: NextRequest) {
       rating,
       feedbackText: feedbackText ? sanitizeInput(feedbackText) : null,
       friendName: friendName ? sanitizeInput(friendName) : null,
+      requestUrl: req.url,
     }).catch((err) => console.error('[Slack] Notification error:', err))
 
     return NextResponse.json({

@@ -4,7 +4,7 @@
  * Non-blocking: errors are logged but never thrown to callers.
  */
 
-import { formatEUR, getBaseUrl } from '@/lib/utils'
+import { formatEUR } from '@/lib/utils'
 
 // ---------- Types ----------
 
@@ -71,6 +71,7 @@ export async function notifyBillAnalyzed(params: {
   totalAmount: number | null
   itemCount: number
   googleMapsUrl: string | null
+  requestUrl: string
 }): Promise<void> {
   const {
     billId,
@@ -80,11 +81,13 @@ export async function notifyBillAnalyzed(params: {
     totalAmount,
     itemCount,
     googleMapsUrl,
+    requestUrl,
   } = params
 
+  const baseUrl = new URL(requestUrl).origin
   const restaurantDisplay = restaurantName || 'Unbekanntes Restaurant'
   const totalDisplay = totalAmount ? formatEUR(totalAmount) : 'N/A'
-  const statusPageUrl = `${getBaseUrl()}/bills/${billId}/status`
+  const statusPageUrl = `${baseUrl}/bills/${billId}/status`
   const fallback = `New bill: ${restaurantDisplay} (${totalDisplay}, ${itemCount} items) by ${payerName}`
 
   const blocks: SlackBlock[] = [
@@ -150,9 +153,11 @@ export async function notifyFeedbackReceived(params: {
   rating: number
   feedbackText: string | null
   friendName: string | null
+  requestUrl: string
 }): Promise<void> {
-  const { billId, restaurantName, rating, feedbackText, friendName } = params
+  const { billId, restaurantName, rating, feedbackText, friendName, requestUrl } = params
 
+  const baseUrl = new URL(requestUrl).origin
   const ratingLabel: Record<number, string> = { 1: 'Schlecht', 2: 'Mittel', 3: 'Top' }
   const ratingIcon: Record<number, string> = {
     1: ':disappointed:',
@@ -164,7 +169,7 @@ export async function notifyFeedbackReceived(params: {
   const guestDisplay = friendName || 'Anonymous'
   const label = ratingLabel[rating] || 'Unknown'
   const icon = ratingIcon[rating] || ':question:'
-  const statusPageUrl = `${getBaseUrl()}/bills/${billId}/status`
+  const statusPageUrl = `${baseUrl}/bills/${billId}/status`
   const fallback = `Feedback for ${restaurantDisplay}: ${label} by ${guestDisplay}`
 
   const blocks: SlackBlock[] = [

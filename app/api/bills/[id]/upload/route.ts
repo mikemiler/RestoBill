@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { uploadBillImage } from '@/lib/supabase'
 import { analyzeBillImage } from '@/lib/claude'
 import { searchRestaurant } from '@/lib/googlePlaces'
-import { validateImageFile, getBaseUrl } from '@/lib/utils'
+import { validateImageFile } from '@/lib/utils'
 import { notifyBillAnalyzed } from '@/lib/slack'
 import { randomUUID } from 'crypto'
 
@@ -132,6 +132,7 @@ export async function POST(
       totalAmount: analysis.totalAmount || null,
       itemCount: analysis.items.length,
       googleMapsUrl: placeResult?.googleMapsUrl || null,
+      requestUrl: request.url,
     }).catch((err) => console.error('[Slack] Notification error:', err))
 
     return NextResponse.json({
