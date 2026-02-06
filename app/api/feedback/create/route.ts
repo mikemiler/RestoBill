@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { sanitizeInput } from '@/lib/utils'
+import { sanitizeInput, getBaseUrl } from '@/lib/utils'
+import { notifyFeedbackReceived } from '@/lib/slack'
 import { randomUUID } from 'crypto'
 
 export async function POST(req: NextRequest) {
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
     console.log('🔍 Checking if bill exists...')
     const { data: bill, error: billError } = await supabaseAdmin
       .from('Bill')
-      .select('id')
+      .select('id, restaurantName')
       .eq('id', billId)
       .single()
 
@@ -82,6 +83,16 @@ export async function POST(req: NextRequest) {
       }
 
       console.log('✅ Feedback updated successfully')
+
+      // Slack notification (fire-and-forget)
+      notifyFeedbackReceived({
+        billId,
+        restaurantName: bill.restaurantName || null,
+        rating,
+        feedbackText: feedbackText ? sanitizeInput(feedbackText) : null,
+        friendName: friendName ? sanitizeInput(friendName) : null,
+      }).catch((err) => console.error('[Slack] Notification error:', err))
+
       return NextResponse.json({
         success: true,
         feedback: updated
@@ -109,6 +120,16 @@ export async function POST(req: NextRequest) {
     }
 
     console.log('✅ Feedback created successfully:', feedback.id)
+
+    // Slack notification (fire-and-forget)
+    notifyFeedbackReceived({
+      billId,
+      restaurantName: bill.restaurantName || null,
+      rating,
+      feedbackText: feedbackText ? sanitizeInput(feedbackText) : null,
+      friendName: friendName ? sanitizeInput(friendName) : null,
+    }).catch((err) => console.error('[Slack] Notification error:', err))
+
     return NextResponse.json({
       success: true,
       feedback

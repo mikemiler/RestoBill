@@ -256,6 +256,13 @@ All routes follow RESTful patterns:
 - localStorage utilities for bill history (client-side only)
 - Stores: billId, shareToken, payerName, createdAt
 
+**lib/slack.ts**
+- `notifyBillAnalyzed()`: Slack notification when receipt is analyzed (restaurant, total, items, payer)
+- `notifyFeedbackReceived()`: Slack notification when guest feedback is submitted (rating, text, guest name)
+- Non-blocking: App continues if Slack webhook fails (fire-and-forget)
+- Uses Slack Block Kit for rich formatting
+- Requires `SLACK_WEBHOOK_URL` in `.env` (optional, notifications skipped if not set)
+
 **lib/sessionStorage.ts**
 - Browser session management for unique user identification
 - Functions: `getOrCreateSessionId()`, `getSessionId()`, `clearSessionId()`
@@ -1056,6 +1063,9 @@ SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiI...
 
 # Google Places API
 GOOGLE_PLACES_API_KEY=AIzaSy...
+
+# Slack Webhook (optional, for owner notifications)
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 
 # App URL (for share links)
 NEXT_PUBLIC_APP_URL=http://localhost:3000

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { getOrCreateSessionId } from '@/lib/sessionStorage'
-import { useTranslation, interpolate } from '@/lib/i18n'
+import { useTranslation } from '@/lib/i18n'
 
 interface RestaurantFeedbackProps {
   billId: string
@@ -12,8 +12,6 @@ interface RestaurantFeedbackProps {
 
 export default function RestaurantFeedback({
   billId,
-  reviewUrl,
-  restaurantName
 }: RestaurantFeedbackProps) {
   const [selectedRating, setSelectedRating] = useState<number | null>(null)
   const [feedbackText, setFeedbackText] = useState('')
@@ -30,10 +28,7 @@ export default function RestaurantFeedback({
     setSelectedRating(rating)
     setIsSubmitted(false)
 
-    // For rating 3 (top), immediately save feedback
-    if (rating === 3) {
-      await saveFeedback(rating, null)
-    }
+    // Rating 3 no longer auto-saves (Google review link disabled for now)
   }
 
   const saveFeedback = async (rating: number, text: string | null) => {
@@ -78,7 +73,7 @@ export default function RestaurantFeedback({
   }
 
   const handleSubmitFeedback = async () => {
-    if (!selectedRating || (selectedRating < 3 && !feedbackText.trim())) {
+    if (!selectedRating || !feedbackText.trim()) {
       alert(t.feedback.enterFeedback)
       return
     }
@@ -128,49 +123,8 @@ export default function RestaurantFeedback({
         </button>
       </div>
 
-      {/* Rating 3 (Top) - Show Google Review Link */}
-      {selectedRating === 3 && reviewUrl && (
-        <div className="text-center space-y-3">
-          <p className="text-green-400 font-medium">
-            {t.feedback.thanksPositive}
-          </p>
-          <div className="space-y-2">
-            <p className="text-gray-300 text-sm">
-              {interpolate(t.feedback.helpReview, { restaurant: restaurantName || 'Restaurant' })}
-            </p>
-            <a
-              href={reviewUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
-            >
-              {t.feedback.googleReview}
-            </a>
-          </div>
-          {isSubmitted && (
-            <p className="text-sm text-gray-400">
-              {t.feedback.thanksFeedback}
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* Rating 3 (Top) - No Review URL */}
-      {selectedRating === 3 && !reviewUrl && (
-        <div className="text-center">
-          <p className="text-green-400 font-medium">
-            {t.feedback.thanksPositive}
-          </p>
-          {isSubmitted && (
-            <p className="text-sm text-gray-400 mt-2">
-              {t.feedback.thanksFeedback}
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* Rating 1 or 2 - Show Feedback Textarea */}
-      {selectedRating && selectedRating < 3 && (
+      {/* Show Feedback Textarea for all ratings */}
+      {selectedRating && (
         <div className="space-y-4">
           <p className="text-yellow-400 text-center font-medium">
             {t.feedback.whatCanImprove}
